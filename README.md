@@ -9,7 +9,7 @@ Earth’s surface is always moving: monsoon floods spread and recede, forests ar
 |---|---|
 | | |
 |---|---|
-| **World mosaic** | Every NISAR GCOV frame of one 12-day cycle (16,664 frames, ~60 GB streamed) painted onto the globe at 2.8 km. |
+| **World mosaics** | Every NISAR GCOV frame of each 12-day cycle (~16,500 frames, ~60 GB streamed per cycle) painted onto the globe at 2.8 km. Six cycles from June to October 2026; the globe switches cycle with the timeline. |
 | **Globe + timeline** | Real NISAR radar frames draped on the globe on the date they were taken, monthly worldwide acquisition density, natural events (NASA EONET), the satellite orbit. Play or scrub Oct 2025 → today. |
 | **Site pages** | Open in front of the globe, one tab at a time: *Overview · Radar images · Ground motion · Change & ML · Forecast · Events & news*. |
 | **Radar images** | HH, HV, colour composite, HV/HH, variability; same-day MODIS optical for comparison; 30 m elevation and a 3-D radar-on-terrain view; swipe comparison; scene and pixel time series. |

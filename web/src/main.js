@@ -32,16 +32,13 @@ async function boot() {
   app.sites = catalog.sites.filter((s) => s.acquisitions?.length >= 2);
   const last = app.sites.flatMap((s) => s.acquisitions.map((a) => a.date)).sort().pop();
   const cyc0 = mosaic.cycles[mosaic.cycles.length - 1];
-  $('#barMeta').textContent = (cyc0 ? `World mosaic: ${cyc0.granules.toLocaleString()} frames · ` : '') + `${app.sites.reduce((n, s) => n + s.acquisitions.length, 0)} site passes · latest ${fmtDate(tOf(last))}`;
+  $('#barMeta').textContent = (cyc0 ? `World mosaics: ${mosaic.cycles.length} cycles, ${mosaic.cycles.reduce((n, c) => n + c.granules, 0).toLocaleString()} frames · ` : '') + `${app.sites.reduce((n, s) => n + s.acquisitions.length, 0)} site passes · latest ${fmtDate(tOf(last))}`;
 
   app.globe = new GlobeView($('#globeViz'), { base: BASE, onSiteClick: (s) => go(`#/site/${s.id}`) });
   app.globe.setSites(app.sites);
   app.globe.setCoverage(coverage);
-  const cyc = mosaic.cycles[mosaic.cycles.length - 1];
-  if (cyc) {
-    app.globe.setMosaic(cyc);
-    $('#mosaicDates').textContent = `${fmtShort(tOf(cyc.start))} – ${fmtShort(tOf(cyc.end))}`;
-  } else $('#mosaicLayer').style.display = 'none';
+  if (mosaic.cycles.length) app.globe.setMosaics(mosaic.cycles);
+  else $('#mosaicLayer').style.display = 'none';
   const evs = [];
   for (const [id, list] of Object.entries(events.sites || {})) {
     for (const e of list) if (e.kind === 'event' && e.lat != null) evs.push({ ...e, site: id, color: eventColor(e.category) });
@@ -195,6 +192,12 @@ export function drawTimeline() {
     const bh = Math.max(1, (m.total / maxM) * h * 0.5);
     ctx.fillRect(X(t0) + 1, h - bh, Math.max(1, X(d.getTime()) - X(t0) - 2), bh);
   }
+  // world-mosaic cycles as a band along the bottom edge
+  for (const c of app.mosaic?.cycles || []) {
+    const a = tOf(c.start) - DAY / 2, b = tOf(c.end) + DAY / 2;
+    ctx.fillStyle = 'rgba(232,176,74,0.55)';
+    ctx.fillRect(X(a) + 1, h - 3, Math.max(2, X(b) - X(a) - 2), 3);
+  }
   const sel = app.selected;
   const rows = app.sites.length;
   app.sites.forEach((s, r) => {
@@ -215,8 +218,11 @@ export function setDay(day, source) {
   $('#tlDate').textContent = fmtDate(t);
   const m = app.coverage.months.find((x) => x.month === date.toISOString().slice(0, 7));
   const fresh = app.sites.filter((s) => { const a = latestBefore(s.acquisitions, date); return a && t - tOf(a.date) < 4 * DAY; }).map((s) => s.name);
-  $('#tlInfo').textContent = [fresh.length ? `New pass: ${fresh.join(', ')}` : '', m ? `${m.total.toLocaleString()} GCOV frames acquired worldwide this month` : ''].filter(Boolean).join('  ·  ');
   app.globe.update(date);
+  const cyc = app.globe.cycleAt(date);
+  const cycTxt = cyc ? `World mosaic ${fmtShort(tOf(cyc.start))} – ${fmtShort(tOf(cyc.end))}` : (app.mosaic.cycles.length ? 'No world mosaic before ' + fmtShort(tOf(app.mosaic.cycles[0].start)) : '');
+  $('#mosaicDates').textContent = cyc ? `${fmtShort(tOf(cyc.start))} – ${fmtShort(tOf(cyc.end))}` : '';
+  $('#tlInfo').textContent = [cycTxt, fresh.length ? `New pass: ${fresh.join(', ')}` : '', m ? `${m.total.toLocaleString()} GCOV frames this month` : ''].filter(Boolean).join('  ·  ');
   if (source !== 'page') app.listeners.forEach((fn) => fn(date));
 }
 

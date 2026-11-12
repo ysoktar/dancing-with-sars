@@ -212,17 +212,17 @@ def main():
     for name, size in (("8k", (8192, 4096)), ("4k", (4096, 2048))):
         img.resize(size, Image.BOX).save(out / f"{cid}_{name}.webp", quality=80, method=6)
     from collections import Counter
-    meta_path = OUT / "mosaic.json"
-    meta = json.loads(meta_path.read_text()) if meta_path.exists() else {"cycles": []}
-    meta["cycles"] = [c for c in meta["cycles"] if c["id"] != cid] + [{
+    entry = {
         "id": cid, "start": str(d0), "end": str(d1 - timedelta(days=1)), "granules": done, "failed": fails,
         "modes": dict(Counter(g["mode"] for g in gs).most_common(6)),
         "coverage": round(float(land.mean()), 4), "resolutionDeg": RES,
         "img8k": f"mosaic/{cid}_8k.webp", "img4k": f"mosaic/{cid}_4k.webp",
         "generated": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-    }]
-    meta["cycles"].sort(key=lambda c: c["start"])
-    meta_path.write_text(json.dumps(meta, indent=1))
+    }
+    (out / f"{cid}.json").write_text(json.dumps(entry, indent=1))
+    # rebuild the index from every cycle's own file (safe when several builds run in parallel)
+    cycles = sorted((json.loads(f.read_text()) for f in out.glob("*.json")), key=lambda c: c["start"])
+    (OUT / "mosaic.json").write_text(json.dumps({"cycles": cycles}, indent=1))
     print("wrote", out, f"({(time.time() - t0) / 60:.0f} min)")
 
 

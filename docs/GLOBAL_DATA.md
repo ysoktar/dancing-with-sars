@@ -20,7 +20,7 @@ Downloading all of it is not realistic: 605 TB of GCOV alone would take ~2 month
 
 ### Route A: global browse mosaic (implemented: `pipeline/build_mosaic.py`)
 
-This route is already built: the website globe shows the mosaic for **1–12 Oct 2026** (16,664 frames, ~60 GB streamed, ~25 min at ~20 MB/s, two WebP files of ~1–10 MB each). To build another cycle:
+This route is already built: the website globe shows mosaics for six 12-day cycles between June and October 2026 (each ~16,500 frames, ~60 GB streamed, ~25 min at ~20 MB/s, two WebP files of ~1 MB and ~4 MB). The globe switches mosaic as the timeline moves. To build another cycle:
 
 ```bash
 python pipeline/build_mosaic.py --start 2026-10-13 --days 12 --dry-run   # count + size

@@ -1,0 +1,13 @@
+[
+  {"id": "konya",       "name": "Konya Closed Basin",        "country": "Türkiye",        "lon": 32.75,   "lat": 37.45,  "half_deg": 0.22, "theme": "subsidence"},
+  {"id": "sylhet",      "name": "Sylhet Haor Wetlands",      "country": "Bangladesh",     "lon": 91.20,   "lat": 24.70,  "half_deg": 0.22, "theme": "flood"},
+  {"id": "rondonia",    "name": "Rondônia Forest Frontier",  "country": "Brazil",         "lon": -63.40,  "lat": -9.40,  "half_deg": 0.22, "theme": "deforestation"},
+  {"id": "jakobshavn",  "name": "Jakobshavn Isbræ",          "country": "Greenland",      "lon": -49.60,  "lat": 69.17,  "half_deg": 0.18, "theme": "glacier"},
+  {"id": "tulare",      "name": "Tulare Basin, Central Valley", "country": "USA",         "lon": -119.60, "lat": 36.05,  "half_deg": 0.22, "theme": "agriculture"},
+  {"id": "okavango",    "name": "Okavango Delta",            "country": "Botswana",       "lon": 22.70,   "lat": -19.40, "half_deg": 0.22, "theme": "wetland"},
+  {"id": "punjab",      "name": "Punjab Rice–Wheat Belt",    "country": "India",          "lon": 75.60,   "lat": 30.60,  "half_deg": 0.22, "theme": "agriculture"},
+  {"id": "mississippi", "name": "Mississippi River Delta",   "country": "USA",            "lon": -89.60,  "lat": 29.40,  "half_deg": 0.22, "theme": "wetland"},
+  {"id": "kilauea",     "name": "Kīlauea Volcano",           "country": "Hawaiʻi, USA",   "lon": -155.27, "lat": 19.40,  "half_deg": 0.16, "theme": "volcano"},
+  {"id": "jasper",      "name": "Jasper Wildfire Scar",      "country": "Canada",         "lon": -118.08, "lat": 52.87,  "half_deg": 0.20, "theme": "wildfire"},
+  {"id": "thwaites",    "name": "Thwaites Glacier",          "country": "Antarctica",     "lon": -106.80, "lat": -75.30, "half_deg": 0.15, "theme": "glacier"}
+]

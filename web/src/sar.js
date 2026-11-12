@@ -172,13 +172,20 @@ export function logRatio(stack, t0, t1, channel = 'span') {
     mag[i] = Math.abs(lr[i]);
   }
   const thr = Math.max(0.12, otsu(mag, stack.valid, 0, 1.5, 300));
-  let inc = 0, dec = 0, n = 0;
+  // confidence that a pixel really changed: how far |log-ratio| lies beyond the threshold,
+  // in units of the spread of unchanged pixels (logistic squashing to 0..1)
+  let s = 0, s2 = 0, m = 0;
+  for (let i = 0; i < N; i++) if (stack.valid[i] && mag[i] <= thr) { s += mag[i]; s2 += mag[i] * mag[i]; m++; }
+  const sd = Math.sqrt(Math.max(1e-6, s2 / m - (s / m) ** 2));
+  const conf = new Float32Array(N);
+  let inc = 0, dec = 0, n = 0, cSum = 0;
   for (let i = 0; i < N; i++) {
     if (!stack.valid[i]) continue;
     n++;
-    if (lr[i] > thr) inc++; else if (lr[i] < -thr) dec++;
+    conf[i] = 1 / (1 + Math.exp(-(mag[i] - thr) / sd));
+    if (lr[i] > thr) { inc++; cSum += conf[i]; } else if (lr[i] < -thr) { dec++; cSum += conf[i]; }
   }
-  return { lr, thr, inc: inc / n, dec: dec / n, incKm2: inc * stack.pixelKm2, decKm2: dec * stack.pixelKm2 };
+  return { lr, thr, conf, meanConf: inc + dec ? cSum / (inc + dec) : 0, inc: inc / n, dec: dec / n, incKm2: inc * stack.pixelKm2, decKm2: dec * stack.pixelKm2 };
 }
 
 /** Per-pixel temporal standard deviation of (filtered) HH and HV. */
@@ -204,6 +211,7 @@ const stops = {
   viridis: ['#440154', '#3b528b', '#21918c', '#5ec962', '#fde725'],
   diverge: ['#b2182b', '#ef8a62', '#fddbc7', '#f7f7f7', '#d1e5f0', '#67a9cf', '#2166ac'],
   ice: ['#020617', '#0c4a6e', '#0ea5e9', '#a5f3fc', '#ffffff'],
+  terrain: ['#1d4f60', '#3b7d5a', '#8fae6b', '#d8c98f', '#b48a63', '#8c6e5d', '#f2f2f2'],
 };
 const lutCache = {};
 export function lut(name) {
@@ -264,6 +272,9 @@ export function render(stack, t, mode, extra = {}) {
       else if (lr[i] < -thr) put(i, 255, 70 + 60 * Math.max(0, 1 + lr[i]), 60);
       else put(i, g, g, g);
     }
+  } else if (mode === 'confidence' && extra.conf) {
+    const L = lut('viridis');
+    for (let i = 0; i < N; i++) { const k = Math.round(255 * Math.max(0, Math.min(1, extra.conf[i]))); put(i, L[k * 3], L[k * 3 + 1], L[k * 3 + 2]); }
   } else if (mode === 'clusters' && extra.labels) {
     const cols = CLUSTER_COLORS.map((h) => [1, 3, 5].map((k) => parseInt(h.slice(k, k + 2), 16)));
     for (let i = 0; i < N; i++) { const c = cols[extra.labels[i] % cols.length]; put(i, c[0], c[1], c[2]); }
@@ -322,4 +333,38 @@ export function robustTrend(times, values) {
     fit: (t) => icpt + slope * ((t - t0) / day),
     z: resid.map((r) => r / mad),
   };
+}
+
+// ---------------------------------------------------------------- elevation
+/** Decode a terrarium-encoded DEM PNG (height = R*256 + G + B/256 − 32768). */
+export async function loadDem(url) {
+  const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = url; });
+  const c = document.createElement('canvas');
+  c.width = c.height = SIZE;
+  const ctx = c.getContext('2d', { willReadFrequently: true });
+  ctx.drawImage(img, 0, 0, SIZE, SIZE);
+  const d = ctx.getImageData(0, 0, SIZE, SIZE).data;
+  const h = new Float32Array(N);
+  let lo = Infinity, hi = -Infinity;
+  for (let i = 0, j = 0; i < N; i++, j += 4) { h[i] = d[j] * 256 + d[j + 1] + d[j + 2] / 256 - 32768; lo = Math.min(lo, h[i]); hi = Math.max(hi, h[i]); }
+  return { h, lo, hi };
+}
+
+/** Hillshade blended with a hypsometric tint. pixelM = ground size of one pixel in metres. */
+export function renderElevation(dem, pixelM) {
+  const img = new ImageData(SIZE, SIZE), d = img.data, L = lut('terrain');
+  const { h, lo, hi } = dem;
+  const az = (315 * Math.PI) / 180, alt = (45 * Math.PI) / 180;
+  for (let y = 0; y < SIZE; y++) for (let x = 0; x < SIZE; x++) {
+    const i = y * SIZE + x;
+    const xl = h[y * SIZE + Math.max(0, x - 1)], xr = h[y * SIZE + Math.min(SIZE - 1, x + 1)];
+    const yu = h[Math.max(0, y - 1) * SIZE + x], yd = h[Math.min(SIZE - 1, y + 1) * SIZE + x];
+    const dzdx = (xr - xl) / (2 * pixelM), dzdy = (yd - yu) / (2 * pixelM);
+    const slope = Math.atan(Math.hypot(dzdx, dzdy)), aspect = Math.atan2(dzdy, -dzdx);
+    const shade = Math.max(0, Math.cos(alt) * Math.cos(slope) + Math.sin(alt) * Math.sin(slope) * Math.cos(az - Math.PI / 2 - aspect));
+    const k = Math.round(255 * Math.max(0, Math.min(1, (h[i] - lo) / Math.max(1, hi - lo)))) * 3;
+    const s = 0.45 + 0.75 * shade;
+    d[i * 4] = Math.min(255, L[k] * s); d[i * 4 + 1] = Math.min(255, L[k + 1] * s); d[i * 4 + 2] = Math.min(255, L[k + 2] * s); d[i * 4 + 3] = 255;
+  }
+  return img;
 }

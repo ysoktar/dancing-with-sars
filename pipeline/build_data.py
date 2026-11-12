@@ -211,7 +211,7 @@ def load_granule(g: dict, ref_bounds=None):
         bounds = bounds_from_footprint(im, g["wkt"])
         if bounds is None:
             return None
-    return {"g": g, "im": im, "bounds": list(bounds), "kml": has_kml, "png": png_url}
+    return {"g": g, "im": im, "bounds": list(bounds), "bounds0": list(bounds), "kml": has_kml, "png": png_url}
 
 
 COREG = 384  # co-registration window size (pixels)
@@ -289,10 +289,54 @@ def nodata_free(a: np.ndarray, win: int = 11, frac: float = 0.8) -> np.ndarray:
     return ~((box / (win * win) > frac) & (zero > 0))
 
 
+def footprint_mask(wkt: str, box, size: int, dx: float = 0.0, dy: float = 0.0, shrink_deg: float = 0.015) -> np.ndarray:
+    nums = list(map(float, re.findall(r"-?\d+\.?\d*", wkt)))
+    px = np.array(nums[0::2]) + dx
+    py = np.array(nums[1::2]) + dy
+    lon = np.linspace(box[0], box[2], size)[None, :].repeat(size, 0)
+    lat = np.linspace(box[3], box[1], size)[:, None].repeat(size, 1)
+    inside = np.zeros((size, size), bool)
+    dmin = np.full((size, size), np.inf)
+    for i in range(len(px) - 1):
+        x1, y1, x2, y2 = px[i], py[i], px[i + 1], py[i + 1]
+        cond = (y1 > lat) != (y2 > lat)
+        xint = (x2 - x1) * (lat - y1) / (y2 - y1 + 1e-12) + x1
+        inside ^= cond & (lon < xint)
+        # distance to edge (degrees, lon scaled by cos lat)
+        c = math.cos(math.radians(float(lat.mean())))
+        ex, ey = (x2 - x1) * c, y2 - y1
+        t = np.clip(((lon - x1) * c * ex + (lat - y1) * ey) / (ex * ex + ey * ey + 1e-12), 0, 1)
+        dmin = np.minimum(dmin, np.hypot((lon - x1) * c - t * ex, lat - y1 - t * ey))
+    return inside & (dmin > shrink_deg)
+
+
+def edge_zero(a: np.ndarray) -> np.ndarray:
+    """Zero (no-data) regions that touch the crop border: swath edges not described by the footprint."""
+    zero = a[..., 0] + a[..., 1] <= 3
+    out = np.zeros_like(zero)
+    stack = [(y, x) for y in range(zero.shape[0]) for x in (0, zero.shape[1] - 1) if zero[y, x]]
+    stack += [(y, x) for x in range(zero.shape[1]) for y in (0, zero.shape[0] - 1) if zero[y, x]]
+    nodata = nodata_free(a) == 0  # only follow zeros that are part of large zero areas
+    while stack:
+        y, x = stack.pop()
+        if out[y, x] or not zero[y, x] or not nodata[y, x]:
+            continue
+        out[y, x] = True
+        for yy, xx in ((y - 1, x), (y + 1, x), (y, x - 1), (y, x + 1)):
+            if 0 <= yy < zero.shape[0] and 0 <= xx < zero.shape[1] and not out[yy, xx]:
+                stack.append((yy, xx))
+    return out
+
+
 def finalize(it: dict, site: dict, out_dir: Path) -> dict | None:
     g, im, bounds = it["g"], it["im"], it["bounds"]
-    a = sample(im, bounds, aoi_box(site), CROP)
-    valid = nodata_free(a)
+    box = aoi_box(site)
+    a = sample(im, bounds, box, CROP)
+    # valid = inside the granule footprint (shifted like the image), shrunk by ~1.5 km,
+    # so large calm water bodies (which are 0 in the browse image) are kept as data
+    dx = bounds[0] - it["bounds0"][0]
+    dy = bounds[3] - it["bounds0"][3]
+    valid = footprint_mask(g["wkt"], box, CROP, dx, dy) & ~edge_zero(a)
     vf = float(valid.mean())
     if vf < 0.85:
         return None

@@ -7,11 +7,16 @@ Earth’s surface is always moving: monsoon floods spread and recede, forests ar
 
 | | |
 |---|---|
-| 🌍 **3-D globe + timeline** | Real NISAR radar frames draped on the globe at their true date and location; monthly global acquisition density from NASA CMR; an animated NISAR orbit; play/scrub through Oct 2025 → today. |
-| 🔍 **Site explorer** | 11 study sites (floods, deforestation, glaciers, crops, wetlands, volcano, wildfire, groundwater). Dual-pol RGB, HH, HV, HV/HH and temporal-variability views; Lee speckle filter; swipe comparison; scene and per-pixel time series with robust trend and anomaly flags. |
-| 🤖 **ML lab (TensorFlow.js)** | ① k-means++ scattering classes with physical interpretation · ② log-ratio + Otsu change detection with km² estimates · ③ a deep **autoencoder** trained live in the browser on each pixel’s temporal signature: reconstruction error = anomaly map, 2-D latent space = learned behaviours. |
-| 📡 **Radar 101** | Interactive wavelength/penetration diagram (X, C, S, L), scattering mechanisms, polarization. |
-| 🔁 **Living data** | A GitHub Actions workflow re-downloads the newest NISAR passes every week and redeploys to GitHub Pages. |
+| | |
+|---|---|
+| **Globe + timeline** | Real NISAR radar frames draped on the globe on the date they were taken, monthly worldwide acquisition density, natural events (NASA EONET), the satellite orbit. Play or scrub Oct 2025 → today. |
+| **Site pages** | Open in front of the globe, one tab at a time: *Overview · Radar images · Ground motion · Change & ML · Forecast · Events & news*. |
+| **Radar images** | HH, HV, colour composite, HV/HH, variability; same-day MODIS optical for comparison; 30 m elevation and a 3-D radar-on-terrain view; swipe comparison; scene and pixel time series. |
+| **Ground motion** | Real NISAR **GUNW** interferograms and **GOFF** offset maps for every site that has them, with guidance on fringes, line of sight and decorrelation. |
+| **Change & ML** | Log-ratio + Otsu change detection with per-pixel confidence and km² · k-means surface types with physical interpretation and confidence · TensorFlow.js autoencoder anomaly map trained in the browser. |
+| **Forecast** | Damped-trend model with bootstrap 80 / 95 % ranges, a rolling backtest against "same as last pass", explicit assumptions, and an honest verdict on whether the process is forecastable at all. |
+| **Events & news** | NASA EONET events, USGS earthquakes and GDELT headlines matched in space and time to NISAR passes. Shown as context, not validation. |
+| **What radar can tell** | What SAR measures directly, what it estimates with other data, and what it cannot measure. |
 
 ## Study sites
 
@@ -33,7 +38,9 @@ Earth’s surface is always moving: monsoon floods spread and recede, forests ar
 
 ## How the data pipeline works
 
-`pipeline/build_data.py` needs **no login**:
+All pipeline scripts need **no login**: `build_data.py` (GCOV), `build_motion.py` (GUNW/GOFF), `build_events.py` (EONET, USGS, GDELT), `build_dem.py` (Copernicus DEM 30 m). For worldwide data and download sizes see [docs/GLOBAL_DATA.md](docs/GLOBAL_DATA.md).
+
+`pipeline/build_data.py`:
 
 1. **Search:** the [ASF DAAC search API](https://docs.asf.alaska.edu/api/basics/) lists every NISAR L2 GCOV granule intersecting each site.
 2. **Track lock:** keep the one path/frame/direction that fully covers the site window most often, so the viewing geometry is the same on every date.

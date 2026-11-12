@@ -3,306 +3,72 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Dancing with the SARs: NISAR Surface Change Explorer</title>
-  <meta name="description" content="Interactive 3D globe and timeline of real NISAR L-band radar observations, with in-browser machine learning for surface-change detection." />
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='28' fill='%230b1220' stroke='%2338bdf8' stroke-width='4'/%3E%3Cpath d='M10 36c8-10 14 10 22 0s14 10 22 0' stroke='%23facc15' stroke-width='4' fill='none'/%3E%3C/svg%3E" />
+  <title>Dancing with the SARs: NISAR surface change explorer</title>
+  <meta name="description" content="Explore real NISAR L-band radar observations on a 3D globe: surface change, ground motion, machine-learning analysis and forecasts." />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%230b0d10'/%3E%3Cpath d='M5 18c3-5 5 5 8 0s5 5 8 0 4 3 6 1' stroke='%23e8b04a' stroke-width='2.4' fill='none'/%3E%3C/svg%3E" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
 </head>
 <body>
-  <nav class="topnav">
-    <a class="brand" href="#top"><span class="wave">∿</span> Dancing with the <b>SARs</b></a>
-    <div class="links">
-      <a href="#globe">Globe</a>
-      <a href="#explorer">Explorer</a>
-      <a href="#ml">ML Lab</a>
-      <a href="#learn">Radar 101</a>
-      <a href="#data">Data &amp; Methods</a>
-    </div>
-  </nav>
+  <header class="bar">
+    <a class="wordmark" href="#/">Dancing with the SARs</a>
+    <nav class="nav" id="nav">
+      <a href="#/" data-route="globe">Globe</a>
+      <a href="#/sites" data-route="sites">Sites</a>
+      <a href="#/method" data-route="method">What radar can tell</a>
+      <a href="#/data" data-route="data">Data &amp; methods</a>
+    </nav>
+    <div class="bar-meta" id="barMeta"></div>
+  </header>
 
-  <!-- =========================================================== GLOBE -->
-  <section id="globe" class="globe-section">
-    <div id="globeViz"></div>
+  <main class="stage">
+    <div id="globeViz" class="globe"></div>
 
-    <div class="hero glass">
-      <p class="kicker">NASA–ISRO Synthetic Aperture Radar · L-band</p>
-      <h1>Earth’s surface is always dancing.<br><span>NISAR</span> sees every step, day or night, through clouds.</h1>
-      <p class="lede">Every coloured frame on this globe is a <b>real NISAR radar acquisition</b>, positioned at its true location and date. Press play, or pick a study site, to watch floods, crops, forests and ice change over time.</p>
-      <div class="hero-stats">
-        <div><b id="stat-acq">–</b><span>site acquisitions</span></div>
-        <div><b id="stat-sites">–</b><span>study sites</span></div>
-        <div><b id="stat-global">–</b><span>GCOV frames worldwide (period shown)</span></div>
+    <aside class="rail" id="rail">
+      <div class="rail-intro">
+        <p>Real radar observations from the NASA–ISRO <b>NISAR</b> satellite, placed on the globe at the date they were taken. Pick a site to see what changed and why.</p>
       </div>
-    </div>
-
-    <aside class="sitelist glass">
-      <h3>Study sites</h3>
-      <ul id="siteList"></ul>
+      <div class="rail-list" id="railList"></div>
     </aside>
 
-    <div class="layers glass">
-      <h3>Layers</h3>
-      <label><input type="checkbox" data-layer="frames" checked> <span>NISAR radar frames</span></label>
-      <label><input type="checkbox" data-layer="density" checked> <span>Global acquisition density</span></label>
-      <label><input type="checkbox" data-layer="footprints"> <span>Frame footprints (sample)</span></label>
-      <label><input type="checkbox" data-layer="satellite" checked> <span>NISAR orbit</span></label>
-      <label><input type="checkbox" data-layer="night"> <span>Night lights</span></label>
-      <div class="legend-mini">
-        <span><i style="background:#ff4fd8"></i>HH strong</span>
-        <span><i style="background:#3ee86b"></i>HV strong</span>
-        <span><i style="background:#f1f5f9"></i>both</span>
+    <div class="layers" id="layers">
+      <button class="layers-toggle" id="layersToggle" aria-expanded="false">Layers</button>
+      <div class="layers-menu" id="layersMenu">
+        <label><input type="checkbox" data-layer="frames" checked> NISAR radar frames</label>
+        <label><input type="checkbox" data-layer="density" checked> Acquisitions per month</label>
+        <label><input type="checkbox" data-layer="footprints"> Frame outlines (sample)</label>
+        <label><input type="checkbox" data-layer="events"> Natural events (EONET)</label>
+        <label><input type="checkbox" data-layer="satellite" checked> Satellite orbit</label>
+        <label><input type="checkbox" data-layer="night"> Night side lights</label>
       </div>
     </div>
 
-    <div class="timeline glass" id="timeline">
-      <button id="playBtn" class="play" aria-label="Play">▶</button>
-      <div class="tl-main">
-        <div class="tl-head">
-          <span id="tlDate" class="tl-date">–</span>
+    <div class="timeline" id="timeline">
+      <button id="playBtn" class="play" aria-label="Play timeline"><svg viewBox="0 0 16 16" width="14" height="14"><path d="M4 2.5v11l9-5.5z" fill="currentColor"/></svg></button>
+      <div class="tl-body">
+        <div class="tl-row">
+          <span id="tlDate" class="tl-date"></span>
           <span id="tlInfo" class="tl-info"></span>
           <select id="tlSpeed" aria-label="Playback speed">
-            <option value="1">1 day/frame</option>
-            <option value="3" selected>3 days/frame</option>
-            <option value="6">6 days/frame</option>
-            <option value="12">12 days (1 repeat cycle)</option>
+            <option value="1">1 day / step</option>
+            <option value="3" selected>3 days / step</option>
+            <option value="12">12 days / step</option>
           </select>
         </div>
         <div class="tl-track">
           <canvas id="tlBars"></canvas>
-          <input id="tlRange" type="range" min="0" max="100" value="100" step="1" aria-label="Timeline" />
+          <input id="tlRange" type="range" min="0" max="100" value="100" step="1" aria-label="Date" />
         </div>
         <div id="tlMonths" class="tl-months"></div>
       </div>
     </div>
-    <a href="#explorer" class="scroll-cue">Explore a site ↓</a>
-  </section>
 
-  <!-- =========================================================== EXPLORER -->
-  <section id="explorer" class="section">
-    <div class="section-head">
-      <p class="kicker">Site explorer</p>
-      <h2 id="exTitle">Choose a study site</h2>
-      <p id="exHeadline" class="sub"></p>
-      <div class="site-tabs" id="siteTabs"></div>
-    </div>
+    <!-- pages open in front of the globe -->
+    <div class="scrim" id="scrim"></div>
+    <section class="sheet" id="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle" tabindex="-1"></section>
+  </main>
 
-    <div class="explorer-grid">
-      <div class="viewer card">
-        <div class="viewer-tools">
-          <div class="seg" id="modeSeg">
-            <button data-mode="rgb" class="on" title="R = HH, G = HV, B = HH−HV contrast">Dual-pol RGB</button>
-            <button data-mode="hh" title="Co-polarized: surface &amp; double-bounce">HH</button>
-            <button data-mode="hv" title="Cross-polarized: volume scattering">HV</button>
-            <button data-mode="ratio" title="HV/HH: vegetation index">HV/HH</button>
-            <button data-mode="tstd" title="Temporal variability across all dates">Variability</button>
-          </div>
-          <label class="toggle"><input type="checkbox" id="leeToggle" checked> Lee speckle filter</label>
-          <label class="toggle"><input type="checkbox" id="swipeToggle"> Compare (swipe)</label>
-        </div>
-        <div class="canvas-wrap" id="canvasWrap">
-          <canvas id="sarCanvas" width="768" height="768"></canvas>
-          <canvas id="sarCanvasB" width="768" height="768" class="cmp"></canvas>
-          <div class="swipe-handle" id="swipeHandle"><span>⇆</span></div>
-          <div class="crosshair" id="crosshair"></div>
-          <div class="canvas-badge" id="canvasBadge"></div>
-          <div class="loading" id="stackLoading"><div class="bar"><i></i></div><span>Loading radar stack…</span></div>
-        </div>
-        <div class="date-strip" id="dateStrip"></div>
-        <div class="compare-row" id="compareRow">
-          <label>Compare against <select id="cmpDate"></select></label>
-        </div>
-        <p class="hint">Click a pixel to see its time series. The scene is about <span id="aoiKm">–</span> km across. Pixels are re-sampled NISAR GCOV browse imagery.</p>
-      </div>
-
-      <div class="side">
-        <div class="card story">
-          <div class="theme-chip" id="exTheme"></div>
-          <p id="exStory"></p>
-          <h4>Why might it change? Our hypotheses</h4>
-          <ul id="exDrivers"></ul>
-          <div class="two">
-            <div><h5>Which polarization?</h5><p id="exPol"></p></div>
-            <div><h5>What to look for</h5><p id="exLook"></p></div>
-          </div>
-          <div class="future"><b>Future NISAR applications:</b> <span id="exFuture"></span></div>
-        </div>
-        <div class="card">
-          <div class="card-head"><h4>Scene time series</h4><span class="muted" id="trendTxt"></span></div>
-          <div class="chart-box"><canvas id="tsChart"></canvas></div>
-          <p class="hint">Mean HH and HV brightness of the scene, plus the dark-surface fraction (Otsu threshold over the whole stack: open water, wet snow, smooth soil). Dashed: robust Theil–Sen trend. ⚠ marks dates that deviate more than 2.5 robust σ.</p>
-        </div>
-        <div class="card">
-          <div class="card-head"><h4>Pixel time series</h4><span class="muted" id="pxTxt">click the image</span></div>
-          <div class="chart-box small"><canvas id="pxChart"></canvas></div>
-        </div>
-        <div class="card meta">
-          <h4>Acquisition</h4>
-          <dl id="acqMeta"></dl>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- =========================================================== ML LAB -->
-  <section id="ml" class="section alt">
-    <div class="section-head">
-      <p class="kicker">Machine-learning lab · runs in your browser</p>
-      <h2>Teaching a computer to read radar</h2>
-      <p class="sub">Three complementary approaches, all trained on the fly on the site’s real NISAR stack. No server, no pre-trained black box: the code runs on your GPU through TensorFlow.js and WebGL.</p>
-    </div>
-
-    <div class="ml-grid">
-      <!-- K-MEANS -->
-      <div class="card ml-card">
-        <div class="ml-num">01</div>
-        <h3>Unsupervised scattering classes</h3>
-        <p class="muted">k-means++ clustering on six per-pixel features: HH, HV, HV−HH contrast, temporal mean and temporal variability. Each class is then read physically: surface, volume or double-bounce scattering, or dynamic.</p>
-        <div class="ml-controls">
-          <label>Classes <input type="range" id="kRange" min="3" max="8" value="5"> <b id="kVal">5</b></label>
-          <button class="btn" id="kmBtn">Run k-means</button>
-        </div>
-        <div class="ml-out">
-          <canvas id="kmCanvas" width="512" height="512"></canvas>
-          <div class="ml-legend" id="kmLegend"><p class="muted">Press <b>Run k-means</b>.</p></div>
-        </div>
-      </div>
-
-      <!-- CHANGE DETECTION -->
-      <div class="card ml-card">
-        <div class="ml-num">02</div>
-        <h3>Change detection: log-ratio + Otsu</h3>
-        <p class="muted">The standard SAR change detector. The log of the intensity ratio between two dates makes speckle noise roughly additive. Otsu’s method then picks the threshold automatically, by maximizing the variance between the “changed” and “unchanged” classes.</p>
-        <div class="ml-controls">
-          <label>From <select id="cdFrom"></select></label>
-          <label>To <select id="cdTo"></select></label>
-          <label>Channel <select id="cdCh"><option value="span">HH+HV</option><option value="hh">HH</option><option value="hv">HV</option></select></label>
-          <button class="btn" id="cdBtn">Detect change</button>
-        </div>
-        <div class="ml-out">
-          <canvas id="cdCanvas" width="512" height="512"></canvas>
-          <div class="ml-legend" id="cdLegend"><p class="muted">Pick two dates.</p></div>
-        </div>
-      </div>
-
-      <!-- AUTOENCODER -->
-      <div class="card ml-card wide">
-        <div class="ml-num">03</div>
-        <h3>Deep autoencoder: learning what “normal” looks like</h3>
-        <p class="muted">A neural network (D → 48 → 16 → <b>2</b> → 16 → 48 → D) learns to compress each pixel’s full temporal signature (HH and HV on every date) into just two numbers, then rebuild it. It learns the common rhythms of the scene. Pixels it <em>cannot</em> rebuild behave unusually: clearings, new water, fresh lava, fire scars. The 2-D bottleneck also gives a learned “map” of temporal behaviours.</p>
-        <div class="ml-controls">
-          <label>Epochs <input type="range" id="aeEpochs" min="10" max="120" value="40"> <b id="aeEpochsVal">40</b></label>
-          <label>Training pixels <select id="aeSamples"><option>4000</option><option selected>8000</option><option>16000</option></select></label>
-          <button class="btn primary" id="aeBtn">Train autoencoder</button>
-          <span class="muted" id="aeStatus"></span>
-        </div>
-        <div class="ae-grid">
-          <div><h5>Training loss</h5><div class="chart-box small"><canvas id="aeLoss"></canvas></div></div>
-          <div><h5>Anomaly map (reconstruction error)</h5><canvas id="aeCanvas" width="512" height="512"></canvas></div>
-          <div><h5>Learned 2-D latent space <span class="muted">(colour = k-means class)</span></h5><div class="chart-box"><canvas id="aeLatent"></canvas></div></div>
-        </div>
-        <p class="hint" id="aeHint">Click any pixel in the anomaly map to compare its real time series with the network’s reconstruction.</p>
-        <div class="chart-box small"><canvas id="aeRecon"></canvas></div>
-      </div>
-    </div>
-  </section>
-
-  <!-- =========================================================== LEARN -->
-  <section id="learn" class="section">
-    <div class="section-head">
-      <p class="kicker">Radar 101</p>
-      <h2>How does a radar “see” the surface?</h2>
-      <p class="sub">NISAR sends its own microwave pulses and listens for the echo. That is <b>active</b> remote sensing, so it works at night and through clouds. The echo strength depends mainly on two things: <b>roughness</b> and the <b>dielectric constant</b> (essentially, wetness).</p>
-    </div>
-    <div class="learn-grid">
-      <div class="card">
-        <h3>Wavelength decides what you see</h3>
-        <div class="seg" id="bandSeg">
-          <button data-band="X">X · 3 cm</button>
-          <button data-band="C">C · 5.6 cm</button>
-          <button data-band="S">S · 10 cm</button>
-          <button data-band="L" class="on">L · 24 cm</button>
-        </div>
-        <svg id="canopySvg" viewBox="0 0 600 300" role="img" aria-label="Radar penetration into forest canopy"></svg>
-        <p id="bandTxt" class="muted"></p>
-      </div>
-      <div class="card">
-        <h3>Three ways to scatter</h3>
-        <div class="scatter-cards">
-          <div class="sc"><svg viewBox="0 0 120 80"><path d="M5 60 L115 60" stroke="#94a3b8" stroke-width="3"/><path d="M20 10 L60 58 L100 10" stroke="#38bdf8" stroke-width="2.5" fill="none" marker-end="url(#ah)"/><defs><marker id="ah" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M0 0L10 5L0 10z" fill="#38bdf8"/></marker></defs></svg><b>Surface</b><span>Smooth water reflects the pulse away like a mirror, so it looks <i>dark</i>. Rough soil sends more energy back. Shows mainly in <b>HH</b>.</span></div>
-          <div class="sc"><svg viewBox="0 0 120 80"><path d="M5 65 L115 65" stroke="#94a3b8" stroke-width="3"/><path d="M70 65 L70 15" stroke="#94a3b8" stroke-width="3"/><path d="M15 20 L55 63 L68 30 L20 30" stroke="#f43f5e" stroke-width="2.5" fill="none"/></svg><b>Double-bounce</b><span>Ground plus a wall, or water plus a tree trunk, makes a corner reflector. Very <i>bright</i> HH. Signature of cities and flooded forest.</span></div>
-          <div class="sc"><svg viewBox="0 0 120 80"><circle cx="60" cy="35" r="26" fill="#14532d" opacity=".7"/><path d="M60 62 L60 78" stroke="#78350f" stroke-width="4"/><path d="M15 10 L45 30 L62 22 L52 42 L75 38 L30 14" stroke="#22c55e" stroke-width="2" fill="none"/></svg><b>Volume</b><span>Inside a canopy or dry snow the wave scatters many times and its polarization gets scrambled. Strong <b>HV</b> (cross-pol).</span></div>
-        </div>
-        <h3 style="margin-top:1.2rem">Polarization: H and V</h3>
-        <p class="muted">NISAR transmits horizontally (H) polarized waves and receives both H and V. <b>HH</b> (sent H, received H) responds to surfaces and corners. <b>HV</b> responds only when something randomizes the wave, which makes it a direct proxy for vegetation volume and biomass. In this site’s colours, <span style="color:#ff4fd8">magenta = HH-dominant</span>, <span style="color:#3ee86b">green = HV-dominant</span>, and white means both channels are strong.</p>
-      </div>
-      <div class="card">
-        <h3>NISAR at a glance</h3>
-        <ul class="facts">
-          <li><b>Launch</b> 30 July 2025, GSLV-F16 from Sriharikota, India</li>
-          <li><b>Orbit</b> 747 km, sun-synchronous, dawn–dusk, 98.4° inclination</li>
-          <li><b>Repeat</b> every 12 days, ascending and descending</li>
-          <li><b>Radars</b> L-band (24 cm, NASA JPL) and S-band (10 cm, ISRO)</li>
-          <li><b>Antenna</b> 12 m deployable mesh reflector with SweepSAR</li>
-          <li><b>Swath</b> about 242 km; resolution 3–10 m; global land and ice every 12 days</li>
-          <li><b>Products</b> RSLC → GSLC, GCOV (backscatter, used here), GUNW (interferograms), GOFF (pixel offsets)</li>
-        </ul>
-      </div>
-    </div>
-  </section>
-
-  <!-- =========================================================== DATA -->
-  <section id="data" class="section alt">
-    <div class="section-head">
-      <p class="kicker">Data &amp; methods</p>
-      <h2>Open data, open code, honest limits</h2>
-    </div>
-    <div class="data-grid">
-      <div class="card">
-        <h3>Where the data comes from</h3>
-        <ol class="steps">
-          <li><b>Search:</b> the ASF DAAC search API returns every NISAR L2 <b>GCOV</b> granule that intersects each site.</li>
-          <li><b>Track lock:</b> we keep the single path/frame/direction that covers the site most often, so every date has the same viewing geometry.</li>
-          <li><b>Imagery:</b> the geocoded browse image published with each granule (<code>*_LATLON.png</code>, R = HH, G = HV) is cropped to the site window.</li>
-          <li><b>Co-registration:</b> provisional products ship without overlay bounds, so each date is aligned to a reference by FFT <b>phase correlation</b>. Shifts are shown per acquisition.</li>
-          <li><b>Global density:</b> NASA CMR granule footprints, sampled four days per month, binned on a 3° grid.</li>
-          <li><b>Refresh:</b> a GitHub Actions workflow re-runs the pipeline weekly and redeploys this site.</li>
-        </ol>
-        <p class="muted">Catalog generated: <span id="genTime">–</span></p>
-      </div>
-      <div class="card">
-        <h3>Limitations</h3>
-        <ul class="bullets">
-          <li>Browse images are 8-bit display products, not calibrated γ⁰ backscatter. Every number here is <b>relative brightness</b>. For calibrated values, run <code>pipeline/fetch_hdf5.py</code> with a free NASA Earthdata login.</li>
-          <li>Browse resolution (~150 m) is much coarser than the full 10–20 m GCOV product.</li>
-          <li>Many products are labelled <i>provisional</i> or <i>beta</i> by the NISAR project and may be reprocessed later.</li>
-          <li>Ground deformation (subsidence, volcanic inflation) needs interferometric GUNW products and is described here as a hypothesis, not measured.</li>
-          <li>The ML models are unsupervised and exploratory. They point to places worth a closer look; they are not validated land-cover maps.</li>
-        </ul>
-      </div>
-      <div class="card">
-        <h3>Reproduce it</h3>
-<pre><code># 1. data (public, no login)
-pip install numpy pillow
-python pipeline/build_data.py
-
-# 2. website
-cd web && npm ci && npm run dev
-
-# 3. calibrated HDF5 (optional)
-pip install earthaccess h5py
-python pipeline/fetch_hdf5.py --site konya</code></pre>
-        <p class="muted">Sources: <a href="https://search.asf.alaska.edu" target="_blank" rel="noopener">ASF Vertex</a> · <a href="https://nisar.jpl.nasa.gov" target="_blank" rel="noopener">NISAR @ JPL</a> · <a href="https://www.earthdata.nasa.gov/data/platforms/space-based-platforms/nisar" target="_blank" rel="noopener">NASA Earthdata</a> · <a href="https://cmr.earthdata.nasa.gov" target="_blank" rel="noopener">NASA CMR</a></p>
-      </div>
-    </div>
-  </section>
-
-  <footer class="foot">
-    <p>Built for the NASA Space Apps Challenge, “Dancing with the SARs”. Data: NASA/JPL-Caltech &amp; ISRO, distributed by ASF DAAC. Globe imagery: NASA Blue Marble. Open source under the MIT license.</p>
-  </footer>
-
-  <div id="tooltip" class="tooltip"></div>
   <script type="module" src="/src/main.js"></script>
 </body>
 </html>

@@ -2,7 +2,7 @@ import './style.css';
 import Chart from 'chart.js/auto';
 import { GlobeView, latestBefore } from './globe.js';
 import { themeOf, THEMES } from './sites.js';
-import { $, $$, DAY, tOf, fmtDate, esc, ICON } from './util.js';
+import { $, $$, DAY, tOf, fmtDate, fmtShort, esc, ICON } from './util.js';
 import { openSitePage, closeSitePage } from './pages/site.js';
 import { renderSites, renderMethod, renderData } from './pages/static.js';
 
@@ -24,18 +24,24 @@ export const app = {
 // ===================================================================== boot
 async function boot() {
   const get = (f, fallback) => fetch(BASE + 'data/' + f).then((r) => (r.ok ? r.json() : fallback)).catch(() => fallback);
-  const [catalog, coverage, motion, events, dem] = await Promise.all([
-    get('catalog.json', null), get('coverage.json', { months: [] }), get('motion.json', { sites: {} }), get('events.json', { sites: {} }), get('dem.json', {}),
+  const [catalog, coverage, motion, events, dem, mosaic] = await Promise.all([
+    get('catalog.json', null), get('coverage.json', { months: [] }), get('motion.json', { sites: {} }), get('events.json', { sites: {} }), get('dem.json', {}), get('mosaic.json', { cycles: [] }),
   ]);
   if (!catalog) throw new Error('catalog.json missing: run pipeline/build_data.py');
-  Object.assign(app, { catalog, coverage, motion, events, dem });
+  Object.assign(app, { catalog, coverage, motion, events, dem, mosaic });
   app.sites = catalog.sites.filter((s) => s.acquisitions?.length >= 2);
   const last = app.sites.flatMap((s) => s.acquisitions.map((a) => a.date)).sort().pop();
-  $('#barMeta').textContent = `${app.sites.reduce((n, s) => n + s.acquisitions.length, 0)} NISAR acquisitions · latest ${fmtDate(tOf(last))}`;
+  const cyc0 = mosaic.cycles[mosaic.cycles.length - 1];
+  $('#barMeta').textContent = (cyc0 ? `World mosaic: ${cyc0.granules.toLocaleString()} frames · ` : '') + `${app.sites.reduce((n, s) => n + s.acquisitions.length, 0)} site passes · latest ${fmtDate(tOf(last))}`;
 
   app.globe = new GlobeView($('#globeViz'), { base: BASE, onSiteClick: (s) => go(`#/site/${s.id}`) });
   app.globe.setSites(app.sites);
   app.globe.setCoverage(coverage);
+  const cyc = mosaic.cycles[mosaic.cycles.length - 1];
+  if (cyc) {
+    app.globe.setMosaic(cyc);
+    $('#mosaicDates').textContent = `${fmtShort(tOf(cyc.start))} – ${fmtShort(tOf(cyc.end))}`;
+  } else $('#mosaicLayer').style.display = 'none';
   const evs = [];
   for (const [id, list] of Object.entries(events.sites || {})) {
     for (const e of list) if (e.kind === 'event' && e.lat != null) evs.push({ ...e, site: id, color: eventColor(e.category) });

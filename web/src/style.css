@@ -65,7 +65,7 @@ input[type='checkbox'], input[type='range'] { accent-color: var(--accent); }
 .layers { position: absolute; right: 16px; top: 16px; z-index: 6; }
 .layers-toggle { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 7px 12px; cursor: pointer; font-weight: 500; }
 .layers-toggle:hover { border-color: var(--border-strong); }
-.layers-menu { display: none; margin-top: 6px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; min-width: 230px; }
+.layers-menu { display: none; margin-top: 6px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; min-width: 260px; }
 .layers.open .layers-menu { display: block; }
 .layers-menu label { display: flex; gap: 8px; align-items: center; padding: 4px 0; cursor: pointer; color: var(--text-2); }
 

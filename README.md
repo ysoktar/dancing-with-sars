@@ -9,6 +9,7 @@ Earth’s surface is always moving: monsoon floods spread and recede, forests ar
 |---|---|
 | | |
 |---|---|
+| **World mosaic** | Every NISAR GCOV frame of one 12-day cycle (16,664 frames, ~60 GB streamed) painted onto the globe at 2.8 km. |
 | **Globe + timeline** | Real NISAR radar frames draped on the globe on the date they were taken, monthly worldwide acquisition density, natural events (NASA EONET), the satellite orbit. Play or scrub Oct 2025 → today. |
 | **Site pages** | Open in front of the globe, one tab at a time: *Overview · Radar images · Ground motion · Change & ML · Forecast · Events & news*. |
 | **Radar images** | HH, HV, colour composite, HV/HH, variability; same-day MODIS optical for comparison; 30 m elevation and a 3-D radar-on-terrain view; swipe comparison; scene and pixel time series. |
@@ -38,7 +39,7 @@ Earth’s surface is always moving: monsoon floods spread and recede, forests ar
 
 ## How the data pipeline works
 
-All pipeline scripts need **no login**: `build_data.py` (GCOV), `build_motion.py` (GUNW/GOFF), `build_events.py` (EONET, USGS, GDELT), `build_dem.py` (Copernicus DEM 30 m). For worldwide data and download sizes see [docs/GLOBAL_DATA.md](docs/GLOBAL_DATA.md).
+All pipeline scripts need **no login**: `build_data.py` (GCOV), `build_motion.py` (GUNW/GOFF), `build_events.py` (EONET, USGS, GDELT), `build_dem.py` (Copernicus DEM 30 m), `build_mosaic.py` (worldwide mosaic of one 12-day cycle). For worldwide data and download sizes see [docs/GLOBAL_DATA.md](docs/GLOBAL_DATA.md).
 
 `pipeline/build_data.py`:
 

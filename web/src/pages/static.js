@@ -145,6 +145,7 @@ export function renderData(sheet) {
             <li><b>NISAR L2 GUNW and GOFF</b> (interferograms, pixel offsets): ${nMo} image pairs on the same tracks.</li>
             <li>The images are the geocoded browse renderings ASF publishes with each product (<code>*_LATLON.png</code>), cropped to each site.</li>
             <li>Provisional products ship without exact bounds, so every date is aligned to a reference pass by <b>FFT phase correlation</b> (residual ≤ 2 px).</li>
+            <li><b>World mosaic</b>: every GCOV frame of one 12-day repeat cycle (${app.mosaic?.cycles?.at(-1)?.granules?.toLocaleString() || '~16,000'} frames, ~60 GB of browse images streamed), georeferenced from its footprint and painted onto a 2.8 km global grid. Dual-pol HH/HV frames are painted last so they win in overlaps. Open ocean is masked (noise), polar seas are kept (sea ice). Each frame is contrast-stretched on its own, so brightness steps between neighbouring frames are visible.</li>
             <li><b>Global acquisition density</b>: NASA CMR footprints, sampled four days per month on a 3° grid.</li>
             <li><b>Context</b>: NASA EONET events, USGS earthquakes, GDELT news; optical images from NASA GIBS (MODIS Terra).</li>
             <li><b>Elevation</b>: Copernicus DEM GLO-30 (30 m, AWS Open Data) cropped to each site, used for shaded relief and the 3-D view.</li>
@@ -182,6 +183,7 @@ python pipeline/build_data.py     # GCOV, ~10 min
 python pipeline/build_motion.py   # GUNW + GOFF
 python pipeline/build_events.py   # events and news
 python pipeline/build_dem.py      # 30 m elevation
+python pipeline/build_mosaic.py   # world mosaic, ~60 GB streamed, ~40 min
 cd web && npm ci && npm run dev</pre>
           <p class="note">Source code: <a href="https://github.com/ysoktar/dancing-with-sars" target="_blank" rel="noopener">github.com/ysoktar/dancing-with-sars</a> · Data: NASA/JPL-Caltech &amp; ISRO via <a href="https://search.asf.alaska.edu" target="_blank" rel="noopener">ASF DAAC</a> · <a href="https://nisar-docs.asf.alaska.edu/" target="_blank" rel="noopener">NISAR data user guide</a></p>
         </div>

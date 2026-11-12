@@ -16,7 +16,7 @@ export class GlobeView {
   constructor(el, { base, onSiteClick }) {
     this.base = base;
     this.onSiteClick = onSiteClick;
-    this.layers = { frames: true, density: true, footprints: false, satellite: true, night: false, events: false };
+    this.layers = { mosaic: true, frames: true, density: false, footprints: false, satellite: true, night: false, events: false };
     this.events = [];
     this.texCache = new Map();
     this.frameMeshes = new Map();
@@ -95,6 +95,24 @@ export class GlobeView {
 
   setEvents(list) { this.events = list; }
 
+  /** Worldwide NISAR mosaic (equirectangular RGBA) as a shell just above the globe. */
+  setMosaic(cycle) {
+    if (!cycle) return;
+    const gl = this.globe.renderer().getContext();
+    const big = window.innerWidth > 800 && gl.getParameter(gl.MAX_TEXTURE_SIZE) >= 8192;
+    const url = this.base + 'data/' + (big ? cycle.img8k : cycle.img4k);
+    this.loader.load(url, (tex) => {
+      tex.colorSpace = THREE.SRGBColorSpace;
+      tex.anisotropy = 8;
+      const r = this.globe.getGlobeRadius() * 1.0012;
+      const geo = new THREE.SphereGeometry(r, 180, 90, (90 - 180) * DEG, 2 * Math.PI, 0, Math.PI);
+      this.mosaic = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, opacity: 0.92 }));
+      this.mosaic.renderOrder = 1;
+      this.mosaic.visible = this.layers.mosaic;
+      this.globe.scene().add(this.mosaic);
+    });
+  }
+
   blur() {
     this.selected = null;
     this.globe.ringsData([]);
@@ -105,6 +123,7 @@ export class GlobeView {
     this.layers[name] = on;
     if (name === 'night') this.globe.globeImageUrl(this.base + (on ? 'textures/earth-night.jpg' : 'textures/earth-blue-marble.jpg'));
     if (name === 'frames') this.frameGroup.visible = on;
+    if (name === 'mosaic' && this.mosaic) this.mosaic.visible = on;
     if (name === 'satellite' && !on) { this.globe.objectsData([]); this.globe.pathsData([]); }
     this.update(this.date, true);
   }

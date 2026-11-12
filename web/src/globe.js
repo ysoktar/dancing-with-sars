@@ -16,7 +16,8 @@ export class GlobeView {
   constructor(el, { base, onSiteClick }) {
     this.base = base;
     this.onSiteClick = onSiteClick;
-    this.layers = { frames: true, density: true, footprints: false, satellite: true, night: false };
+    this.layers = { frames: true, density: true, footprints: false, satellite: true, night: false, events: false };
+    this.events = [];
     this.texCache = new Map();
     this.frameMeshes = new Map();
     this.loader = new THREE.TextureLoader();
@@ -27,8 +28,8 @@ export class GlobeView {
       .globeImageUrl(base + 'textures/earth-blue-marble.jpg')
       .bumpImageUrl(base + 'textures/earth-topology.png')
       .showAtmosphere(true)
-      .atmosphereColor('#7dd3fc')
-      .atmosphereAltitude(0.18)
+      .atmosphereColor('#9db8d9')
+      .atmosphereAltitude(0.14)
       // study sites
       .htmlElementsData([])
       .htmlLat('lat').htmlLng('lon').htmlAltitude(0.012)
@@ -41,7 +42,7 @@ export class GlobeView {
       .hexTopColor((d) => densityColor(d.sumWeight))
       .hexSideColor((d) => densityColor(d.sumWeight, 0.55))
       .hexTransitionDuration(600)
-      .hexLabel((d) => `<div class="tip"><b>${Math.round(d.sumWeight).toLocaleString()}</b> GCOV frames / month<br><span>NISAR acquisitions in this cell (sample-scaled)</span></div>`)
+      .hexLabel((d) => `<div class="tip"><b>≈ ${Math.round(d.sumWeight).toLocaleString()}</b> GCOV frames this month<br><span>estimated from a 4-day sample, 3° cell</span></div>`)
       // footprints
       .polygonCapColor(() => 'rgba(56,189,248,0.05)')
       .polygonSideColor(() => 'rgba(0,0,0,0)')
@@ -53,18 +54,23 @@ export class GlobeView {
       .objectThreeObject(() => this._satelliteModel())
       .objectLabel(() => '<div class="tip"><b>NISAR</b><br>NASA–ISRO SAR · 747 km sun-synchronous orbit<br>L-band 24 cm + S-band 10 cm · 12-day repeat</div>')
       .pathPoints('pts').pathPointLat((p) => p[0]).pathPointLng((p) => p[1]).pathPointAlt((p) => p[2])
-      .pathColor(() => ['rgba(250,204,21,0.0)', 'rgba(250,204,21,0.9)'])
-      .pathStroke(1.6)
+      .pathColor(() => ['rgba(232,176,74,0)', 'rgba(232,176,74,0.85)'])
+      .pathStroke(1.2)
       .pathTransitionDuration(0)
+      // natural events (NASA EONET)
+      .pointLat('lat').pointLng('lon').pointAltitude(0.006).pointRadius(0.35)
+      .pointColor((d) => d.color)
+      .pointLabel((d) => `<div class="tip"><b>${d.title}</b><br><span>${d.category} · ${d.date}</span></div>`)
+      .pointsTransitionDuration(0)
       // selection ring
-      .ringLat('lat').ringLng('lon').ringColor(() => (t) => `rgba(255,255,255,${1 - t})`)
-      .ringMaxRadius(4).ringPropagationSpeed(2.5).ringRepeatPeriod(1100);
+      .ringLat('lat').ringLng('lon').ringColor(() => (t) => `rgba(232,176,74,${1 - t})`)
+      .ringMaxRadius(3).ringPropagationSpeed(2).ringRepeatPeriod(1400);
 
     const mat = this.globe.globeMaterial();
     mat.bumpScale = 6;
     mat.shininess = 8;
     this.globe.controls().autoRotate = true;
-    this.globe.controls().autoRotateSpeed = 0.35;
+    this.globe.controls().autoRotateSpeed = 0.25;
     this.globe.controls().enableDamping = true;
     this.globe.pointOfView({ lat: 25, lng: 20, altitude: 2.4 });
 
@@ -87,6 +93,14 @@ export class GlobeView {
 
   setCoverage(coverage) { this.coverage = coverage; }
 
+  setEvents(list) { this.events = list; }
+
+  blur() {
+    this.selected = null;
+    this.globe.ringsData([]);
+    document.querySelectorAll('.marker').forEach((m) => m.classList.remove('on'));
+  }
+
   setLayer(name, on) {
     this.layers[name] = on;
     if (name === 'night') this.globe.globeImageUrl(this.base + (on ? 'textures/earth-night.jpg' : 'textures/earth-blue-marble.jpg'));
@@ -100,7 +114,7 @@ export class GlobeView {
     this.globe.controls().autoRotate = false;
     this.globe.pointOfView({ lat: site.lat, lng: site.lon, altitude: 0.8 }, ms);
     this.globe.ringsData([site]);
-    document.querySelectorAll('.marker').forEach((m) => m.classList.toggle('active', m.dataset.id === site.id));
+    document.querySelectorAll('.marker').forEach((m) => m.classList.toggle('on', m.dataset.id === site.id));
   }
 
   /** Update every layer to the timeline date (Date). */
@@ -115,6 +129,13 @@ export class GlobeView {
       if (!this._maxW) this._maxW = Math.max(1, ...this.coverage.months.flatMap((mm) => mm.bins.map((b) => b[2]))) * 2.5;
       this.globe.hexBinPointsData(this.layers.density ? m.bins : []);
       this.globe.polygonsData(this.layers.footprints ? m.footprints.map((ring) => ({ geometry: { type: 'Polygon', coordinates: [ring] } })) : []);
+    }
+    if (this.events.length) {
+      const t = date.getTime();
+      this.globe.pointsData(this.layers.events ? this.events.filter((e) => {
+        const a = new Date(e.date).getTime(), b = new Date(e.end || e.date).getTime() + 14 * 86400000;
+        return a <= t && t <= b;
+      }) : []);
     }
     if (this.sites) {
       for (const s of this.sites) {
@@ -175,9 +196,7 @@ export class GlobeView {
     el.className = 'marker';
     el.dataset.id = site.id;
     el.style.setProperty('--c', theme.color);
-    el.innerHTML = `<span class="dot"></span><span class="lbl"><b>${site.name}</b><i>${theme.label}</i></span>`;
-    el.style.pointerEvents = 'auto';
-    el.style.cursor = 'pointer';
+    el.innerHTML = `<span class="dot"></span><span class="lbl">${site.name}</span>`;
     el.addEventListener('click', (e) => { e.stopPropagation(); this.onSiteClick && this.onSiteClick(site); });
     return el;
   }

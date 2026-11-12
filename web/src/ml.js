@@ -73,12 +73,17 @@ export function kmeans(feat, valid, k = 5, iters = 25, sample = 9000, seed = 42)
     for (let c = 0; c < k; c++) if (cnt[c]) for (let f = 0; f < F; f++) C[c * F + f] = sum[c * F + f] / cnt[c];
   }
   const labels = new Uint8Array(N);
+  const conf = new Float32Array(N); // 1 − d(nearest)/d(second nearest): 0 = on a boundary, 1 = at a centre
   const counts = new Array(k).fill(0);
   for (let i = 0; i < N; i++) {
     if (!valid[i]) { labels[i] = 255; continue; }
-    let best = 0, bd = Infinity;
-    for (let c = 0; c < k; c++) { const d = dist(i, c, C); if (d < bd) { bd = d; best = c; } }
+    let best = 0, bd = Infinity, sd = Infinity;
+    for (let c = 0; c < k; c++) {
+      const d = dist(i, c, C);
+      if (d < bd) { sd = bd; bd = d; best = c; } else if (d < sd) sd = d;
+    }
     labels[i] = best; counts[best]++;
+    conf[i] = 1 - Math.sqrt(bd) / Math.sqrt(sd + 1e-9);
   }
   // order clusters by brightness so colours are stable between runs
   const bright = Array.from({ length: k }, (_, c) => C[c * F + 0] + C[c * F + 1]);
@@ -86,7 +91,10 @@ export function kmeans(feat, valid, k = 5, iters = 25, sample = 9000, seed = 42)
   const remap = new Uint8Array(k); order.forEach((c, r) => (remap[c] = r));
   for (let i = 0; i < N; i++) if (labels[i] !== 255) labels[i] = remap[labels[i]];
   const centroids = order.map((c) => Array.from(C.slice(c * F, c * F + F)));
-  return { labels, centroids, counts: order.map((c) => counts[c]), inertia: inertia / S.length, k };
+  const confSum = new Float64Array(k);
+  for (let i = 0; i < N; i++) if (labels[i] !== 255) confSum[labels[i]] += conf[i];
+  const cnt = order.map((c) => counts[c]);
+  return { labels, conf, centroids, counts: cnt, meanConf: cnt.map((n, r) => (n ? confSum[r] / n : 0)), inertia: inertia / S.length, k };
 }
 
 /** Physically motivated description of a cluster centroid (standardized feature space). */

@@ -1,4 +1,6 @@
 numpy>=1.26
 pillow>=10.0
+tifffile>=2024.1      # build_dem.py (Copernicus DEM GeoTIFFs)
+imagecodecs>=2024.1
 # optional, for fetch_hdf5.py (calibrated backscatter, needs NASA Earthdata login):
 # earthaccess h5py pyproj

@@ -9,6 +9,10 @@ on:
         description: "Re-download the latest NISAR acquisitions before building"
         type: boolean
         default: true
+      mosaic_start:
+        description: "Build a new world mosaic for the 12-day cycle starting on this date (YYYY-MM-DD, empty = skip; ~60 GB streamed, ~40 min)"
+        type: string
+        default: ""
   schedule:
     # weekly refresh: new NISAR passes every 12 days per track
     - cron: "17 4 * * 1"
@@ -42,6 +46,12 @@ jobs:
           python pipeline/build_data.py --workers 8
           python pipeline/build_motion.py --workers 8
           python pipeline/build_dem.py
+
+      - name: World mosaic
+        if: inputs.mosaic_start != ''
+        run: |
+          pip install -r pipeline/requirements.txt
+          python pipeline/build_mosaic.py --start "${{ inputs.mosaic_start }}" --days 12 --workers 16
 
       - name: Refresh events and news (EONET, USGS, GDELT)
         run: python3 pipeline/build_events.py || echo "event refresh failed, keeping committed events.json"

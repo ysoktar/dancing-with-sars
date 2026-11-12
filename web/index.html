@@ -27,7 +27,7 @@
 
     <aside class="rail" id="rail">
       <div class="rail-intro">
-        <p>Real radar observations from the NASA–ISRO <b>NISAR</b> satellite, placed on the globe at the date they were taken. Pick a site to see what changed and why.</p>
+        <p>The globe is covered with real radar images from the NASA–ISRO <b>NISAR</b> satellite, one complete 12-day orbit cycle at a time. Press play to watch the world change, or pick a site to see what changed there and why.</p>
       </div>
       <div class="rail-list" id="railList"></div>
     </aside>
@@ -35,8 +35,9 @@
     <div class="layers" id="layers">
       <button class="layers-toggle" id="layersToggle" aria-expanded="false">Layers</button>
       <div class="layers-menu" id="layersMenu">
-        <label><input type="checkbox" data-layer="frames" checked> NISAR radar frames</label>
-        <label><input type="checkbox" data-layer="density" checked> Acquisitions per month</label>
+        <label id="mosaicLayer"><input type="checkbox" data-layer="mosaic" checked> NISAR world mosaic <span class="muted small" id="mosaicDates"></span></label>
+        <label><input type="checkbox" data-layer="frames" checked> Study-site frames (by date)</label>
+        <label><input type="checkbox" data-layer="density"> Acquisitions per month</label>
         <label><input type="checkbox" data-layer="footprints"> Frame outlines (sample)</label>
         <label><input type="checkbox" data-layer="events"> Natural events (EONET)</label>
         <label><input type="checkbox" data-layer="satellite" checked> Satellite orbit</label>

@@ -18,7 +18,18 @@ Sizes were measured on **12 Nov 2026** from NASA CMR granule counts × the mean 
 
 Downloading all of it is not realistic: 605 TB of GCOV alone would take ~2 months on a dedicated 1 Gbit/s line. There are three practical routes, from easiest to most rigorous.
 
-### Route A: global browse mosaic (what fits this website)
+### Route A: global browse mosaic (implemented: `pipeline/build_mosaic.py`)
+
+This route is already built: the website globe shows mosaics for six 12-day cycles between June and October 2026 (each ~16,500 frames, ~60 GB streamed, ~25 min at ~20 MB/s, two WebP files of ~1 MB and ~4 MB). The globe switches mosaic as the timeline moves. To build another cycle:
+
+```bash
+python pipeline/build_mosaic.py --start 2026-10-13 --days 12 --dry-run   # count + size
+python pipeline/build_mosaic.py --start 2026-10-13 --days 12             # build
+```
+
+You can also start it from GitHub: Actions → *Build & deploy* → *Run workflow* → fill in `mosaic_start`.
+
+How the script was designed:
 
 One 12-day repeat cycle covers all land and ice once, about 15–20 k GCOV frames, so roughly **60–75 GB of browse PNGs per cycle**. Each frame is warped into web map tiles and then deleted, so disk use stays small. A worldwide mosaic at ~150 m comes to **2–5 GB of tiles per cycle**.
 

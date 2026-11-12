@@ -2,7 +2,7 @@ import './style.css';
 import Chart from 'chart.js/auto';
 import { GlobeView, latestBefore } from './globe.js';
 import { themeOf, THEMES } from './sites.js';
-import { $, $$, DAY, tOf, fmtDate, esc, ICON } from './util.js';
+import { $, $$, DAY, tOf, fmtDate, fmtShort, esc, ICON } from './util.js';
 import { openSitePage, closeSitePage } from './pages/site.js';
 import { renderSites, renderMethod, renderData } from './pages/static.js';
 
@@ -24,18 +24,21 @@ export const app = {
 // ===================================================================== boot
 async function boot() {
   const get = (f, fallback) => fetch(BASE + 'data/' + f).then((r) => (r.ok ? r.json() : fallback)).catch(() => fallback);
-  const [catalog, coverage, motion, events, dem] = await Promise.all([
-    get('catalog.json', null), get('coverage.json', { months: [] }), get('motion.json', { sites: {} }), get('events.json', { sites: {} }), get('dem.json', {}),
+  const [catalog, coverage, motion, events, dem, mosaic] = await Promise.all([
+    get('catalog.json', null), get('coverage.json', { months: [] }), get('motion.json', { sites: {} }), get('events.json', { sites: {} }), get('dem.json', {}), get('mosaic.json', { cycles: [] }),
   ]);
   if (!catalog) throw new Error('catalog.json missing: run pipeline/build_data.py');
-  Object.assign(app, { catalog, coverage, motion, events, dem });
+  Object.assign(app, { catalog, coverage, motion, events, dem, mosaic });
   app.sites = catalog.sites.filter((s) => s.acquisitions?.length >= 2);
   const last = app.sites.flatMap((s) => s.acquisitions.map((a) => a.date)).sort().pop();
-  $('#barMeta').textContent = `${app.sites.reduce((n, s) => n + s.acquisitions.length, 0)} NISAR acquisitions · latest ${fmtDate(tOf(last))}`;
+  const cyc0 = mosaic.cycles[mosaic.cycles.length - 1];
+  $('#barMeta').textContent = (cyc0 ? `World mosaics: ${mosaic.cycles.length} cycles, ${mosaic.cycles.reduce((n, c) => n + c.granules, 0).toLocaleString()} frames · ` : '') + `${app.sites.reduce((n, s) => n + s.acquisitions.length, 0)} site passes · latest ${fmtDate(tOf(last))}`;
 
   app.globe = new GlobeView($('#globeViz'), { base: BASE, onSiteClick: (s) => go(`#/site/${s.id}`) });
   app.globe.setSites(app.sites);
   app.globe.setCoverage(coverage);
+  if (mosaic.cycles.length) app.globe.setMosaics(mosaic.cycles);
+  else $('#mosaicLayer').style.display = 'none';
   const evs = [];
   for (const [id, list] of Object.entries(events.sites || {})) {
     for (const e of list) if (e.kind === 'event' && e.lat != null) evs.push({ ...e, site: id, color: eventColor(e.category) });
@@ -189,6 +192,12 @@ export function drawTimeline() {
     const bh = Math.max(1, (m.total / maxM) * h * 0.5);
     ctx.fillRect(X(t0) + 1, h - bh, Math.max(1, X(d.getTime()) - X(t0) - 2), bh);
   }
+  // world-mosaic cycles as a band along the bottom edge
+  for (const c of app.mosaic?.cycles || []) {
+    const a = tOf(c.start) - DAY / 2, b = tOf(c.end) + DAY / 2;
+    ctx.fillStyle = 'rgba(232,176,74,0.55)';
+    ctx.fillRect(X(a) + 1, h - 3, Math.max(2, X(b) - X(a) - 2), 3);
+  }
   const sel = app.selected;
   const rows = app.sites.length;
   app.sites.forEach((s, r) => {
@@ -209,8 +218,11 @@ export function setDay(day, source) {
   $('#tlDate').textContent = fmtDate(t);
   const m = app.coverage.months.find((x) => x.month === date.toISOString().slice(0, 7));
   const fresh = app.sites.filter((s) => { const a = latestBefore(s.acquisitions, date); return a && t - tOf(a.date) < 4 * DAY; }).map((s) => s.name);
-  $('#tlInfo').textContent = [fresh.length ? `New pass: ${fresh.join(', ')}` : '', m ? `${m.total.toLocaleString()} GCOV frames acquired worldwide this month` : ''].filter(Boolean).join('  ·  ');
   app.globe.update(date);
+  const cyc = app.globe.cycleAt(date);
+  const cycTxt = cyc ? `World mosaic ${fmtShort(tOf(cyc.start))} – ${fmtShort(tOf(cyc.end))}` : (app.mosaic.cycles.length ? 'No world mosaic before ' + fmtShort(tOf(app.mosaic.cycles[0].start)) : '');
+  $('#mosaicDates').textContent = cyc ? `${fmtShort(tOf(cyc.start))} – ${fmtShort(tOf(cyc.end))}` : '';
+  $('#tlInfo').textContent = [cycTxt, fresh.length ? `New pass: ${fresh.join(', ')}` : '', m ? `${m.total.toLocaleString()} GCOV frames this month` : ''].filter(Boolean).join('  ·  ');
   if (source !== 'page') app.listeners.forEach((fn) => fn(date));
 }
 

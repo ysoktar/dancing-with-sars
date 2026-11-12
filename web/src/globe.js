@@ -16,7 +16,7 @@ export class GlobeView {
   constructor(el, { base, onSiteClick }) {
     this.base = base;
     this.onSiteClick = onSiteClick;
-    this.layers = { frames: true, density: true, footprints: false, satellite: true, night: false, events: false };
+    this.layers = { mosaic: true, frames: true, density: false, footprints: false, satellite: true, night: false, events: false };
     this.events = [];
     this.texCache = new Map();
     this.frameMeshes = new Map();
@@ -95,6 +95,70 @@ export class GlobeView {
 
   setEvents(list) { this.events = list; }
 
+  /**
+   * Worldwide NISAR mosaics, one per 12-day cycle. The globe shows the cycle
+   * that contains the timeline date (or the most recent one before it).
+   */
+  setMosaics(cycles) {
+    this.cycles = (cycles || []).slice().sort((a, b) => a.start.localeCompare(b.start));
+    if (!this.cycles.length) return;
+    const gl = this.globe.renderer().getContext();
+    this.canBig = window.innerWidth > 800 && gl.getParameter(gl.MAX_TEXTURE_SIZE) >= 8192;
+    this.mosTex = new Map(); // url -> texture (LRU)
+    const r = this.globe.getGlobeRadius() * 1.0012;
+    const geo = new THREE.SphereGeometry(r, 180, 90, (90 - 180) * DEG, 2 * Math.PI, 0, Math.PI);
+    this.mosaic = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ transparent: true, depthWrite: false, opacity: 0.92 }));
+    this.mosaic.renderOrder = 1;
+    this.mosaic.visible = false;
+    this.globe.scene().add(this.mosaic);
+    if (this.date) this.update(this.date, true);
+  }
+
+  cycleAt(date) {
+    if (!this.cycles?.length) return null;
+    const d = date.toISOString().slice(0, 10);
+    let c = null;
+    for (const x of this.cycles) if (x.start <= d) c = x;
+    return c;
+  }
+
+  _mosaicTexture(url, cb) {
+    if (this.mosTex.has(url)) {
+      const t = this.mosTex.get(url);
+      this.mosTex.delete(url); this.mosTex.set(url, t); // refresh LRU order
+      return cb(t);
+    }
+    this.loader.load(url, (tex) => {
+      tex.colorSpace = THREE.SRGBColorSpace;
+      tex.anisotropy = 8;
+      this.mosTex.set(url, tex);
+      while (this.mosTex.size > 4) {
+        const [k, old] = this.mosTex.entries().next().value;
+        if (old === this.mosaic.material.map) break;
+        old.dispose(); this.mosTex.delete(k);
+      }
+      cb(tex);
+    });
+  }
+
+  _showMosaic(date) {
+    if (!this.mosaic) return;
+    const c = this.cycleAt(date);
+    this.currentCycle = c;
+    if (!c || !this.layers.mosaic) { this.mosaic.visible = false; return; }
+    // small texture while the date is moving, the 8k one once it settles
+    const want = (big) => this.base + 'data/' + (big ? c.img8k : c.img4k);
+    const apply = (url) => this._mosaicTexture(url, (tex) => {
+      if (this.currentCycle !== c) return;
+      this.mosaic.material.map = tex;
+      this.mosaic.material.needsUpdate = true;
+      this.mosaic.visible = this.layers.mosaic;
+    });
+    if (this.mosaic.userData.id !== c.id) { this.mosaic.userData.id = c.id; apply(want(false)); }
+    clearTimeout(this._bigTimer);
+    if (this.canBig) this._bigTimer = setTimeout(() => apply(want(true)), 700);
+  }
+
   blur() {
     this.selected = null;
     this.globe.ringsData([]);
@@ -105,6 +169,7 @@ export class GlobeView {
     this.layers[name] = on;
     if (name === 'night') this.globe.globeImageUrl(this.base + (on ? 'textures/earth-night.jpg' : 'textures/earth-blue-marble.jpg'));
     if (name === 'frames') this.frameGroup.visible = on;
+    if (name === 'mosaic' && this.mosaic) this._showMosaic(this.date || new Date());
     if (name === 'satellite' && !on) { this.globe.objectsData([]); this.globe.pathsData([]); }
     this.update(this.date, true);
   }
@@ -121,6 +186,7 @@ export class GlobeView {
   update(date, force = false) {
     if (!date) return;
     this.date = date;
+    this._showMosaic(date);
     const month = date.toISOString().slice(0, 7);
     if (this.coverage && (force || month !== this._month)) {
       this._month = month;

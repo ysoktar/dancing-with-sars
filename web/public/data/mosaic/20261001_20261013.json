@@ -1,0 +1,20 @@
+{
+ "id": "20261001_20261013",
+ "start": "2026-10-01",
+ "end": "2026-10-12",
+ "granules": 16664,
+ "failed": 0,
+ "modes": {
+  "DHDH": 8212,
+  "NASV": 4591,
+  "SHSH": 2178,
+  "SVSH": 527,
+  "NADV": 464,
+  "SHNA": 372
+ },
+ "coverage": 0.4362,
+ "resolutionDeg": 0.025,
+ "img8k": "mosaic/20261001_20261013_8k.webp",
+ "img4k": "mosaic/20261001_20261013_4k.webp",
+ "generated": "2026-11-12T20:42:48Z"
+}

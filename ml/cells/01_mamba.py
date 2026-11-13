@@ -10,8 +10,8 @@ try:
 except Exception:
     if INSTALL_MAMBA_KERNELS:
         try:
-            sh('pip install -q "causal-conv1d>=1.4.0" --no-build-isolation', check=False, timeout=2400)
-            sh('pip install -q mamba-ssm --no-build-isolation', check=False, timeout=2400)
+            pip_install('"causal-conv1d>=1.4.0"', '--no-build-isolation', timeout=2400)
+            pip_install('mamba-ssm', '--no-build-isolation', timeout=2400)
             from mamba_ssm import Mamba as MambaCUDA
         except Exception as e:
             print('mamba_ssm unavailable, using the PyTorch fallback:', str(e)[:200])

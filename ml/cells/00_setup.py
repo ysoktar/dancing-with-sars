@@ -45,8 +45,16 @@ def sh(cmd, check=True, timeout=None):
         if check: raise RuntimeError(r.stderr[-3000:])
     return r
 
+def pip_install(spec, extra='', timeout=None):
+    """Install with uv (much faster than pip); falls back to pip if uv cannot be set up."""
+    if shutil.which('uv') is None:
+        sh('pip install -q uv', check=False)
+    if shutil.which('uv'):
+        return sh(f'uv pip install --system -q {spec} {extra}', check=False, timeout=timeout)
+    return sh(f'pip install -q {spec} {extra}', check=False, timeout=timeout)
+
 if not SMOKE:
-    sh('pip -q install xarray netCDF4 h5netcdf scikit-image einops pandas matplotlib', check=False)
+    pip_install('xarray netCDF4 h5netcdf scikit-image einops pandas matplotlib')
 
 # %%
 import numpy as np

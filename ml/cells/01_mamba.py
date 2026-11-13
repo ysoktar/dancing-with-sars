@@ -10,7 +10,7 @@ try:
 except Exception:
     if INSTALL_MAMBA_KERNELS:
         try:
-            sh('pip install -q causal-conv1d>=1.4.0 --no-build-isolation', check=False, timeout=2400)
+            sh('pip install -q "causal-conv1d>=1.4.0" --no-build-isolation', check=False, timeout=2400)
             sh('pip install -q mamba-ssm --no-build-isolation', check=False, timeout=2400)
             from mamba_ssm import Mamba as MambaCUDA
         except Exception as e:

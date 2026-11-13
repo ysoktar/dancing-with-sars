@@ -54,7 +54,7 @@ def yield_samples(model, ds, path, n=4):
 ys_results = {}
 for fold in YS_FOLDS:
     tr, va, te = yieldsat_split(ys_meta, ys_folds, fold)
-    name = f"{'transfer' if TRANSFER_FROM_PASTIS else 'scratch'}_fold{fold}"
+    name = f"{'transfer' if TRANSFER_FROM_PASTIS else 'scratch'}_fold{fold}{globals().get('RUN_SUFFIX', '')}"
     if TRANSFER_FROM_PASTIS:
         phases = [dict(epochs=YS_EPOCHS[0], lr=YS_LR, freeze_backbone=True), dict(epochs=YS_EPOCHS[1], lr=YS_LR * 0.3, backbone_lr_mult=0.3)]
     else:
@@ -65,7 +65,7 @@ for fold in YS_FOLDS:
     run = Run('yieldsat', name, cfg)
     if TRANSFER_FROM_PASTIS:
         model = build_model(PASTIS_DYN, [], PASTIS_TASKS)
-        src = P['runs'] / MODEL_NAME / 'pastis' / f'fold{SOURCE_PASTIS_FOLD}' / 'checkpoints' / 'best.pt'
+        src = P['runs'] / MODEL_NAME / 'pastis' / f"fold{SOURCE_PASTIS_FOLD}{globals().get('RUN_SUFFIX', '')}" / 'checkpoints' / 'best.pt'
         if (run.dir / 'checkpoints' / 'last.pt').exists():
             run.log('resuming: architecture adapted without reloading PASTIS weights (they are inside last.pt)')
         else:

@@ -61,7 +61,7 @@ for fold in PASTIS_FOLDS:
     tr, va, te = pastis_fold_split(pastis_folds, fold)
     cfg = dict(model=MODEL_NAME, stage='pastis', fold=fold, epochs=PASTIS_EPOCHS, batch=PASTIS_BATCH, lr=PASTIS_LR,
                grid=PASTIS_GRID, bands=PASTIS_DYN, tasks=PASTIS_TASKS, loss_w=PASTIS_LOSS_W, n_train=len(tr), n_val=len(va), n_test=len(te))
-    run = Run('pastis', f'fold{fold}', cfg)
+    run = Run('pastis', f"fold{fold}{globals().get('RUN_SUFFIX', '')}", cfg)
     model = build_model(PASTIS_DYN, [], PASTIS_TASKS)
     run.log(f'{MODEL_NAME}: {count_params(model) / 1e6:.2f} M parameters · train {len(tr)} / val {len(va)} / test {len(te)} patches')
     mfn = lambda: Metrics(n_sem=len(PASTIS_CLASSES), ignore_sem=(PASTIS_VOID,))

@@ -241,8 +241,8 @@ def fit(model, run, ds_train, ds_val, phases, batch_size, loss_w, metrics_fn, mo
                 scaler.unscale_(opt); torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
                 scaler.step(opt); scaler.update(); sched.step()
                 st['batch'] += 1; st['step'] += 1; n += 1
-                for k, v in parts.items(): sums[k] = sums.get(k, 0) + float(v)
-                sums['loss'] = sums.get('loss', 0) + float(loss)
+                for k, v in parts.items(): sums[k] = sums.get(k, 0) + float(v.detach())
+                sums['loss'] = sums.get('loss', 0) + float(loss.detach())
                 if n % 50 == 0:
                     run.log(f"ep {st['epoch'] + 1}/{total_epochs} it {st['batch']}/{steps_per_epoch} loss {sums['loss'] / n:.4f} lr {sched.get_last_lr()[-1]:.2e}")
                 stop = run.stop_requested()

@@ -38,7 +38,7 @@ Stage 2  YieldSAT  (Argentina, Brazil, Uruguay, Germany · 2,173 fields · 10 m)
 
 **SITSMamba**: a per-date CNN spatial encoder, a Mamba temporal encoder per pixel, a classification branch (ConvBlock) and a reconstruction branch (Linear → input time series, loss weight 0.1), as in the paper. The classification branch feeds the multi-task heads. No official weights are published.
 
-**U-TAE (pretrained)**: the published optical model is kept intact. A new SAR U-TAE branch is fused through a zero-initialised layer, so fine-tuning starts exactly from the published model. The loaded weights match the test fold, to avoid leakage.
+**U-TAE (pretrained)**: the published optical model is kept intact. A new SAR U-TAE branch is fused through a zero-initialised layer, so fine-tuning starts exactly from the published model. Careful: the official `Fold_j` weights were *tested on fold j−1* (`Fold_1` was trained on folds 1–3 and tested on 5). For test fold k the notebook therefore loads `Fold_{k%5+1}`, which never saw fold k.
 
 **Transfer PASTIS-R → YieldSAT** (all models):
 

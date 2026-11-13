@@ -40,7 +40,9 @@ def sh(cmd, check=True, timeout=None):
     print('$', cmd)
     r = subprocess.run(cmd, shell=True, text=True, capture_output=True, timeout=timeout)
     if r.stdout.strip(): print(r.stdout[-3000:])
-    if r.returncode and check: raise RuntimeError(r.stderr[-3000:])
+    if r.returncode:
+        print(f'[exit code {r.returncode}] stderr (last 4000 chars):\n{r.stderr[-4000:]}')
+        if check: raise RuntimeError(r.stderr[-3000:])
     return r
 
 if not SMOKE:

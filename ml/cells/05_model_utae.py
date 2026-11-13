@@ -1,7 +1,8 @@
 # %% [md]
 # ## 5 · Model: pretrained U-TAE (+ SAR branch)
 # The official code is cloned from [VSainteuf/utae-paps](https://github.com/VSainteuf/utae-paps), and the published PASTIS weights are downloaded from Zenodo ([record 5172293](https://zenodo.org/record/5172293)) into `weights/pretrained/utae/`.
-# **The weights for fold *k* were trained with fold *k* as the test fold**, so the notebook loads the fold matching `PASTIS_FOLDS[0]` to avoid test leakage.
+# **Fold numbering differs from the folder names.** In the official code, `Fold_1` was trained on folds 1–3, validated on 4 and **tested on fold 5**; in general `Fold_j` is tested on fold `j−1` (`Fold_1` → 5). To avoid test leakage the notebook loads `Fold_{k % 5 + 1}` for test fold `k`, i.e. `Fold_2` for test fold 1 (published test mIoU on fold 1: 65.0 %).
+# Caveat: this notebook's validation fold (`k+1`) was part of that model's training data, so validation scores (used for early stopping) are optimistic. The **test** score is clean.
 #
 # Architecture used here:
 # * **optical branch** = the pretrained U-TAE (Sentinel-2, 10 bands), unchanged;
@@ -119,8 +120,12 @@ class UTAEMulti(nn.Module):
         return [p for p in self.parameters() if id(p) not in skip]
 
 
+RUN_SUFFIX = '_w'   # new run folders: an earlier version loaded the wrong published fold (test leakage)
+UTAE_WEIGHT_FOLD = lambda test_fold: test_fold % 5 + 1   # official Fold_j was tested on fold j-1
+
+
 def build_model(dyn_bands, static_bands, tasks, smoke=SMOKE, pretrained=True):
-    fold = PASTIS_FOLDS[0] if 'PASTIS_FOLDS' in globals() else 1
+    fold = UTAE_WEIGHT_FOLD(PASTIS_FOLDS[0] if 'PASTIS_FOLDS' in globals() else 1)
     if smoke:
         conf = dict(encoder_widths=[8, 8, 16], decoder_widths=[8, 8, 16], out_conv=[8, 20], str_conv_k=4, str_conv_s=2, str_conv_p=1,
                     agg_mode='att_group', encoder_norm='group', n_head=4, d_model=16, d_k=4)
@@ -134,7 +139,7 @@ def build_model(dyn_bands, static_bands, tasks, smoke=SMOKE, pretrained=True):
         ck = torch.load(wdir / f'Fold_{fold}' / 'model.pth.tar', map_location='cpu', weights_only=False)
         sd = {k.replace('module.', ''): v for k, v in ck.get('state_dict', ck).items()}
         missing, unexpected = m.opt.load_state_dict(sd, strict=False)
-        print(f'loaded published U-TAE weights (Fold_{fold}); missing {len(missing)}, unexpected {len(unexpected)} keys')
+        print(f'loaded published U-TAE weights Fold_{fold} (its test fold = {(fold - 2) % 5 + 1}); missing {len(missing)}, unexpected {len(unexpected)} keys')
     return m
 
 

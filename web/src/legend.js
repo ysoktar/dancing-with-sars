@@ -18,8 +18,8 @@ const SECTIONS = {
     if (g.layers.mtc && g.mtcInfo) return '';
     const c = g.currentCycle;
     return `<b>NISAR world mosaic${c ? ` · ${fmt(c.start)} – ${fmt(c.end)}` : ''}</b>
-      ${ramp('#000', '#f0f', 'HH → red + blue')}${ramp('#000', '#0f0', 'HV → green')}
-      <div class="lg-row lg-ends"><span>0</span><span>browse brightness</span><span>255</span></div>`;
+      ${ramp('#000', '#f00', 'R · HH')}${ramp('#000', '#0f0', 'G · HV')}${ramp('#000', '#00f', 'B · HH/HV')}
+      <div class="lg-note">Fixed ranges of the browse values, the same everywhere: HH 140–255 (γ 1.5), HV 60–230, HH/HV as HH−HV −20…+60. L-band convention as in the JAXA PALSAR mosaics: forest → green (strong HV), fields and bare soil → blue (HH ≫ HV), towns / flooded vegetation → bright, water → black.</div>`;
   },
   landcover: () => `<b>Cropland &amp; forest</b> <span class="lg-note">(NISAR mosaics, Jun–Nov 2026)</span>
       <div class="lg-grid">${sw('#e8b04a', 'cropland: strong seasonal swing')}${sw('#15803d', 'forest: high HV, steady')}

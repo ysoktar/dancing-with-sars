@@ -14,6 +14,30 @@ const NISAR_ALT_KM = 747;
 const NISAR_INC = 98.4 * DEG;
 const NISAR_PERIOD_MIN = 100.0;
 
+/**
+ * Dual-pol display (JAXA L-band mosaic convention): R = HH, G = HV, B = HH/HV.
+ * The browse PNGs come as R = HH, G = HV, B = HH, each channel stretched on its own. As in the JAXA PALSAR mosaics,
+ * every channel gets its own fixed display range (the same everywhere on Earth); blue becomes the HH/HV ratio, which for
+ * these dB-like browse values is their difference. Display only: the data and the analyses are unchanged.
+ */
+export const DUALPOL = { hh: [140, 255, 1.5], hv: [60, 230, 1], ratio: [-20, 60, 1] };
+const glf = (x) => (Number.isInteger(x) ? x + '.0' : String(x));
+function dualPol(mat) {
+  const D = DUALPOL;
+  const st = (v, [lo, hi, g]) => `pow(clamp((${v} - ${glf(lo)}) / ${glf(hi - lo)}, 0.0, 1.0), ${glf(g)})`;
+  mat.onBeforeCompile = (sh) => {
+    sh.fragmentShader = sh.fragmentShader.replace('#include <map_fragment>', `#include <map_fragment>
+      {
+        vec3 c = diffuseColor.rgb;
+        vec3 s = (mix(c * 12.92, 1.055 * pow(max(c, vec3(0.0)), vec3(1.0 / 2.4)) - 0.055, step(0.0031308, c))) * 255.0;
+        vec3 o = vec3(${st('s.r', D.hh)}, ${st('s.g', D.hv)}, ${st('(s.r - s.g)', D.ratio)});
+        diffuseColor.rgb = mix(o / 12.92, pow((o + 0.055) / 1.055, vec3(2.4)), step(0.04045, o));
+      }`);
+  };
+  mat.customProgramCacheKey = () => 'dualpol';
+  return mat;
+}
+
 export class GlobeView {
   constructor(el, { base, onSiteClick }) {
     this.base = base;
@@ -179,7 +203,7 @@ export class GlobeView {
     this.mosTex = new Map(); // url -> texture (LRU)
     const r = this.globe.getGlobeRadius() * 1.0012;
     const geo = new THREE.SphereGeometry(r, 256, 128, (90 - 180) * DEG, 2 * Math.PI, 0, Math.PI);
-    this.mosaic = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ transparent: true, depthWrite: false }));   // unlit: the browse values as they are
+    this.mosaic = new THREE.Mesh(geo, dualPol(new THREE.MeshBasicMaterial({ transparent: true, depthWrite: false })));   // unlit: the browse values as they are
     this.mosaic.renderOrder = 1;
     this.mosaic.visible = false;
     this.globe.scene().add(this.mosaic);
@@ -310,7 +334,7 @@ export class GlobeView {
       const r = this.globe.getGlobeRadius() * 1.0025;
       const geo = new THREE.SphereGeometry(r, 48, 48, (90 + W) * DEG, (E - W) * DEG, (90 - N) * DEG, (N - S) * DEG);
       if (!mesh) {
-        const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, opacity: 0.95, side: THREE.DoubleSide });
+        const mat = dualPol(new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, opacity: 0.95, side: THREE.DoubleSide }));
         mesh = new THREE.Mesh(geo, mat);
         mesh.renderOrder = 2;
         this.frameGroup.add(mesh);
@@ -409,7 +433,7 @@ export class GlobeView {
         const geo = new THREE.SphereGeometry(r, 64, 64, (90 + W) * DEG, (E - W) * DEG, (90 - N) * DEG, (N - S) * DEG);
         const tex = new THREE.Texture(frame.canvas);
         tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = this.maxAniso || 4; tex.flipY = false; tex.needsUpdate = true;
-        const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false });
+        const mat = dualPol(new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false }));
         const mesh = new THREE.Mesh(geo, mat);
         mesh.renderOrder = 3; mesh.userData.cycle = c.id;
         this.globe.scene().add(mesh);

@@ -7,6 +7,7 @@ function w() {
     worker = new Worker(new URL('./sarWorker.js', import.meta.url), { type: 'module' });
     worker.onmessage = (e) => {
       const p = pending.get(e.data.rid);
+      if (e.data.progress) { p?.onProgress?.(e.data.progress); return; }
       pending.delete(e.data.rid);
       if (p) e.data.ok ? p.res(e.data.out) : p.rej(new Error(e.data.error));
     };
@@ -14,10 +15,10 @@ function w() {
   return worker;
 }
 
-export function call(op, args, transfer = []) {
+export function call(op, args, transfer = [], onProgress = null) {
   return new Promise((res, rej) => {
     const id = ++rid;
-    pending.set(id, { res, rej });
+    pending.set(id, { res, rej, onProgress });
     w().postMessage({ rid: id, op, args }, transfer);
   });
 }

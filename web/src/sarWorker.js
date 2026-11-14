@@ -3,7 +3,8 @@
 // off the main thread, so switching filters and dates never freezes the page.
 import { SIZE, leeFilter, render, logRatio, maskedMean, darkSeries, otsu } from './sar.js';
 import { pixelFeatures, kmeans } from './ml.js';
-import { computeAgri, renderAgri, rviStack, computeLandCover, renderLandCover, WATER_MAX } from './agri.js';
+import { buildRegion } from './regionFetch.js';
+import { computeAgri, renderAgri, rviStack, computeLandCover, renderLandCover, WATER_MAX, computeYield, renderYield } from './agri.js';
 
 const N = SIZE * SIZE;
 const stacks = new Map();      // site id -> stack
@@ -29,6 +30,54 @@ function erode(mask, r) {
   }
 }
 
+/** Box mean (2r+1)², via an integral image. */
+function boxMean(a, r) {
+  const W = SIZE, I = new Float64Array((W + 1) * (W + 1)), out = new Float32Array(N);
+  for (let y = 0; y < W; y++) { let row = 0; for (let x = 0; x < W; x++) { row += a[y * W + x]; I[(y + 1) * (W + 1) + x + 1] = I[y * (W + 1) + x + 1] + row; } }
+  for (let y = 0; y < W; y++) {
+    const y0 = Math.max(0, y - r), y1 = Math.min(W, y + r + 1);
+    for (let x = 0; x < W; x++) {
+      const x0 = Math.max(0, x - r), x1 = Math.min(W, x + r + 1);
+      out[y * W + x] = (I[y1 * (W + 1) + x1] - I[y0 * (W + 1) + x1] - I[y1 * (W + 1) + x0] + I[y0 * (W + 1) + x0]) / ((y1 - y0) * (x1 - x0));
+    }
+  }
+  return out;
+}
+
+/**
+ * Multi-temporal speckle filter (Quegan & Yu 2001): J_t = E_t · (1/T) Σ_k I_k / E_k,
+ * E = local 5x5 mean. Speckle drops by about √T while the spatial detail of every date
+ * is kept, which a purely spatial filter cannot do. With fewer than 4 dates: Lee 5x5.
+ */
+function speckle(stack) {
+  const T = stack.length;
+  if (T < 4) return stack.map((x) => leeFilter(x, 5));
+  const E = stack.map((x) => boxMean(x, 2));
+  const R = new Float32Array(N);
+  for (let t = 0; t < T; t++) { const I = stack[t], e = E[t]; for (let i = 0; i < N; i++) R[i] += I[i] / (e[i] + 1); }
+  // a light 3x3 Lee pass afterwards removes the residual grain without blurring edges
+  return E.map((e) => leeFilter(Float32Array.from(e, (v, i) => Math.min(255, (v + 1) * R[i] / T)), 3));
+}
+
+function makeStack(id, hh, hv, valid, half_deg) {
+  erode(valid, 3);
+  const side = 2 * half_deg * 111.32;
+  const st = { T: hh.length, hh, hv, valid, pixelKm2: (side * side) / N, aoiKm: side };
+  st.hhF = speckle(hh);
+  st.hvF = speckle(hv);
+  stacks.set(id, st);
+  results.set(id, {});
+  return st;
+}
+
+function summary(st) {
+  return {
+    T: st.T, aoiKm: st.aoiKm, pixelKm2: st.pixelKm2,
+    hh: st.hhF.map((x) => maskedMean(x, st.valid)), hv: st.hvF.map((x) => maskedMean(x, st.valid)),
+    dark: darkSeries(st).frac,
+  };
+}
+
 async function load({ id, urls, half_deg }) {
   if (!stacks.has(id)) {
     const datas = await Promise.all(urls.map(decode));
@@ -39,24 +88,25 @@ async function load({ id, urls, half_deg }) {
       for (let i = 0, j = 0; i < N; i++, j += 4) { H[i] = d[j]; V[i] = d[j + 1]; if (d[j + 2] < 128) valid[i] = 0; }
       hh.push(H); hv.push(V);
     }
-    erode(valid, 3);
-    const side = 2 * half_deg * 111.32;
-    const st = { T: urls.length, hh, hv, valid, pixelKm2: (side * side) / N, aoiKm: side };
-    st.hhF = hh.map((x) => leeFilter(x, 5));
-    st.hvF = hv.map((x) => leeFilter(x, 5));
-    stacks.set(id, st);
-    results.set(id, {});
+    makeStack(id, hh, hv, valid, half_deg);
+  }
+  return summary(stacks.get(id));
+}
+
+/** Live region: search ASF, download, co-register and crop in the worker (see regionFetch.js). */
+async function region({ id, lon, lat, half_deg, maxDates }, progress) {
+  if (!stacks.has(id)) {
+    const r = await buildRegion({ lon, lat, half: half_deg, maxDates }, progress);
+    const st = makeStack(id, r.hh, r.hv, r.valid, half_deg);
+    st.meta = { acquisitions: r.acquisitions, track: r.track, box: r.box, fullCover: r.fullCover };
   }
   const st = stacks.get(id);
-  return {
-    T: st.T, aoiKm: st.aoiKm, pixelKm2: st.pixelKm2,
-    hh: st.hhF.map((x) => maskedMean(x, st.valid)), hv: st.hvF.map((x) => maskedMean(x, st.valid)),
-    dark: darkSeries(st).frac,
-  };
+  return { ...summary(st), ...st.meta };
 }
 
 const ops = {
   load,
+  region,
   render({ id, t, mode, filtered, src }) {
     const st = stacks.get(id), r = results.get(id);
     const extra = { filtered };
@@ -86,6 +136,14 @@ const ops = {
   agriRender({ id, mode, t, seg }) {
     const st = stacks.get(id), r = results.get(id);
     const img = renderAgri(st, mode, r.agri, { t, seg });
+    return { data: img.data.buffer, w: img.width, h: img.height, transfer: [img.data.buffer] };
+  },
+  yield({ id }) {
+    const r = results.get(id);
+    return computeYield(stacks.get(id), r.agri).summary;
+  },
+  yieldRender({ id, mode, t, seg }) {
+    const img = renderYield(stacks.get(id), results.get(id).agri, { mode, t, seg });
     return { data: img.data.buffer, w: img.width, h: img.height, transfer: [img.data.buffer] };
   },
   landcover({ id }) {
@@ -157,7 +215,8 @@ const ops = {
 self.onmessage = async (e) => {
   const { rid, op, args } = e.data;
   try {
-    const out = await ops[op](args);
+    const progress = (stage, done, total) => self.postMessage({ rid, progress: { stage, done, total } });
+    const out = await ops[op](args, progress);
     const transfer = out.transfer || [];
     delete out.transfer;
     self.postMessage({ rid, ok: true, out }, transfer);

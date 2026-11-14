@@ -1,0 +1,73 @@
+{
+ "model": "U-TAE (Garnot & Landrieu, ICCV 2021), pretrained on PASTIS",
+ "weights": "Zenodo 5172293",
+ "fold": 2,
+ "classes": [
+  "Background",
+  "Meadow",
+  "Soft winter wheat",
+  "Corn",
+  "Winter barley",
+  "Winter rapeseed",
+  "Spring barley",
+  "Sunflower",
+  "Grapevine",
+  "Beet",
+  "Winter triticale",
+  "Winter durum wheat",
+  "Fruits, vegetables, flowers",
+  "Potatoes",
+  "Leguminous fodder",
+  "Soybeans",
+  "Orchard",
+  "Mixed cereal",
+  "Sorghum",
+  "Void label"
+ ],
+ "bands": [
+  "B02",
+  "B03",
+  "B04",
+  "B05",
+  "B06",
+  "B07",
+  "B08",
+  "B8A",
+  "B11",
+  "B12"
+ ],
+ "mean": [
+  1180.1796630859376,
+  1387.7300048828124,
+  1436.6623046875,
+  1773.646337890625,
+  2735.821337890625,
+  3080.085498046875,
+  3223.57607421875,
+  3338.316064453125,
+  2418.061962890625,
+  1630.1670654296875
+ ],
+ "std": [
+  1976.6763427734375,
+  1916.7959228515624,
+  1996.2056640625,
+  1903.123974609375,
+  1784.9232177734375,
+  1796.3140869140625,
+  1811.764208984375,
+  1793.3386962890625,
+  1474.4166015625,
+  1309.8329833984376
+ ],
+ "refDate": "2018-09-01",
+ "tile": 128,
+ "gsd_m": 10,
+ "testMetrics": {
+  "test_accuracy": 84.10742282867432,
+  "test_loss": 0.4707001519104664,
+  "test_IoU": 65.0078296661377,
+  "test_epoch_time": 224.59407711029053
+ },
+ "note": "Trained on Sentinel-2 time series over France (Sept 2018 - Nov 2019)."
+}

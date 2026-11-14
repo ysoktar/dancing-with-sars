@@ -269,3 +269,30 @@ svg.diagram { width: 100%; height: auto; display: block; border-radius: 8px; bac
   .ev-row { grid-template-columns: 86px 1fr; }
   .ev-row .k, .ev-row .near { display: none; }
 }
+
+/* ---- region selection ---- */
+.region-panel { padding: 10px 14px 14px; display: flex; flex-direction: column; gap: 10px; }
+.region-panel .btn.primary { justify-content: center; padding: 9px 12px; }
+.region-panel .btn.primary.on { background: transparent; color: var(--accent); }
+.region-panel .field { display: flex; flex-direction: column; gap: 5px; }
+.region-panel input { background: var(--surface-2); border: 1px solid var(--border); border-radius: 6px; color: var(--text); padding: 6px 8px; font: inherit; min-width: 0; }
+body.picking .globe { cursor: crosshair; }
+.loading-region { max-width: 520px; margin: 60px auto; text-align: center; }
+.loading-region .bar, .result .bar { height: 4px; background: var(--surface-3); border-radius: 2px; overflow: hidden; margin: 10px 0; }
+.loading-region .bar i, .result .bar i { display: block; height: 100%; width: 5%; background: var(--accent); transition: width 0.25s; }
+.lc-legend { position: absolute; right: 16px; bottom: 60px; z-index: 6; display: none; gap: 10px; padding: 6px 10px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; font-size: 12px; }
+.lc-legend.on { display: flex; }
+.lc-legend span { display: inline-flex; align-items: center; gap: 5px; }
+.lc-legend i { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+.credits { position: absolute; right: 18px; bottom: 54px; z-index: 4; font-size: 10px; opacity: 0.65; pointer-events: none; }
+body.sheet-open .credits, body.sheet-open .lc-legend { display: none; }
+/* parcel report calendar */
+table.cal td { text-align: center; font-size: 10px; line-height: 1.2; padding: 5px 3px; min-width: 52px; }
+table.cal td span { opacity: 0.8; }
+table.cal th.small { text-align: left; min-width: 170px; }
+table.cal tr.me td { box-shadow: inset 0 -3px 0 #ffb300; }
+@media (max-width: 700px) { .credits { display: none; } .lc-legend { left: 16px; right: 16px; bottom: 60px; flex-wrap: wrap; } }
+.tl-era { position: absolute; left: 150px; bottom: 42px; font-size: 11px; color: var(--muted); pointer-events: none; white-space: nowrap; text-shadow: 0 1px 2px #000; }
+.thumbs { display: flex; gap: 6px; flex-wrap: wrap; }
+.thumbs a { display: flex; flex-direction: column; align-items: center; font-size: 10px; color: var(--muted); text-decoration: none; }
+.thumbs img { width: 64px; height: 64px; object-fit: cover; border-radius: 4px; background: #07090b; border: 1px solid var(--border); }

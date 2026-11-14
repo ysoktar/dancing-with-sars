@@ -12,6 +12,7 @@ import { liveContext } from '../liveContext.js';
 import { renderReport } from './report.js';
 import { fetchArchive, ARCHIVE_PLATFORMS } from '../archive.js';
 import { cropMix } from '../cropPrior.js';
+import { labelsNear } from '../cropHarvest.js';
 import { suitability, suitClass, GAEZ_TO_SPAM, ENERGY } from '../suitability.js';
 import { terrain, susceptibility, catalogNear, rainTrigger, hazard, HAZARD_COLORS } from '../landslide.js';
 import { droughtData, dClass, probit } from '../drought.js';
@@ -1708,6 +1709,7 @@ function regionOverview(el) {
         <li><a href="${hrefOf(R)}/agri" data-agtool="deep">Crop types (deep learning)</a>: crop type per field from a trained network.</li>
         <li><a href="${hrefOf(R)}/agri" data-agtool="landcover">Cropland vs forest</a>.</li></ul></div>
       <div class="panel"><h3>Crops grown here</h3><div id="rsMix" class="small muted">Loading SPAM 2010 crop statistics…</div></div>
+      <div class="panel"><h3>Ground labels nearby</h3><div id="rsLab" class="small muted">Looking for NASA Harvest field labels…</div></div>
       <div class="panel"><h3>Passes</h3><div style="max-height:220px;overflow:auto"><table class="t"><tr><th>Date</th><th>Product</th><th style="text-align:right">valid</th><th style="text-align:right">shift km</th></tr>
         ${a.map((x) => `<tr><td class="mono">${x.date}</td><td class="small">${/PROVISIONAL/.test(x.collection || '') ? 'provisional' : 'validated / beta'}</td><td class="num">${pct(x.valid, 0)}</td><td class="num">${x.kml ? 'KML' : x.coregShiftKm.join(', ')}</td></tr>`).join('')}</table></div></div>
     </div>
@@ -1729,6 +1731,18 @@ function regionOverview(el) {
     </div>
   </div>`;
   $$('a[data-agtool]', el).forEach((l) => l.addEventListener('click', () => { S.agTool = l.dataset.agtool; }));
+  labelsNear(app.base, R.box).then((L) => {
+    if (!$('#rsLab')) return;
+    const P = L.points;
+    if (!P.length) { $('#rsLab').textContent = 'No NASA Harvest (CropHarvest) field labels within 25 km of this area.'; return; }
+    const crop = P.filter((p) => p.crop), groups = {};
+    crop.forEach((p) => { const g = p.label || p.group || 'crop (type not recorded)'; groups[g] = (groups[g] || 0) + 1; });
+    const rows = Object.entries(groups).sort((a, b) => b[1] - a[1]).slice(0, 8);
+    const ds = [...new Set(P.map((p) => p.dataset))].join(', '), yrs = P.map((p) => p.year).filter(Boolean);
+    $('#rsLab').innerHTML = `<p>${P.length} field labels within 25 km (${P.filter((p) => p.inside).length} inside the area): <b>${crop.length}</b> crop, <b>${P.length - crop.length}</b> not crop${yrs.length ? `, collected ${Math.min(...yrs)}–${Math.max(...yrs)}` : ''}.</p>
+      ${rows.length ? `<table class="t"><tr><th>Recorded on the ground</th><th style="text-align:right">labels</th></tr>${rows.map(([g, c]) => `<tr><td>${esc(g.replace(/_/g, ' '))}</td><td class="num">${c}</td></tr>`).join('')}</table>` : ''}
+      <p class="note">${esc(L.source)} (${esc(L.license)}); campaigns: ${esc(ds)}. Points where people recorded what grew, useful to check the crop maps.</p>`;
+  }).catch(() => { if ($('#rsLab')) $('#rsLab').textContent = 'Field labels could not be loaded.'; });
   cropMix(app.base, R.box).then((mix) => {
     if (!$('#rsMix')) return;
     if (!mix.totalHa) { $('#rsMix').textContent = 'No crop statistics for this area (SPAM 2010 maps no cropland here).'; return; }

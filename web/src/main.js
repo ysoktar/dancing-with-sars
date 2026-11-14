@@ -7,6 +7,7 @@ import { openSitePage, closeSitePage, hrefOf } from './pages/site.js';
 import { call } from './sarClient.js';
 import { updateLegend } from './legend.js';
 import { renderMethod, renderData } from './pages/static.js';
+import { initUX } from './ux.js';
 
 const BASE = import.meta.env.BASE_URL;
 
@@ -25,6 +26,7 @@ export const app = {
 
 // ===================================================================== boot
 async function boot() {
+  initUX();
   const get = (f, fallback) => fetch(BASE + 'data/' + f).then((r) => (r.ok ? r.json() : fallback)).catch(() => fallback);
   const [catalog, coverage, motion, events, dem, mosaic, tle] = await Promise.all([
     get('catalog.json', null), get('coverage.json', { months: [] }), get('motion.json', { sites: {} }), get('events.json', { sites: {} }), get('dem.json', {}), get('mosaic.json', { cycles: [] }), get('nisar_tle.json', null),
@@ -163,7 +165,7 @@ function buildRegionPanel() {
         <div style="display:flex;gap:6px"><input id="cQuery" placeholder="e.g. Polatlı, Ankara  or  39.58, 32.14" style="flex:1"><button class="btn">Go</button></div>
         <span class="small" id="cMsg" style="color:var(--warn)"></span></form>
       <div id="recentList"></div>
-      <p class="small muted" style="margin-top:10px">Every NISAR pass over the drawn area is fetched live from the ASF archive, aligned and analysed in your browser: two-area comparison, crop types and calendar, crop suggestions, soil moisture, landslides, spills, change detection. NISAR browse pixels are ~165 m, so a 5 km area holds about 30 × 30 radar pixels.</p>
+      <p class="small muted" style="margin-top:10px" data-i18n-html="drawNote">Every NISAR pass over your area is fetched live and analysed in your browser. Radar pixels are about 165 m, so a 5 km area holds about 30 × 30 of them.</p>
     </div>`;
   $('#pickBtn').addEventListener('click', () => setPicking(!app.globe.picking));
   $('#coordForm').addEventListener('submit', async (e) => {

@@ -1126,6 +1126,68 @@ function toolCompare(el) {
   });
 }
 
+// landscape-level similarity: several independent views of "how alike are two places", each 0..1
+const climCache = new Map();
+async function powerClim(lat, lon) {
+  const k = `${lat.toFixed(2)},${lon.toFixed(2)}`;
+  if (!climCache.has(k)) climCache.set(k, fetch(`https://power.larc.nasa.gov/api/temporal/climatology/point?parameters=T2M,PRECTOTCORR,GWETROOT&community=AG&longitude=${lon.toFixed(3)}&latitude=${lat.toFixed(3)}&format=JSON`)
+    .then((r) => r.json()).then((j) => { const P = j.properties.parameter, M = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC']; return { t: M.map((m) => P.T2M[m]), p: M.map((m) => P.PRECTOTCORR[m]), w: M.map((m) => P.GWETROOT[m]) }; }));
+  return climCache.get(k);
+}
+const WC_LABEL = { 10: 'trees', 20: 'shrub', 30: 'grass', 40: 'cropland', 50: 'built-up', 60: 'bare', 70: 'snow / ice', 80: 'water', 90: 'wetland', 95: 'mangrove', 100: 'moss' };
+const topShares = (o, names, n = 3) => Object.entries(o || {}).sort((a, b) => b[1] - a[1]).slice(0, n).map(([k, v]) => `${names(k)} ${Math.round(v * 100)} %`).join(', ');
+const intersect = (a, b) => Object.keys({ ...a, ...b }).reduce((s, k) => s + Math.min(a[k] || 0, b[k] || 0), 0);
+
+async function landscapeDims(boxA, boxB, shift, r) {
+  const c = (b) => [(b[1] + b[3]) / 2, (b[0] + b[2]) / 2];
+  const [laA, loA] = c(boxA), [laB, loB] = c(boxB);
+  const [mixA, mixB, clA, clB, tA, tB] = await Promise.all([
+    cropMix(app.base, boxA).catch(() => null), cropMix(app.base, boxB).catch(() => null),
+    powerClim(laA, loA).catch(() => null), powerClim(laB, loB).catch(() => null),
+    terrain(boxA).catch(() => null), terrain(boxB).catch(() => null),
+  ]);
+  const sh = (arr) => (shift ? arr.map((_, i) => arr[(i + 6) % 12]) : arr);
+  const dims = [{ key: 'radar', label: 'Radar behaviour', score: r.similarity, a: '', b: '', how: 'overlap of the six NISAR features' }];
+  if (r.wcA && r.wcB) dims.push({ key: 'cover', label: 'Land cover', score: intersect(r.wcA, r.wcB), a: topShares(r.wcA, (k) => WC_LABEL[k] || k), b: topShares(r.wcB, (k) => WC_LABEL[k] || k), how: 'shared share of ESA WorldCover classes' });
+  if (mixA?.totalHa && mixB?.totalHa) {
+    const sa = Object.fromEntries(mixA.list.map((x) => [x.name, x.share])), sb = Object.fromEntries(mixB.list.map((x) => [x.name, x.share]));
+    dims.push({ key: 'crops', label: 'Crop mix', score: intersect(sa, sb), a: topShares(sa, (k) => k), b: topShares(sb, (k) => k), how: 'shared share of crops grown (SPAM)' });
+  }
+  if (clA && clB) {
+    const bt = sh(clB.t), bp = sh(clB.p), bw = sh(clB.w);
+    const rmsT = Math.sqrt(clA.t.reduce((s, v, i) => s + (v - bt[i]) ** 2, 0) / 12);
+    const rmsP = Math.sqrt(clA.p.reduce((s, v, i) => s + (Math.log1p(v) - Math.log1p(bp[i])) ** 2, 0) / 12);
+    const rmsW = Math.sqrt(clA.w.reduce((s, v, i) => s + (v - bw[i]) ** 2, 0) / 12);
+    const yr = (p) => Math.round(p.reduce((a, b) => a + b, 0) * 30.4);
+    const mean = (v) => (v.reduce((a, b) => a + b, 0) / 12).toFixed(1);
+    dims.push({ key: 'climate', label: 'Climate', score: Math.exp(-rmsT / 4) * Math.exp(-rmsP / 0.6), a: `${mean(clA.t)} °C, ${yr(clA.p)} mm/yr`, b: `${mean(clB.t)} °C, ${yr(clB.p)} mm/yr`, how: `monthly temperature and rain${shift ? ' (B shifted 6 months)' : ''}, NASA POWER` });
+    dims.push({ key: 'water', label: 'Soil water regime', score: Math.exp(-rmsW / 0.12), a: `root zone ${mean(clA.w)}`, b: `root zone ${mean(clB.w)}`, how: 'monthly root-zone wetness, NASA POWER' });
+  }
+  if (tA && tB) {
+    const d = Math.abs(tA.p90 - tB.p90) / 8 + Math.abs(tA.steepFrac - tB.steepFrac) / 0.3;
+    const elev = (t) => Math.round(t.elev.reduce((a, b) => a + b, 0) / t.elev.length);
+    dims.push({ key: 'terrain', label: 'Terrain', score: Math.exp(-d), a: `${elev(tA)} m, slope p90 ${tA.p90.toFixed(0)}°`, b: `${elev(tB)} m, slope p90 ${tB.p90.toFixed(0)}°`, how: 'slope distribution (elevation tiles)' });
+  }
+  return dims;
+}
+
+function showDims(dims) {
+  const box = $('#cmpDims');
+  if (!box) return;
+  const overall = dims.reduce((s, d) => s + d.score, 0) / dims.length;
+  box.innerHTML = `
+    <h3 style="margin:16px 0 6px">How alike are the two places? <span class="muted small">(${Math.round(overall * 100)} % overall)</span></h3>
+    <div class="result"><div class="chart" style="height:320px"><canvas id="cmpRadar"></canvas></div>
+    <table class="t"><tr><th>Aspect</th><th style="text-align:right">alike</th><th>A</th><th>B</th></tr>
+    ${dims.map((d) => `<tr><td title="${esc(d.how)}">${esc(d.label)}</td><td class="num">${Math.round(d.score * 100)} %</td><td class="small">${esc(d.a)}</td><td class="small">${esc(d.b)}</td></tr>`).join('')}</table></div>
+    <p class="note">Not a pixel-by-pixel match: each aspect compares the two places as a whole. Radar behaviour and land cover come from the areas themselves; crop mix from SPAM 2010; climate and soil water from NASA POWER long-term monthly means; terrain from elevation tiles. The overall value is the plain mean of the aspects.</p>`;
+  chart('cmpRadar', {
+    type: 'radar',
+    data: { labels: dims.map((d) => d.label), datasets: [{ label: 'similarity %', data: dims.map((d) => Math.round(d.score * 100)), borderColor: '#e8b04a', backgroundColor: 'rgba(232,176,74,0.25)', pointRadius: 3 }] },
+    options: { maintainAspectRatio: false, animation: false, scales: { r: { min: 0, max: 100, ticks: { stepSize: 25, backdropColor: 'transparent', color: '#8a94a3' }, grid: { color: 'rgba(138,148,163,0.25)' }, angleLines: { color: 'rgba(138,148,163,0.25)' }, pointLabels: { color: '#c9d1d9' } } }, plugins: { legend: { display: false } } },
+  });
+}
+
 function showCompare(r, infoB, boxB, shift) {
   const pct0 = Math.round(r.similarity * 100);
   const verdict = pct0 >= 75 ? 'very similar' : pct0 >= 55 ? 'similar' : pct0 >= 35 ? 'partly similar' : 'different';
@@ -1156,9 +1218,12 @@ function showCompare(r, infoB, boxB, shift) {
         <p class="note">Area B: ${latB.toFixed(3)}°, ${lonB.toFixed(3)}°, ${accB.length} passes${accB.length ? ` (${accB[0].date} – ${accB[accB.length - 1].date})` : ''}.</p>
       </div>
     </div>
+    <div id="cmpDims"><p class="muted small" style="margin-top:12px">Comparing land cover, crop mix, climate, soil water and terrain…</p></div>
     <h3 class="small muted" style="font-weight:500;margin-top:12px">Through the year (day of year${shift ? ', B shifted by 6 months' : ''})</h3>
     <div class="chart sm"><canvas id="cmpCurve"></canvas></div>
     <p class="note">Similarity = how much the distributions of the six features overlap (100 % = identical spread of values). The map colours every ~${Math.round(r.blockM)} m block of A by its distance to B's typical block. Radar brightness comes from 8-bit browse images, which can differ a little between tracks, so levels are compared more loosely than changes. Areas in different hemispheres have opposite seasons: tick "shift B by 6 months" to line up the crop calendars. Similar radar behaviour does not prove the same land use.</p>`;
+  const bA = aoiBounds();
+  landscapeDims([bA.W, bA.S, bA.E, bA.N], boxB, shift, r).then(showDims).catch(() => { if ($('#cmpDims')) $('#cmpDims').innerHTML = ''; });
   const dist = new Float32Array(r.dist), G = r.G, img = new ImageData(G, G);
   for (let g = 0; g < G * G; g++) {
     const d = dist[g], o = g * 4;

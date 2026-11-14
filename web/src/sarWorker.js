@@ -605,7 +605,8 @@ const ops = {
       dist[g] = Math.sqrt(d / F);
       if (dist[g] < 1) close++;
     }
-    return { similarity: overlapSum / F, feats, G: A.G, dist: dist.buffer, closeShare: close / A.nb, blockM: A.blockM,
+    const wcShares = (st) => { if (!st.wc) return null; const c = {}; let n = 0; for (let i = 0; i < N; i++) if (st.valid[i] && st.wc[i]) { c[st.wc[i]] = (c[st.wc[i]] || 0) + 1; n++; } for (const k in c) c[k] /= n; return n ? c : null; };
+    return { similarity: overlapSum / F, feats, G: A.G, dist: dist.buffer, wcA: wcShares(stacks.get(idA)), wcB: wcShares(stacks.get(idB)), closeShare: close / A.nb, blockM: A.blockM,
       curves: { a: { hh: A.hh, hv: A.hv, rvi: A.rvi }, b: { hh: Bf.hh, hv: Bf.hv, rvi: Bf.rvi } }, transfer: [dist.buffer] };
   },
 

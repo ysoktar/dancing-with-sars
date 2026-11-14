@@ -3,9 +3,10 @@ import Chart from 'chart.js/auto';
 import { app, sheetHead, setDate, drawTimeline } from '../main.js';
 import { STORIES, themeOf } from '../sites.js';
 import { $, $$, DAY, tOf, fmtDate, fmtShort, esc, pct } from '../util.js';
-import { loadStack, render, drawTo, logRatio, maskedMean, SIZE, CLUSTER_COLORS, loadDem, renderElevation } from '../sar.js';
+import { drawTo, SIZE, CLUSTER_COLORS, loadDem, renderElevation } from '../sar.js';
+import { call, renderImage } from '../sarClient.js';
 import { Terrain3D } from '../terrain3d.js';
-import { pixelFeatures, kmeans, describeCluster, trainAutoencoder } from '../ml.js';
+import { describeCluster, trainAutoencoder } from '../ml.js';
 import { forecast, FORECASTABILITY, MIN_POINTS } from '../forecast.js';
 
 const TABS = [
@@ -44,11 +45,16 @@ const nowLine = {
     c.ctx.beginPath(); c.ctx.moveTo(x, top); c.ctx.lineTo(x, bottom); c.ctx.stroke(); c.ctx.restore();
   },
 };
+/** Radar stacks live in a Web Worker (sarWorker.js): every filter / date / tool change is computed off the main thread. */
 function getStack() {
-  const id = S.site.id;
-  if (!stacks.has(id)) stacks.set(id, loadStack(S.site, app.base + 'data/'));
+  const site = S.site, id = site.id;
+  if (!stacks.has(id)) {
+    const urls = site.acquisitions.map((a) => new URL(app.base + 'data/' + a.crop, location.href).href);
+    stacks.set(id, call('load', { id, urls, half_deg: site.half_deg }).then((info) => ({ id, ...info })));
+  }
   return stacks.get(id);
 }
+let viewToken = 0;
 function nearestIndex(t) {
   let k = 0;
   times().forEach((x, i) => { if (x <= t + DAY / 2) k = i; });
@@ -125,6 +131,18 @@ const CAPS = {
   wildfire: [['Burn scar extent (HV loss)', 'Regrowth over years', 'Snow onset'], ['Burn severity (with optical dNBR)', 'Carbon released'], ['Smoke and air quality']],
 };
 
+const STORYMAPS = 'https://nisar.jpl.nasa.gov/applications/arcgis-storymaps/';
+const LEARN = {
+  flood: [['NISAR StoryMap: floods', STORYMAPS]],
+  wetland: [['NISAR StoryMap: floods and wetlands', STORYMAPS]],
+  wildfire: [['NISAR StoryMap: wildfires', STORYMAPS]],
+  groundwater: [['NISAR StoryMap: land subsidence', STORYMAPS]],
+  agriculture: [['NISAR StoryMap: land subsidence', STORYMAPS], ['UAVSAR postcards: crops in L-band false colour', 'https://uavsar.jpl.nasa.gov/education/postcards.html']],
+  volcano: [['NISAR StoryMap: land deformation', STORYMAPS]],
+  glacier: [['NISAR StoryMap: glacier motion', STORYMAPS]],
+  deforestation: [['UAVSAR postcards: forests in L-band false colour', 'https://uavsar.jpl.nasa.gov/education/postcards.html']],
+};
+
 function overview(el) {
   const st = STORIES[S.site.id] || {};
   const th = themeOf(S.site);
@@ -175,6 +193,9 @@ function overview(el) {
         </div>
       </div>
       <div class="panel" style="border-left:3px solid ${th.color}"><h3>Next for NISAR</h3><p class="muted" style="margin:0">${st.future || ''}</p></div>
+      <div class="panel"><h3>Learn more</h3><ul class="plain small">${(LEARN[st.theme] || []).map(([t, u]) => `<li><a href="${u}" target="_blank" rel="noopener">${t}</a></li>`).join('')}
+        <li><a href="https://nisar.jpl.nasa.gov/applications/societal-benefit/" target="_blank" rel="noopener">NISAR applications white papers</a></li>
+        <li><a href="https://appliedsciences.nasa.gov/get-involved/training" target="_blank" rel="noopener">NASA ARSET trainings on SAR and NISAR</a></li></ul></div>
     </div>
   </div>`;
   // render the thumbnails as proper colour composites (the PNGs store HH/HV in R/G)
@@ -184,8 +205,7 @@ function overview(el) {
       const cv = document.createElement('canvas');
       cv.width = cv.height = SIZE;
       cv.style.cssText = img.style.cssText;
-      drawTo(cv, render(stack, +img.dataset.i, 'rgb', { filtered: true }));
-      img.replaceWith(cv);
+      renderImage(stack.id, +img.dataset.i, 'rgb', { filtered: true }).then((im) => { drawTo(cv, im); img.replaceWith(cv); });
     });
   });
 }
@@ -296,10 +316,11 @@ const MODE_NOTES = {
   '3d': 'The radar image of the selected pass draped over 30 m elevation. Drag to rotate, scroll to zoom. The vertical scale is exaggerated so flat sites still show relief.',
 };
 
-function renderViewer() {
+async function renderViewer() {
   const v = $('#v');
   if (!v || !S.stack) return;
   const st = S.stack;
+  const tok = ++viewToken;
   const opt = $('.opt', v);
   $('#modeNote').textContent = MODE_NOTES[S.mode] || '';
   const flat = ['optical', 'elev', '3d'].includes(S.mode);
@@ -309,7 +330,7 @@ function renderViewer() {
   $('canvas.a', v).style.display = S.mode === '3d' ? 'none' : '';
   if (S.mode === 'elev' || S.mode === '3d') {
     opt.style.display = 'none';
-    getDem().then((dem) => {
+    getDem().then(async (dem) => {
       if (!dem) { $('#modeNote').textContent = 'No elevation data for this site. Run pipeline/build_dem.py.'; return; }
       const meta = app.dem[S.site.id];
       if (S.mode === 'elev') {
@@ -318,7 +339,9 @@ function renderViewer() {
       } else {
         t3.style.display = 'block';
         if (!S.t3d) S.t3d = new Terrain3D(t3, dem, 2 * S.site.half_deg * 111.32);
-        S.t3d.setImage(render(st, S.t, 'rgb', { filtered: S.filtered }));
+        const im = await renderImage(st.id, S.t, 'rgb', { filtered: S.filtered });
+        if (tok !== viewToken || !S.t3d) return;
+        S.t3d.setImage(im);
         $('.label.l', v).textContent = `${acqs()[S.t].date} · vertical ×${S.t3d.exaggeration}`;
       }
     });
@@ -331,11 +354,13 @@ function renderViewer() {
     $('.label.l', v).textContent = `${date} · MODIS optical`;
   } else {
     opt.style.display = 'none';
-    const extra = { filtered: S.filtered };
-    drawTo($('canvas.a', v), render(st, S.t, S.mode, extra));
-    if (S.swipe) drawTo($('canvas.b', v), render(st, S.cmpT, S.mode, extra));
+    const opts = { filtered: S.filtered };
     $('.label.l', v).textContent = acqs()[S.t].date;
     $('.label.r', v).textContent = acqs()[S.cmpT].date;
+    const [ia, ib] = await Promise.all([renderImage(st.id, S.t, S.mode, opts), S.swipe ? renderImage(st.id, S.cmpT, S.mode, opts) : null]);
+    if (tok !== viewToken || !$('#v')) return;      // a newer request has already been issued
+    drawTo($('canvas.a', v), ia);
+    if (ib) drawTo($('canvas.b', v), ib);
   }
   const xh = $('.xh', v);
   if (S.pixel) { xh.style.display = 'block'; xh.style.left = ((S.pixel[0] + 0.5) / SIZE) * 100 + '%'; xh.style.top = ((S.pixel[1] + 0.5) / SIZE) * 100 + '%'; } else xh.style.display = 'none';
@@ -362,8 +387,7 @@ function updateMeta() {
 
 function sceneChart() {
   const st = S.stack, ts = times();
-  const hh = st.hhF.map((x) => maskedMean(x, st.valid));
-  const hv = st.hvF.map((x) => maskedMean(x, st.valid));
+  const hh = st.hh, hv = st.hv;
   const dark = acqs().map((a) => (a.dark ?? 0) * 100);
   chart('cScene', {
     type: 'line',
@@ -383,15 +407,14 @@ function sceneChart() {
   });
 }
 
-function pixelSeries(st, x, y) {
-  const avg = (arr) => { let s = 0, n = 0; for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) { const xx = x + dx, yy = y + dy; if (xx >= 0 && yy >= 0 && xx < SIZE && yy < SIZE) { s += arr[yy * SIZE + xx]; n++; } } return s / n; };
-  return [st.hhF.map(avg), st.hvF.map(avg)];
-}
-
-function pixelChart() {
+async function pixelChart() {
   const st = S.stack, ts = times();
   let hh = [], hv = [];
-  if (S.pixel) { [hh, hv] = pixelSeries(st, ...S.pixel); $('#pxLabel').textContent = `pixel ${S.pixel[0]}, ${S.pixel[1]} (3×3 average)`; }
+  if (S.pixel) {
+    const r = await call('pixel', { id: st.id, x: S.pixel[0], y: S.pixel[1] });
+    if (S.tab !== 'images') return;
+    hh = r.hh; hv = r.hv; $('#pxLabel').textContent = `pixel ${S.pixel[0]}, ${S.pixel[1]} (3×3 average)`;
+  }
   chart('cPixel', {
     type: 'line',
     data: { datasets: [
@@ -512,11 +535,14 @@ function toolChange(el) {
   $('#cFrom').value = prev?.a ?? 0;
   $('#cTo').value = prev?.b ?? acqs().length - 1;
   let show = 'change';
-  const run = () => {
+  const run = async () => {
     const a = +$('#cFrom').value, b = +$('#cTo').value, ch = $('#cCh').value;
-    const r = logRatio(S.stack, a, b, ch);
+    const tok = ++viewToken;
+    const r = await call('change', { id: S.stack.id, a, b, ch });
+    const im = await renderImage(S.stack.id, b, show === 'conf' ? 'confidence' : 'change', { src: 'change' });
+    if (tok !== viewToken || !$('#cMap')) return;
     S.ml.change = { a, b, r };
-    drawTo($('#cMap'), render(S.stack, b, show === 'conf' ? 'confidence' : 'change', { change: r, conf: r.conf }));
+    drawTo($('#cMap'), im);
     const days = Math.round((times()[b] - times()[a]) / DAY);
     $('#cLegend').innerHTML = `
       <div class="stats" style="margin-bottom:12px">
@@ -553,11 +579,14 @@ function toolClasses(el) {
     </div>`;
   $('#kDate').value = S.t;
   let show = 'cls';
-  const run = () => {
+  const run = async () => {
     const k = +$('#kK').value, t = +$('#kDate').value;
-    const res = kmeans(pixelFeatures(S.stack, t), S.stack.valid, k);
+    const tok = ++viewToken;
+    const res = await call('kmeans', { id: S.stack.id, t, k });
+    const im = await renderImage(S.stack.id, t, show === 'conf' ? 'confidence' : 'clusters', { src: 'kmeans' });
+    if (tok !== viewToken || !$('#kMap')) return;
     S.ml.k = k; S.ml.km = res;
-    drawTo($('#kMap'), render(S.stack, t, show === 'conf' ? 'confidence' : 'clusters', { labels: res.labels, conf: res.conf }));
+    drawTo($('#kMap'), im);
     const theme = (STORIES[S.site.id] || {}).theme;
     const names = res.centroids.map((c) => describeCluster(c, theme));
     const count = {};
@@ -614,7 +643,9 @@ async function trainAE() {
   });
   const site = S.site, epochs = +$('#aE').value, t0 = performance.now();
   try {
-    const res = await trainAutoencoder(S.stack, {
+    status.textContent = 'Preparing pixel histories…';
+    const sig = await call('signatures', { id: S.stack.id });
+    const res = await trainAutoencoder(sig, {
       epochs,
       onEpoch: ({ epoch, loss: l, valLoss }) => {
         if (S.site !== site || !S.charts.aLoss) return;
@@ -623,6 +654,7 @@ async function trainAE() {
       },
     });
     if (S.site !== site) return;
+    await call('setAnomaly', { id: site.id, err: res.err });
     S.ml.ae = res;
     S.ml.aeLoss = loss.data;
     status.textContent = `Done in ${((performance.now() - t0) / 1000).toFixed(0)} s · ${res.params.toLocaleString()} weights · ${res.backend.toUpperCase()}`;
@@ -635,16 +667,18 @@ async function trainAE() {
   }
 }
 
-function showAE() {
+async function showAE() {
   const ae = S.ml.ae, st = S.stack;
   if (S.ml.aeLoss && !S.charts.aLoss) {
     chart('aLoss', { type: 'line', data: S.ml.aeLoss, options: { maintainAspectRatio: false, animation: false, scales: { y: { type: 'logarithmic' } }, plugins: { legend: { labels: { boxWidth: 10 } } } } });
   }
-  drawTo($('#aMap'), render(st, S.t, 'anomaly', { anomaly: ae.err }));
-  const km = S.ml.km || kmeans(pixelFeatures(st, S.t), st.valid, 5);
-  S.ml.km = km;
+  drawTo($('#aMap'), await renderImage(st.id, S.t, 'anomaly'));
+  if (!S.ml.km) S.ml.km = await call('kmeans', { id: st.id, t: S.t, k: 5 });
+  const km = S.ml.km;
+  const { labels } = await call('labels', { id: st.id });
+  if (!$('#aLatent')) return;
   const groups = Array.from({ length: km.k }, () => []);
-  for (let i = 0; i < SIZE * SIZE; i += 17) if (st.valid[i] && km.labels[i] !== 255) groups[km.labels[i]].push({ x: ae.latent[i * 2], y: ae.latent[i * 2 + 1], i });
+  for (let i = 0; i < SIZE * SIZE; i += 17) if (ae.valid[i] && labels && labels[i] !== 255) groups[labels[i]].push({ x: ae.latent[i * 2], y: ae.latent[i * 2 + 1], i });
   chart('aLatent', {
     type: 'scatter',
     data: { datasets: groups.map((g, c) => ({ data: g, pointRadius: 1.5, backgroundColor: CLUSTER_COLORS[c] + 'bb', borderWidth: 0 })) },
@@ -656,14 +690,16 @@ function showAE() {
   reconChart(best);
 }
 
-function reconChart(i) {
-  const ae = S.ml.ae, st = S.stack, T = st.T, D = ae.D, ts = times();
+async function reconChart(i) {
+  const ae = S.ml.ae, st = S.stack, T = ae.T, D = ae.D, ts = times();
   const x = i % SIZE, y = Math.floor(i / SIZE);
   const real = ae.X.subarray(i * D, i * D + D), rec = ae.recon.subarray(i * D, i * D + D);
   let below = 0;
   for (let j = 0; j < ae.err.length; j++) if (ae.err[j] < ae.err[i]) below++;
   $('#aHint').innerHTML = `Pixel ${x}, ${y} is more unusual than <b>${pct(below / ae.err.length)}</b> of the scene. Solid lines: what NISAR observed. Dashed: what the network expected.`;
-  drawTo($('#aMap'), render(st, S.t, 'anomaly', { anomaly: ae.err }));
+  const im = await renderImage(st.id, S.t, 'anomaly');
+  if (!$('#aMap')) return;
+  drawTo($('#aMap'), im);
   const cv = $('#aMap'), ctx = cv.getContext('2d'), sx = cv.width / SIZE;
   ctx.strokeStyle = '#8cc4ff'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc((x + 0.5) * sx, (y + 0.5) * sx, 12, 0, 7); ctx.stroke();
   const pts = (arr, off) => ts.map((t, k) => ({ x: t, y: arr[off + k] * 255 }));

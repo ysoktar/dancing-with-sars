@@ -24,8 +24,8 @@ export const app = {
 // ===================================================================== boot
 async function boot() {
   const get = (f, fallback) => fetch(BASE + 'data/' + f).then((r) => (r.ok ? r.json() : fallback)).catch(() => fallback);
-  const [catalog, coverage, motion, events, dem, mosaic] = await Promise.all([
-    get('catalog.json', null), get('coverage.json', { months: [] }), get('motion.json', { sites: {} }), get('events.json', { sites: {} }), get('dem.json', {}), get('mosaic.json', { cycles: [] }),
+  const [catalog, coverage, motion, events, dem, mosaic, tle] = await Promise.all([
+    get('catalog.json', null), get('coverage.json', { months: [] }), get('motion.json', { sites: {} }), get('events.json', { sites: {} }), get('dem.json', {}), get('mosaic.json', { cycles: [] }), get('nisar_tle.json', null),
   ]);
   if (!catalog) throw new Error('catalog.json missing: run pipeline/build_data.py');
   Object.assign(app, { catalog, coverage, motion, events, dem, mosaic });
@@ -36,7 +36,9 @@ async function boot() {
 
   app.globe = new GlobeView($('#globeViz'), { base: BASE, onSiteClick: (s) => go(`#/site/${s.id}`) });
   app.globe.setSites(app.sites);
+  window.__pov = (lat, lng, altitude = 1.8) => { app.globe.globe.controls().autoRotate = false; app.globe.globe.pointOfView({ lat, lng, altitude }); };   // debugging / screenshots
   app.globe.setCoverage(coverage);
+  if (tle) app.globe.setTLE(tle);
   if (mosaic.cycles.length) app.globe.setMosaics(mosaic.cycles);
   else $('#mosaicLayer').style.display = 'none';
   const evs = [];
@@ -100,11 +102,13 @@ function route() {
 
 function openSheet() {
   document.body.classList.add('sheet-open');
+  app.globe.pause();                 // the globe is hidden behind the page: stop rendering it
   if (app.tl.playing) togglePlay();
 }
 function closeSheet() {
   closeSitePage();
   document.body.classList.remove('sheet-open');
+  app.globe.resume();
   $('#sheet').innerHTML = '';
   $$('.rail-item').forEach((b) => b.classList.remove('on'));
   app.globe.blur();
@@ -140,74 +144,34 @@ function buildRail() {
 // ===================================================================== timeline
 function buildTimeline() {
   const all = app.sites.flatMap((s) => s.acquisitions.map((a) => tOf(a.date)));
-  const covStart = app.coverage.months.length ? Date.parse(app.coverage.months[0].month + '-01T00:00:00Z') : Math.min(...all);
-  const start = Math.min(covStart, Math.min(...all) - 5 * DAY);
-  const end = Math.max(...all) + 2 * DAY;
+  const firstMosaic = app.mosaic.cycles.length ? tOf(app.mosaic.cycles[0].start) : Infinity;
+  const covStart = app.coverage.months.length ? Date.parse(app.coverage.months[0].month + '-01T00:00:00Z') : Infinity;
+  const start = Math.min(covStart, firstMosaic, Math.min(...all) - 5 * DAY);
+  const end = Math.max(...all, ...app.mosaic.cycles.map((c) => tOf(c.end))) + 2 * DAY;
   Object.assign(app.tl, { start, end });
   const range = $('#tlRange');
   range.max = Math.round((end - start) / DAY);
   range.value = range.max;
   range.addEventListener('input', () => setDay(+range.value, 'slider'));
   $('#playBtn').addEventListener('click', togglePlay);
-  window.addEventListener('resize', () => { drawTimeline(); monthLabels(); });
   drawTimeline();
-  monthLabels();
   setDay(+range.value, 'init');
 }
 
-function monthLabels() {
-  const { start, end } = app.tl;
-  const box = $('#tlMonths');
-  box.innerHTML = '';
-  const nMonths = (end - start) / (30.44 * DAY);
-  const every = Math.max(1, Math.ceil((nMonths * 40) / Math.max(200, box.clientWidth || 600)));
-  const d = new Date(start); d.setUTCDate(1); d.setUTCMonth(d.getUTCMonth() + 1);
-  let i = 0;
-  while (d.getTime() <= end) {
-    if (i++ % every === 0) {
-      const s = document.createElement('span');
-      s.style.left = ((d.getTime() - start) / (end - start)) * 100 + '%';
-      s.textContent = d.toLocaleDateString('en-GB', { month: 'short', timeZone: 'UTC' }) + (d.getUTCMonth() === 0 ? ` ${d.getUTCFullYear()}` : '');
-      box.appendChild(s);
-    }
-    d.setUTCMonth(d.getUTCMonth() + 1);
-  }
-}
-
+/** The timeline is one line: grey base, amber where a world mosaic exists, brighter for the selected site's passes. */
 export function drawTimeline() {
-  const cv = $('#tlBars');
-  const w = cv.clientWidth, h = cv.clientHeight;
-  if (!w) return;
-  const dpr = window.devicePixelRatio || 1;
-  cv.width = w * dpr; cv.height = h * dpr;
-  const ctx = cv.getContext('2d');
-  ctx.scale(dpr, dpr);
   const { start, end } = app.tl;
-  const X = (t) => ((t - start) / (end - start)) * w;
-  const maxM = Math.max(1, ...app.coverage.months.map((m) => m.total));
-  ctx.fillStyle = 'rgba(140,196,255,0.16)';
-  for (const m of app.coverage.months) {
-    const t0 = Date.parse(m.month + '-01T00:00:00Z');
-    const d = new Date(t0); d.setUTCMonth(d.getUTCMonth() + 1);
-    const bh = Math.max(1, (m.total / maxM) * h * 0.5);
-    ctx.fillRect(X(t0) + 1, h - bh, Math.max(1, X(d.getTime()) - X(t0) - 2), bh);
-  }
-  // world-mosaic cycles as a band along the bottom edge
-  for (const c of app.mosaic?.cycles || []) {
-    const a = tOf(c.start) - DAY / 2, b = tOf(c.end) + DAY / 2;
-    ctx.fillStyle = 'rgba(232,176,74,0.55)';
-    ctx.fillRect(X(a) + 1, h - 3, Math.max(2, X(b) - X(a) - 2), 3);
-  }
-  const sel = app.selected;
-  const rows = app.sites.length;
-  app.sites.forEach((s, r) => {
-    const on = sel === s.id;
-    ctx.fillStyle = themeOf(s).color;
-    ctx.globalAlpha = sel ? (on ? 1 : 0.25) : 0.7;
-    const y = 1 + (r / rows) * (h * 0.46);
-    for (const a of s.acquisitions) ctx.fillRect(X(tOf(a.date)) - 1, y, 2, on ? 4 : 2.5);
-  });
-  ctx.globalAlpha = 1;
+  if (!end) return;
+  const P = (t) => (((t - start) / (end - start)) * 100).toFixed(3) + '%';
+  const segs = [];
+  for (const c of app.mosaic?.cycles || []) segs.push([tOf(c.start) - DAY / 2, tOf(c.end) + DAY / 2, 'rgba(232,176,74,0.75)']);
+  const site = app.selected && app.sites.find((s) => s.id === app.selected);
+  if (site) for (const a of site.acquisitions) segs.push([tOf(a.date) - DAY, tOf(a.date) + DAY, '#ffffff']);
+  segs.sort((a, b) => a[0] - b[0]);
+  const stops = ['transparent 0%'];
+  for (const [a, b, col] of segs) stops.push(`transparent ${P(a)}`, `${col} ${P(a)}`, `${col} ${P(b)}`, `transparent ${P(b)}`);
+  stops.push('transparent 100%');
+  $('#tlRange').style.setProperty('--tl-seg', `linear-gradient(90deg, ${stops.join(', ')})`);
 }
 
 export function setDay(day, source) {
@@ -222,7 +186,7 @@ export function setDay(day, source) {
   const cyc = app.globe.cycleAt(date);
   const cycTxt = cyc ? `World mosaic ${fmtShort(tOf(cyc.start))} – ${fmtShort(tOf(cyc.end))}` : (app.mosaic.cycles.length ? 'No world mosaic before ' + fmtShort(tOf(app.mosaic.cycles[0].start)) : '');
   $('#mosaicDates').textContent = cyc ? `${fmtShort(tOf(cyc.start))} – ${fmtShort(tOf(cyc.end))}` : '';
-  $('#tlInfo').textContent = [cycTxt, fresh.length ? `New pass: ${fresh.join(', ')}` : '', m ? `${m.total.toLocaleString()} GCOV frames this month` : ''].filter(Boolean).join('  ·  ');
+  $('#tlRange').title = [cycTxt, fresh.length ? `New pass: ${fresh.join(', ')}` : '', m ? `${m.total.toLocaleString()} GCOV frames this month` : ''].filter(Boolean).join(' · ');
   if (source !== 'page') app.listeners.forEach((fn) => fn(date));
 }
 
@@ -239,7 +203,7 @@ function togglePlay() {
   const max = +$('#tlRange').max;
   if (app.tl.day >= max - 1) setDay(0, 'play');
   app.tl.timer = setInterval(() => {
-    let d = app.tl.day + +$('#tlSpeed').value;
+    let d = app.tl.day + 2;
     if (d > max) d = 0;
     setDay(d, 'play');
   }, 150);

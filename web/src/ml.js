@@ -143,7 +143,7 @@ export async function trainAutoencoder(stack, { epochs = 40, samples = 8000, lat
   const want = new URLSearchParams(location.search).get('tf');
   if (want) await tf.setBackend(want);
   await tf.ready();
-  const { X, D } = temporalSignatures(stack);
+  const { X, D } = stack.X ? stack : temporalSignatures(stack);   // precomputed by the worker, or built here
   const rnd = mulberry32(7);
   const idx = [];
   for (let i = 0; i < N; i++) if (stack.valid[i]) idx.push(i);
@@ -197,5 +197,5 @@ export async function trainAutoencoder(stack, { epochs = 40, samples = 8000, lat
   }
   const params = model.countParams();
   model.dispose();
-  return { err, latent: lat, latentDim: latent, recon, X, D, params, backend: tf.getBackend() };
+  return { err, latent: lat, latentDim: latent, recon, X, D, T: stack.T, valid: stack.valid, params, backend: tf.getBackend() };
 }

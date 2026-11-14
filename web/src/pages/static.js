@@ -177,6 +177,28 @@ export function renderData(sheet) {
           </ul>
         </div>
         <div class="panel">
+          <h3>Challenge resources</h3>
+          <table class="t">
+            <tr><th>Resource</th><th>What it gives you</th></tr>
+            <tr><td><a href="https://search.asf.alaska.edu/" target="_blank" rel="noopener">ASF Vertex</a></td><td>NASA's SAR archive; every NISAR product used here (GCOV, GUNW, GOFF).</td></tr>
+            <tr><td><a href="https://search.earthdata.nasa.gov/search" target="_blank" rel="noopener">NASA Earthdata Search</a></td><td>Search all NASA Earth data (NISAR, optical, GPM rainfall, SMAP soil moisture…).</td></tr>
+            <tr><td><a href="https://nisar-docs.asf.alaska.edu/" target="_blank" rel="noopener">NISAR Data User Guide</a></td><td>Product formats, access and processing for NISAR.</td></tr>
+            <tr><td><a href="https://www.earthdata.nasa.gov/learn/earth-observation-data-basics/sar" target="_blank" rel="noopener">Intro to SAR</a> · <a href="https://www.earthdata.nasa.gov/learn/earth-observation-data-basics/remote-sensing" target="_blank" rel="noopener">Intro to remote sensing</a></td><td>Wavelength, polarization, scattering, resolution.</td></tr>
+            <tr><td><a href="https://appliedsciences.nasa.gov/get-involved/training" target="_blank" rel="noopener">NASA ARSET trainings</a></td><td>Free courses on SAR and NISAR for disasters, agriculture, water and ecosystems.</td></tr>
+            <tr><td><a href="https://nisar.jpl.nasa.gov/applications/arcgis-storymaps/" target="_blank" rel="noopener">NISAR StoryMaps</a></td><td>Floods, wildfires, land subsidence, oil slicks and glacier motion, explained with SAR.</td></tr>
+            <tr><td><a href="https://nisar.jpl.nasa.gov/applications/societal-benefit/" target="_blank" rel="noopener">NISAR applications white papers</a></td><td>Two-page summaries of NISAR's societal applications.</td></tr>
+            <tr><td><a href="https://uavsar.jpl.nasa.gov/education/postcards.html" target="_blank" rel="noopener">UAVSAR postcards</a></td><td>Airborne L-band false-colour examples, the same colour logic as this site's radar images.</td></tr>
+          </table>
+          <h3 style="margin-top:14px">Other SAR missions (partner agencies)</h3>
+          <table class="t">
+            <tr><th>Mission</th><th>Band</th><th>Access</th></tr>
+            <tr><td><a href="https://donnees-data.asc-csa.gc.ca/en/dataset/rcm" target="_blank" rel="noopener">RADARSAT Constellation (CSA)</a></td><td>C</td><td>maritime, ice, disasters, ecosystems; registration</td></tr>
+            <tr><td><a href="https://donnees-data.asc-csa.gc.ca/en/dataset/radarsat1" target="_blank" rel="noopener">RADARSAT-1 archive (CSA)</a></td><td>C</td><td>1995–2013, open licence: decades of history before NISAR</td></tr>
+            <tr><td><a href="https://catalogos.conae.gov.ar/catalogo/catalogoSatSaocomInfo.html" target="_blank" rel="noopener">SAOCOM (CONAE)</a></td><td>L</td><td>same wavelength as NISAR; strong over Argentina, where YieldSAT has fields; ONE CLICK registration</td></tr>
+          </table>
+          <p class="note">These archives need an account, so they are linked here rather than built into the site. <a href="https://github.com/asc-csa/Synthetic_Aperture_Radar_Tutorial" target="_blank" rel="noopener">CSA's SAR Python tutorial</a> shows how to work with them.</p>
+        </div>
+        <div class="panel">
           <h3>Run it yourself</h3>
 <pre>pip install -r pipeline/requirements.txt
 python pipeline/build_data.py     # GCOV, ~10 min

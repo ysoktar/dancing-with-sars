@@ -164,7 +164,22 @@ def gdelt(site):
     return out[:15]
 
 
+def fetch_tle():
+    """Current NISAR orbital elements (NORAD 65053) from CelesTrak, used to place the satellite on the globe."""
+    url = "https://celestrak.org/NORAD/elements/gp.php?CATNR=65053&FORMAT=TLE"
+    with urllib.request.urlopen(urllib.request.Request(url, headers=UA), timeout=60) as r:
+        lines = [l.strip() for l in r.read().decode().splitlines() if l.strip()]
+    l1 = next(l for l in lines if l.startswith("1 ")); l2 = next(l for l in lines if l.startswith("2 "))
+    (OUT / "nisar_tle.json").write_text(json.dumps({"name": "NISAR", "norad": 65053, "line1": l1, "line2": l2,
+                                                    "fetched": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")}))
+    print("TLE:", l1)
+
+
 def main():
+    try:
+        fetch_tle()
+    except Exception as e:  # noqa: BLE001
+        print("   ! TLE refresh failed, keeping the saved one:", e)
     sites = json.loads((ROOT / "pipeline" / "sites.json").read_text())
     end = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     path = OUT / "events.json"

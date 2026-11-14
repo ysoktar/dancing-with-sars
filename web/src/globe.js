@@ -432,52 +432,13 @@ export class GlobeView {
     }
     const R = this._refData;
     if (!R) return null;
-    return ([W, S, E, N]) => {
-      const x0 = Math.floor(((W + 180) / 360) * R.w), x1 = Math.ceil(((E + 180) / 360) * R.w), y0 = Math.floor(((90 - N) / 180) * R.h), y1 = Math.ceil(((90 - S) / 180) * R.h);
-      const st = [0, 1, 2].map(() => ({ s: 0, s2: 0, n: 0 }));
-      for (let y = Math.max(0, y0); y < Math.min(R.h, y1); y++) for (let xx = x0; xx < x1; xx++) {
-        const j = (y * R.w + ((xx % R.w) + R.w) % R.w) * 4;
-        if (R.d[j + 3] < 200) continue;
-        for (let ch = 0; ch < 3; ch++) { const v = R.d[j + ch]; st[ch].s += v; st[ch].s2 += v * v; st[ch].n++; }
-      }
-      if (st[0].n < 30) return null;
-      return st.map((q) => { const m = q.s / q.n; return { m, sd: Math.sqrt(Math.max(1, q.s2 / q.n - m * m)) }; });
+    // sampler: mosaic colour at (lon, lat), or null where the mosaic has no data
+    return (lon, lat) => {
+      const x = Math.floor((((lon + 180) / 360) * R.w % R.w + R.w) % R.w), y = Math.floor(((90 - lat) / 180) * R.h);
+      if (y < 0 || y >= R.h) return null;
+      const j = (y * R.w + x) * 4;
+      return R.d[j + 3] < 200 ? null : [R.d[j], R.d[j + 1], R.d[j + 2]];
     };
-  }
-
-  /** Monthly acquisition density as a small heat-map texture on its own sphere (no per-hexagon geometry on the main thread). */
-  _densityTexture(bins) {
-    if (!bins) { if (this.densMesh) this.densMesh.visible = false; return; }
-    const W = 360, H = 180, c = new OffscreenCanvas(W, H), x = c.getContext('2d');
-    const max = this._maxW || Math.max(1, ...bins.map((b) => b[2]));
-    for (const [lat, lng, w] of bins) {
-      const t = Math.sqrt(w / max);
-      x.fillStyle = densityColor(w, Math.min(0.85, 0.25 + 0.75 * t));
-      x.fillRect(Math.floor(lng + 180 - 1.5), Math.floor(90 - lat - 1.5), 3, 3);
-    }
-    createImageBitmap(c, { imageOrientation: 'flipY' }).then((bmp) => {
-      const tex = new THREE.Texture(bmp); tex.flipY = false; tex.magFilter = THREE.NearestFilter; tex.needsUpdate = true;
-      if (!this.densMesh) {
-        const geo = new THREE.SphereGeometry(this.globe.getGlobeRadius() * 1.004, 128, 64, (90 - 180) * DEG, 2 * Math.PI, 0, Math.PI);
-        this.densMesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ transparent: true, depthWrite: false }));
-        this.densMesh.renderOrder = 5;
-        this.globe.scene().add(this.densMesh);
-      }
-      this.densMesh.material.map?.dispose();
-      this.densMesh.material.map = tex; this.densMesh.material.needsUpdate = true; this.densMesh.visible = true;
-    });
-  }
-
-  /** Night lights: decoded off the main thread, shown as an overlay instead of rebuilding the globe material. */
-  _night(on) {
-    if (on && !this.nightMesh) {
-      const geo = new THREE.SphereGeometry(this.globe.getGlobeRadius() * 1.0028, 128, 64, (90 - 180) * DEG, 2 * Math.PI, 0, Math.PI);
-      this.nightMesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.9, depthWrite: false }));
-      this.nightMesh.renderOrder = 6;
-      this.globe.scene().add(this.nightMesh);
-      this._texture(this.base + 'textures/earth-night.jpg', (tex) => { this.nightMesh.material.map = tex; this.nightMesh.material.needsUpdate = true; });
-    }
-    if (this.nightMesh) this.nightMesh.visible = on;
   }
 
   // ---------------------------------------------------------------- region picking

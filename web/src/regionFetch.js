@@ -280,14 +280,26 @@ export async function loadFrame(g, reference = null) {
   for (let i = 0; i < n; i++) dist[i] = d[i * 4] + d[i * 4 + 1] + d[i * 4 + 2] <= 6 ? 0 : 1e9;
   for (let y = 0; y < h; y++) for (let xx = 0; xx < w; xx++) { const i = y * w + xx; if (!dist[i]) continue; let v = dist[i]; if (xx) v = Math.min(v, dist[i - 1] + 1); if (y) v = Math.min(v, dist[i - w] + 1); if (xx && y) v = Math.min(v, dist[i - w - 1] + 1.414); if (y && xx < w - 1) v = Math.min(v, dist[i - w + 1] + 1.414); dist[i] = v; }
   for (let y = h - 1; y >= 0; y--) for (let xx = w - 1; xx >= 0; xx--) { const i = y * w + xx; if (!dist[i]) continue; let v = dist[i]; if (xx < w - 1) v = Math.min(v, dist[i + 1] + 1); if (y < h - 1) v = Math.min(v, dist[i + w] + 1); if (xx < w - 1 && y < h - 1) v = Math.min(v, dist[i + w + 1] + 1.414); if (y < h - 1 && xx) v = Math.min(v, dist[i + w - 1] + 1.414); dist[i] = v; }
-  const rim = 4, ramp = Math.max(24, Math.round(Math.max(w, h) * 0.04));
+  const rim = Math.max(8, Math.round(Math.max(w, h) * 0.006)), ramp = Math.max(32, Math.round(Math.max(w, h) * 0.05));
   // brightness / colour matched to the mosaic underneath (same consensus the world mosaic uses)
   let gain = null;
   if (reference) {
-    const st = [0, 1, 2].map(() => ({ s: 0, s2: 0, n: 0 }));
-    for (let i = 0; i < n; i += 7) if (dist[i] > ramp) for (let ch = 0; ch < 3; ch++) { const v = d[i * 4 + ch]; st[ch].s += v; st[ch].s2 += v * v; st[ch].n++; }
-    const ref = reference(it.bounds);
-    if (ref && st[0].n > 100) gain = st.map((q, ch) => { const m = q.s / q.n, sd = Math.sqrt(Math.max(1, q.s2 / q.n - m * m)); const g2 = Math.max(0.5, Math.min(1.8, ref[ch].sd / sd)); return [g2, ref[ch].m - g2 * m]; });
+    // paired samples: each frame pixel against the mosaic pixel at the same place, so only the frame's own footprint counts
+    const [W0, S0, E0, N0] = it.bounds;
+    const F = [0, 1, 2].map(() => ({ s: 0, s2: 0 })), R = [0, 1, 2].map(() => ({ s: 0, s2: 0 }));
+    let cnt = 0;
+    for (let y = 0; y < h; y += 6) for (let xx = 0; xx < w; xx += 6) {
+      const i = y * w + xx;
+      if (dist[i] <= ramp) continue;
+      const ref = reference(W0 + ((xx + 0.5) / w) * (E0 - W0), N0 - ((y + 0.5) / h) * (N0 - S0));
+      if (!ref) continue;
+      for (let ch = 0; ch < 3; ch++) { const a = d[i * 4 + ch], b = ref[ch]; F[ch].s += a; F[ch].s2 += a * a; R[ch].s += b; R[ch].s2 += b * b; }
+      cnt++;
+    }
+    if (cnt > 200) gain = [0, 1, 2].map((ch) => {
+      const mf = F[ch].s / cnt, sf = Math.sqrt(Math.max(1, F[ch].s2 / cnt - mf * mf)), mr = R[ch].s / cnt, sr = Math.sqrt(Math.max(1, R[ch].s2 / cnt - mr * mr));
+      const g2 = Math.max(0.5, Math.min(1.8, sr / sf)); return [g2, mr - g2 * mf];
+    });
   }
   for (let i = 0; i < n; i++) {
     const j = i * 4;

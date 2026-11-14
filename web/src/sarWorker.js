@@ -8,6 +8,7 @@ import { readWorldCover } from './worldcover.js';
 import { computeAgri, renderAgri, rviStack, computeLandCover, renderLandCover, WATER_MAX } from './agri.js';
 
 const N = SIZE * SIZE;
+const N2 = () => SIZE * SIZE;
 const stacks = new Map();      // site id -> stack
 const results = new Map();     // site id -> { change, km }
 
@@ -145,6 +146,51 @@ const ops = {
     const st = stacks.get(id), r = results.get(id);
     const img = renderAgri(st, mode, r.agri, { t, seg });
     return { data: img.data.buffer, w: img.width, h: img.height, transfer: [img.data.buffer] };
+  },
+  /**
+   * NISAR time series per crop of a model's crop map. The map (P x P classes over `patch` = [w,s,e,n]) is laid over
+   * the radar grid of region `id`; every radar pixel whose footprint is >= 60 % one crop counts for that crop.
+   * Returns per class: mean RVI and HH per pass, peak, harvest (sharpest RVI drop after the peak) and flooding
+   * (HH darker than the water threshold on a pass, then brighter again) dates as pass indices.
+   */
+  classSeries({ id, patch, cls, P, skip }) {
+    const st = stacks.get(id), box = st.meta?.box;
+    if (!st || !box) return { classes: [] };
+    const [W, S, E, N] = box, cell = (E - W) / SIZE, cellY = (N - S) / SIZE;
+    const x0 = Math.floor((patch[0] - W) / cell), x1 = Math.ceil((patch[2] - W) / cell);
+    const y0 = Math.floor((N - patch[3]) / cellY), y1 = Math.ceil((N - patch[1]) / cellY);
+    const lab = new Uint8Array(cls), T = st.T, groups = new Map();
+    const all = new Float32Array(N2() * T), m = new Uint8Array(N2() * T);
+    for (let gy = Math.max(0, y0); gy < Math.min(SIZE, y1); gy++) for (let gx = Math.max(0, x0); gx < Math.min(SIZE, x1); gx++) {
+      const i = gy * SIZE + gx;
+      if (!st.valid[i]) continue;
+      // footprint of this radar pixel inside the crop map
+      const lw = W + gx * cell, le = lw + cell, ln = N - gy * cellY, ls = ln - cellY;
+      const px0 = Math.max(0, Math.floor(((lw - patch[0]) / (patch[2] - patch[0])) * P)), px1 = Math.min(P, Math.ceil(((le - patch[0]) / (patch[2] - patch[0])) * P));
+      const py0 = Math.max(0, Math.floor(((patch[3] - ln) / (patch[3] - patch[1])) * P)), py1 = Math.min(P, Math.ceil(((patch[3] - ls) / (patch[3] - patch[1])) * P));
+      if (px1 <= px0 || py1 <= py0) continue;
+      const cnt = new Map(); let n = 0;
+      for (let y = py0; y < py1; y++) for (let x = px0; x < px1; x++) { const c = lab[y * P + x]; cnt.set(c, (cnt.get(c) || 0) + 1); n++; }
+      let bc = -1, bn = 0; for (const [c, k] of cnt) if (k > bn) { bn = k; bc = c; }
+      // footprints only partly inside the map count less; require a clear majority
+      const cover = n / (((le - lw) / (patch[2] - patch[0])) * P * ((ln - ls) / (patch[3] - patch[1])) * P);
+      if (bc < 0 || skip.includes(bc) || bn / n < 0.6 || cover < 0.5) continue;
+      const g = groups.get(bc) || { px: 0, rvi: new Float64Array(T), hh: new Float64Array(T) };
+      for (let t = 0; t < T; t++) { const h = st.hhF[t][i], v = st.hvF[t][i]; g.rvi[t] += (4 * v) / (h + v + 1); g.hh[t] += h; }
+      g.px++; groups.set(bc, g);
+    }
+    st.hhF.forEach((x, k) => { all.set(x, k * N2()); m.set(st.valid, k * N2()); });
+    const thr = st._wthr ?? (st._wthr = Math.min(otsu(all, m), WATER_MAX));
+    const out = [];
+    for (const [c, g] of groups) {
+      const rvi = Array.from(g.rvi, (v) => v / g.px), hh = Array.from(g.hh, (v) => v / g.px);
+      const sm = rvi.map((v, t) => (rvi[Math.max(0, t - 1)] + 2 * v + rvi[Math.min(T - 1, t + 1)]) / 4);
+      let tp = 0; for (let t = 1; t < T; t++) if (sm[t] > sm[tp]) tp = t;
+      let th = -1, best = 0; for (let t = tp + 1; t < T; t++) { const d = rvi[t - 1] - rvi[t]; if (d > best) { best = d; th = t; } }
+      let tf = -1; for (let t = 0; t < T - 1 && tf < 0; t++) if (hh[t] < thr) for (let k = t + 1; k < T; k++) if (hh[k] > thr * 1.15) { tf = t; break; }
+      out.push({ cls: c, radarPx: g.px, rvi, hh, peak: tp, harvest: th > 0 && best > 0.05 ? th : -1, flood: tf });
+    }
+    return { classes: out.sort((a, b) => b.radarPx - a.radarPx), radarPxM: Math.round(Math.sqrt(st.pixelKm2) * 1000) };
   },
   landcover({ id }) {
     return computeLandCover(stacks.get(id)).summary;

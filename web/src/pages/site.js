@@ -34,7 +34,7 @@ function getDem() {
   return dems.get(id);
 }
 function drop3d() { if (S.t3d) { S.t3d.dispose(); S.t3d = null; } }
-const S = { site: null, tab: null, t: 0, cmpT: 0, mode: 'rgb', filtered: true, swipe: false, pixel: null, charts: {}, ml: {}, tool: 'change' };
+const S = { site: null, tab: null, t: 0, cmpT: 0, mode: 'mtc', filtered: true, swipe: false, pixel: null, charts: {}, ml: {}, tool: 'change' };
 
 // ------------------------------------------------------------------ helpers
 function destroyCharts() { Object.values(S.charts).forEach((c) => c?.destroy()); S.charts = {}; drop3d(); }
@@ -224,7 +224,7 @@ function overview(el) {
 }
 
 // ================================================================== IMAGES
-const MODES = [['rgb', 'Colour'], ['hh', 'HH'], ['hv', 'HV'], ['ratio', 'HV/HH'], ['rvi', 'RVI'], ['tstd', 'Variability'], ['optical', 'Optical'], ['elev', 'Elevation'], ['3d', '3-D']];
+const MODES = [['mtc', 'Multi-date'], ['rgb', 'Colour'], ['hh', 'HH'], ['hv', 'HV'], ['ratio', 'HV/HH'], ['rvi', 'RVI'], ['tstd', 'Variability'], ['optical', 'Optical'], ['elev', 'Elevation'], ['3d', '3-D']];
 
 function viewerHTML(id = 'v') {
   return `<div class="viewer" id="${id}">
@@ -319,6 +319,7 @@ function bindViewer(v, onPick) {
 }
 
 const MODE_NOTES = {
+  mtc: 'Multi-date composite: red, green and blue are the HH brightness of three passes (an earlier one, one in between, and this one), with the raw NISAR values. Where nothing changed the colours add up to grey or white (towns, bare ground) or stay black (calm water). A colour means the field changed: blue = bright only on the latest pass (a crop that grew late), red = bright only early (harvested or flooded since), green = bright in between. Fields sown on different dates get different colours.',
   rgb: 'Red = HH, green = HV, blue = how much HH exceeds HV. Magenta areas reflect strongly in HH: buildings, flooded vegetation, rough ground. Green areas scatter strongly in HV, typical of vegetation or dry snow. Dark areas are smooth: calm water, wet snow, smooth fields.',
   hh: 'HH (sent horizontal, received horizontal) is sensitive to surface roughness, soil moisture and corner reflections.',
   hv: 'HV (sent horizontal, received vertical) only appears when the wave is scattered many times, as inside a canopy or dry snowpack. It works as a proxy for vegetation volume.',
@@ -1227,7 +1228,9 @@ const GROUP_OF = (() => { const g = new Uint8Array(20); CROP_GROUPS.forEach((G, 
 const GENERIC_COLORS = ['#f48120', '#ffe600', '#9acd32', '#e6c44a', '#5b9c2d', '#c71585', '#006400', '#ff69b4', '#22d3ee', '#a0522d'];
 /** Crop calendar of the model's fields: Sentinel-2 NDVI per predicted crop, with green-up, peak, senescence, harvest. */
 function deepCalendar(r, nameOf, colOf) {
-  if (!r.calendar?.length || !$('#dlOut')) return;
+  if (!$('#dlOut')) return;
+  nisarCalendar(r, nameOf, colOf);
+  if (!r.calendar?.length) return;
   const box = document.createElement('div');
   box.style.marginTop = '14px';
   box.innerHTML = `<h3 class="small muted" style="font-weight:500">Crop calendar of these fields (from the model's crop map and the Sentinel-2 NDVI of each crop)</h3>
@@ -1241,6 +1244,37 @@ function deepCalendar(r, nameOf, colOf) {
     type: 'line',
     data: { datasets: r.calendar.slice(0, 8).map((c) => ({ label: nameOf(c.cls), data: t.map((x, i) => ({ x, y: c.ndvi[i] })), borderColor: colOf(c.cls), backgroundColor: colOf(c.cls), pointRadius: 2, tension: 0.25 })) },
     options: { maintainAspectRatio: false, animation: false, parsing: false, scales: { x: timeAxis(), y: { min: -0.1, max: 1, title: { display: true, text: 'NDVI' } } }, plugins: { legend: { labels: { boxWidth: 10 } } } },
+  });
+}
+
+/**
+ * NISAR per crop: the model's crop map is laid over the region's NISAR series; radar pixels that are mostly one crop
+ * give that crop's L-band vegetation index through the season and the radar dates of peak, harvest and flooding.
+ */
+async function nisarCalendar(r, nameOf, colOf) {
+  if (!S.stack || !S.dl) return;
+  const P = r.size, d = (P * 10) / 2 / 111320, dl = d / Math.cos((S.dl.lat * Math.PI) / 180);
+  const patch = [S.dl.lon - dl, S.dl.lat - d, S.dl.lon + dl, S.dl.lat + d];
+  const skip = r.generic ? [r.classes.length - 1] : [0];
+  const res = await call('classSeries', { id: S.stack.id, patch, cls: r.cls.slice().buffer, P, skip }).catch(() => ({ classes: [] }));
+  if (!$('#dlOut')) return;
+  const box = document.createElement('div');
+  box.style.marginTop = '14px';
+  const A = acqs(), ts = times();
+  if (!res.classes.length) {
+    box.innerHTML = `<p class="note"><b>NISAR per crop:</b> the fields in this 1.28 km window are smaller than NISAR's browse pixels here (~${res.radarPxM || 165} m), so no radar pixel is mostly one crop. Draw a smaller area (finer radar grid, up to the ~165 m of the browse images) or move the window to larger fields.</p>`;
+    $('#dlOut').appendChild(box); return;
+  }
+  box.innerHTML = `<h3 class="small muted" style="font-weight:500">NISAR L-band through the season, per crop of the model's map</h3>
+    <div class="chart sm"><canvas id="dlRad"></canvas></div>
+    <table class="t" style="margin-top:8px"><tr><th>Crop</th><th style="text-align:right">radar px</th><th>Radar peak</th><th>Harvest (radar)</th><th>Flooded (radar)</th></tr>
+    ${res.classes.map((c) => `<tr><td><span class="tag" style="--c:${colOf(c.cls)}"><i></i>${esc(nameOf(c.cls))}</span></td><td class="num">${c.radarPx}</td><td>${A[c.peak]?.date || '–'}</td><td>${c.harvest >= 0 ? A[c.harvest].date : '–'}</td><td>${c.flood >= 0 ? A[c.flood].date : '–'}</td></tr>`).join('')}</table>
+    <p class="note">Radar pixels (~${res.radarPxM} m) that are at least 60 % one crop of the model's map; RVI = 4·HV/(HH+HV) from the NISAR passes of this area. Radar sees through cloud, so these dates do not depend on clear skies; harvest = sharpest RVI drop after the peak, flooded = a pass darker than the water threshold in HH followed by recovery (paddy transplanting).</p>`;
+  $('#dlOut').appendChild(box);
+  chart('dlRad', {
+    type: 'line',
+    data: { datasets: res.classes.slice(0, 8).map((c) => ({ label: nameOf(c.cls), data: ts.map((x, i) => ({ x, y: c.rvi[i] })), borderColor: colOf(c.cls), backgroundColor: colOf(c.cls), borderDash: [5, 3], pointRadius: 2, tension: 0.25 })) },
+    options: { maintainAspectRatio: false, animation: false, parsing: false, scales: { x: timeAxis(), y: { title: { display: true, text: 'NISAR RVI (relative)' } } }, plugins: { legend: { labels: { boxWidth: 10 } } } },
   });
 }
 

@@ -14,9 +14,9 @@
  "swingThreshold": 0.08,
  "sharesPct": {
   "cropland": 29.2,
-  "forest": 43.3,
+  "forest": 42.4,
   "tree crops / mixed": 11.1,
-  "grass / bare / built": 16.4
+  "grass / bare / built": 17.3
  },
  "method": "two-axis rule on the NISAR world mosaics: seasonal swing of RVI vs mean HV",
  "img": "landcover_4k.webp"

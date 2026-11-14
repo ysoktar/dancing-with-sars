@@ -236,6 +236,14 @@ function stretch(a, mask, pLo = 0.02, pHi = 0.98) {
 }
 
 /** Render a frame into ImageData. mode: rgb | hh | hv | ratio | tstd | change | confidence | clusters */
+/** The three dates of the multi-temporal composite for pass t: about a quarter of the series apart, ending at t. */
+export function mtcDates(T, t) {
+  const step = Math.max(1, Math.round((T - 1) / 4));
+  let c = t, b = c - step, a = b - step;
+  if (a < 0) { a = 0; b = Math.min(T - 1, step); c = Math.min(T - 1, 2 * step); }
+  return [a, b, c];
+}
+
 export function render(stack, t, mode, extra = {}) {
   const img = new ImageData(SIZE, SIZE);
   const d = img.data;
@@ -245,7 +253,14 @@ export function render(stack, t, mode, extra = {}) {
   const valid = stack.valid;
   const put = (i, r, g, b) => { const j = i * 4; d[j] = r; d[j + 1] = g; d[j + 2] = b; d[j + 3] = valid[i] ? 255 : 0; };
 
-  if (mode === 'rgb') {
+  if (mode === 'mtc') {
+    // multi-temporal composite: R, G, B = HH on three dates (earlier, middle, this one), raw browse values.
+    // Same brightness on all three dates -> grey/white (towns) or black (water); a colour means the surface changed:
+    // blue = bright only now (crop grown late), red = bright only early (harvested), green = bright in between.
+    const [a, b, c] = mtcDates(stack.T, t);
+    const HA = (filt ? stack.hhF : stack.hh)[a], HB = (filt ? stack.hhF : stack.hh)[b], HC = (filt ? stack.hhF : stack.hh)[c];
+    for (let i = 0; i < N; i++) put(i, HA[i], HB[i], HC[i]);
+  } else if (mode === 'rgb') {
     // Pauli-like dual-pol composite: R = HH, G = HV, B = HH/HV contrast
     const [h0, h1] = stack._hhRange || (stack._hhRange = stretch(stack.hh[0], valid));
     const [v0, v1] = stack._hvRange || (stack._hvRange = stretch(stack.hv[0], valid));

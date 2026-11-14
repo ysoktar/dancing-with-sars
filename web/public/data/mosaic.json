@@ -19,7 +19,12 @@
    "betaFrames": 3157,
    "img8k": "mosaic/20251012_20251123_8k.webp",
    "img4k": "mosaic/20251012_20251123_4k.webp",
-   "generated": "2026-11-14T16:10:22Z"
+   "generated": "2026-11-14T16:10:22Z",
+   "gapFilledPct": 82.7,
+   "polarFill": {
+    "north": 77.72,
+    "south": -88.04
+   }
   },
   {
    "id": "20251123_20251229",
@@ -40,7 +45,12 @@
    "betaFrames": 4566,
    "img8k": "mosaic/20251123_20251229_8k.webp",
    "img4k": "mosaic/20251123_20251229_4k.webp",
-   "generated": "2026-11-14T16:12:07Z"
+   "generated": "2026-11-14T16:12:07Z",
+   "gapFilledPct": 81.2,
+   "polarFill": {
+    "north": 77.72,
+    "south": -88.04
+   }
   },
   {
    "id": "20251229_20260122",
@@ -61,7 +71,12 @@
    "betaFrames": 2959,
    "img8k": "mosaic/20251229_20260122_8k.webp",
    "img4k": "mosaic/20251229_20260122_4k.webp",
-   "generated": "2026-11-14T16:13:49Z"
+   "generated": "2026-11-14T16:13:49Z",
+   "gapFilledPct": 82.1,
+   "polarFill": {
+    "north": 77.72,
+    "south": -88.04
+   }
   },
   {
    "id": "20260122_20260615",
@@ -82,7 +97,12 @@
    "betaFrames": 0,
    "img8k": "mosaic/20260122_20260615_8k.webp",
    "img4k": "mosaic/20260122_20260615_4k.webp",
-   "generated": "2026-11-14T16:15:23Z"
+   "generated": "2026-11-14T16:15:23Z",
+   "gapFilledPct": 95.4,
+   "polarFill": {
+    "north": 77.72,
+    "south": -88.04
+   }
   },
   {
    "id": "20260615_20260627",
@@ -103,7 +123,12 @@
    "betaFrames": 0,
    "img8k": "mosaic/20260615_20260627_8k.webp",
    "img4k": "mosaic/20260615_20260627_4k.webp",
-   "generated": "2026-11-14T16:19:05Z"
+   "generated": "2026-11-14T16:19:05Z",
+   "gapFilledPct": 2.3,
+   "polarFill": {
+    "north": 77.72,
+    "south": -88.04
+   }
   },
   {
    "id": "20260627_20260709",
@@ -124,7 +149,12 @@
    "betaFrames": 0,
    "img8k": "mosaic/20260627_20260709_8k.webp",
    "img4k": "mosaic/20260627_20260709_4k.webp",
-   "generated": "2026-11-14T16:23:22Z"
+   "generated": "2026-11-14T16:23:22Z",
+   "gapFilledPct": 0.7,
+   "polarFill": {
+    "north": 77.72,
+    "south": -88.04
+   }
   },
   {
    "id": "20260709_20260721",
@@ -145,7 +175,12 @@
    "betaFrames": 0,
    "img8k": "mosaic/20260709_20260721_8k.webp",
    "img4k": "mosaic/20260709_20260721_4k.webp",
-   "generated": "2026-11-14T16:27:37Z"
+   "generated": "2026-11-14T16:27:37Z",
+   "gapFilledPct": 1.8,
+   "polarFill": {
+    "north": 77.72,
+    "south": -88.04
+   }
   },
   {
    "id": "20260721_20260814",
@@ -166,7 +201,12 @@
    "betaFrames": 0,
    "img8k": "mosaic/20260721_20260814_8k.webp",
    "img4k": "mosaic/20260721_20260814_4k.webp",
-   "generated": "2026-11-14T16:31:38Z"
+   "generated": "2026-11-14T16:31:38Z",
+   "gapFilledPct": 2.3,
+   "polarFill": {
+    "north": 77.72,
+    "south": -88.04
+   }
   },
   {
    "id": "20260814_20260826",
@@ -187,7 +227,12 @@
    "betaFrames": 0,
    "img8k": "mosaic/20260814_20260826_8k.webp",
    "img4k": "mosaic/20260814_20260826_4k.webp",
-   "generated": "2026-11-14T16:35:45Z"
+   "generated": "2026-11-14T16:35:45Z",
+   "gapFilledPct": 1.8,
+   "polarFill": {
+    "north": 77.72,
+    "south": -88.04
+   }
   },
   {
    "id": "20260826_20260907",
@@ -208,7 +253,12 @@
    "betaFrames": 0,
    "img8k": "mosaic/20260826_20260907_8k.webp",
    "img4k": "mosaic/20260826_20260907_4k.webp",
-   "generated": "2026-11-14T16:39:38Z"
+   "generated": "2026-11-14T16:39:38Z",
+   "gapFilledPct": 2.0,
+   "polarFill": {
+    "north": 77.72,
+    "south": -88.04
+   }
   },
   {
    "id": "20260907_20260919",
@@ -229,7 +279,12 @@
    "betaFrames": 0,
    "img8k": "mosaic/20260907_20260919_8k.webp",
    "img4k": "mosaic/20260907_20260919_4k.webp",
-   "generated": "2026-11-14T16:43:44Z"
+   "generated": "2026-11-14T16:43:44Z",
+   "gapFilledPct": 1.9,
+   "polarFill": {
+    "north": 77.72,
+    "south": -88.04
+   }
   },
   {
    "id": "20260919_20261001",
@@ -250,7 +305,12 @@
    "betaFrames": 0,
    "img8k": "mosaic/20260919_20261001_8k.webp",
    "img4k": "mosaic/20260919_20261001_4k.webp",
-   "generated": "2026-11-14T16:47:54Z"
+   "generated": "2026-11-14T16:47:54Z",
+   "gapFilledPct": 1.0,
+   "polarFill": {
+    "north": 77.72,
+    "south": -88.04
+   }
   },
   {
    "id": "20261001_20261013",
@@ -271,7 +331,12 @@
    "betaFrames": 0,
    "img8k": "mosaic/20261001_20261013_8k.webp",
    "img4k": "mosaic/20261001_20261013_4k.webp",
-   "generated": "2026-11-14T16:52:00Z"
+   "generated": "2026-11-14T16:52:00Z",
+   "gapFilledPct": 1.0,
+   "polarFill": {
+    "north": 77.72,
+    "south": -88.04
+   }
   },
   {
    "id": "20261013_20261025",
@@ -2107,29 +2172,34 @@
       35
      ]
     ]
+   },
+   "gapFilledPct": 1.1,
+   "polarFill": {
+    "north": 77.72,
+    "south": -88.04
    }
   },
   {
    "id": "20261025_20261118",
    "start": "2026-10-25",
    "end": "2026-11-17",
-   "granules": 11394,
+   "granules": 11625,
    "failed": 0,
    "modes": {
-    "DHDH": 6073,
-    "NASV": 3242,
-    "SHSH": 933,
+    "DHDH": 6236,
+    "NASV": 3274,
+    "SHSH": 967,
     "NADV": 320,
     "SVSH": 296,
     "SHNA": 273
    },
-   "coverage": 0.4168,
+   "coverage": 0.422,
    "resolutionDeg": 0.025,
    "betaFrames": 0,
    "img8k": "mosaic/20261025_20261118_8k.webp",
    "img4k": "mosaic/20261025_20261118_4k.webp",
-   "generated": "2026-11-14T15:42:46Z",
-   "gapFilledPct": 7.0,
+   "generated": "2026-11-14T17:20:58Z",
+   "gapFilledPct": 5.9,
    "polarFill": {
     "north": 77.72,
     "south": -88.04

@@ -5,6 +5,7 @@ import { themeOf, THEMES } from './sites.js';
 import { $, $$, DAY, tOf, fmtDate, fmtShort, esc, ICON } from './util.js';
 import { openSitePage, closeSitePage, hrefOf } from './pages/site.js';
 import { call } from './sarClient.js';
+import { updateLegend } from './legend.js';
 import { renderMethod, renderData } from './pages/static.js';
 
 const BASE = import.meta.env.BASE_URL;
@@ -48,8 +49,10 @@ async function boot() {
   app.globe.setEvents(evs);
 
   buildRegionPanel();
+  app.globe.onMtc = () => updateLegend(app.globe, $('#mapLegend'));
   buildTimeline();
   bindLayers();
+  updateLegend(app.globe, $('#mapLegend'));
   window.addEventListener('hashchange', route);
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && document.body.classList.contains('sheet-open')) go('#/'); });
   $('#scrim').addEventListener('click', () => go('#/'));
@@ -317,6 +320,7 @@ export function setDay(day, source) {
   $('#tlDate').title = act.length ? `Imaging radars in orbit: ${act.map((m) => `${m.name} (${m.band})`).join(', ')}` : 'No civilian imaging radar in orbit';
   const m = app.coverage.months.find((x) => x.month === date.toISOString().slice(0, 7));
   app.globe.update(date);
+  if (app.globe.layers) { clearTimeout(app._lgT); app._lgT = setTimeout(() => updateLegend(app.globe, $('#mapLegend')), 120); }
   const cyc = app.globe.cycleAt(date);
   const cycTxt = cyc ? `World mosaic ${fmtShort(tOf(cyc.start))} – ${fmtShort(tOf(cyc.end))}` : '';
   $('#mosaicDates').textContent = cyc ? `${fmtShort(tOf(cyc.start))} – ${fmtShort(tOf(cyc.end))}` : '';
@@ -355,7 +359,7 @@ function bindLayers() {
   });
   $$('#layersMenu input').forEach((inp) => inp.addEventListener('change', () => {
     app.globe.setLayer(inp.dataset.layer, inp.checked);
-    if (inp.dataset.layer === 'landcover') $('#lcLegend').classList.toggle('on', inp.checked);
+    setTimeout(() => updateLegend(app.globe, $('#mapLegend')), 50);
   }));
 }
 

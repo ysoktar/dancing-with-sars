@@ -18,7 +18,7 @@ export class GlobeView {
   constructor(el, { base, onSiteClick }) {
     this.base = base;
     this.onSiteClick = onSiteClick;
-    this.layers = { mosaic: true, frames: true, density: false, footprints: false, satellite: true, night: false, events: false };
+    this.layers = { mosaic: true, mtc: true, frames: true, density: false, footprints: false, satellite: true, night: false, events: false };
     this.events = [];
     this.texCache = new Map();
     this.frameMeshes = new Map();
@@ -215,6 +215,7 @@ export class GlobeView {
     if (!this.mosaic) return;
     const c = this.cycleAt(date);
     this.currentCycle = c;
+    this._showMtc(c);
     if (!c || !this.layers.mosaic) { this.mosaic.visible = false; return; }
     // small texture while the date is moving, the 8k one once it settles
     const want = (big) => this.base + 'data/' + (big ? c.img8k : c.img4k);
@@ -246,6 +247,7 @@ export class GlobeView {
     if (name === 'mosaic' && this.mosaic) this._showMosaic(this.date || new Date());
     if (name === 'satellite') this.satGroup.visible = on;
     if (name === 'landcover') this.setLandcover(this.base + 'data/landcover_4k.webp', on);
+    if (name === 'mtc') this._showMtc(this.currentCycle);
     this.update(this.date, true);
   }
 
@@ -382,7 +384,7 @@ export class GlobeView {
    */
   async _updateNative() {
     const pov = this.globe.pointOfView(), c = this.currentCycle;
-    const on = c && this.layers.mosaic && this.layers.native !== false && pov.altitude < 0.5 && !this.paused;
+    const on = c && this.layers.mosaic && !this.layers.mtc && this.layers.native !== false && pov.altitude < 0.5 && !this.paused;
     if (!on) { for (const m of this.native.values()) m.visible = false; this._nativeKey = null; return; }
     for (const m of this.native.values()) m.visible = m.userData.cycle === c.id;
     const span = Math.max(0.6, pov.altitude * 18);
@@ -475,6 +477,64 @@ export class GlobeView {
     if (this.nightMesh) this.nightMesh.visible = on;
   }
 
+  /**
+   * Multi-date composite of three world-mosaic cycles: R, G, B = HH of the cycle two steps before, one step before
+   * (about a month apart) and the timeline's cycle, with the raw browse values. Unchanged surfaces stay grey/white or
+   * black; colours show where and when fields changed.
+   */
+  mtcCycles(c) {
+    const full = (this.cycles || []).filter((x) => (Date.parse(x.end) - Date.parse(x.start)) / 86400000 <= 26);
+    let i = full.findIndex((x) => x.id === c?.id);
+    if (i < 0) i = full.length - 1;
+    if (i < 2) return null;
+    const step = i >= 4 ? 2 : 1;
+    return [full[i - 2 * step], full[i - step], full[i]];
+  }
+
+  _showMtc(c) {
+    const on = this.layers.mtc && c;
+    if (!on) { if (this.mtcMesh) this.mtcMesh.visible = false; return; }
+    const cyc = this.mtcCycles(c);
+    if (!cyc) { if (this.mtcMesh) this.mtcMesh.visible = false; this.mtcInfo = null; this.onMtc?.(null); return; }
+    const key = cyc.map((x) => x.id).join('|');
+    if (!this.mtcMesh) {
+      const r = this.globe.getGlobeRadius() * 1.0014;
+      const geo = new THREE.SphereGeometry(r, 256, 128, (90 - 180) * DEG, 2 * Math.PI, 0, Math.PI);
+      const mat = new THREE.ShaderMaterial({
+        transparent: true, depthWrite: false,
+        uniforms: { tA: { value: null }, tB: { value: null }, tC: { value: null } },
+        vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+        // raw HH (red channel of the browse composite) of each cycle; colour-space: the textures are sRGB-decoded by three,
+        // so encode back to keep the stored byte values on screen
+        fragmentShader: `uniform sampler2D tA, tB, tC; varying vec2 vUv;
+          vec3 toSRGB(vec3 c){ return mix(c * 12.92, 1.055 * pow(c, vec3(1.0/2.4)) - 0.055, step(0.0031308, c)); }
+          void main(){ vec4 a = texture2D(tA, vUv), b = texture2D(tB, vUv), c = texture2D(tC, vUv);
+            float al = min(a.a, min(b.a, c.a)); if (al < 0.5) discard;
+            // fixed display mapping (same everywhere, data unchanged): stretch 90..240 of the 8-bit browse values, gamma 1.4,
+            // then differences between the three dates x2 around their mean, so changes show as colour
+            vec3 v = pow(clamp((toSRGB(vec3(a.r, b.r, c.r)) * 255.0 - 90.0) / 150.0, 0.0, 1.0), vec3(1.4));
+            float m = (v.r + v.g + v.b) / 3.0;
+            v = clamp(m + 2.0 * (v - m), 0.0, 1.0);
+            gl_FragColor = vec4(v, 1.0); }`,
+      });
+      this.mtcMesh = new THREE.Mesh(geo, mat);
+      this.mtcMesh.renderOrder = 2;
+      this.globe.scene().add(this.mtcMesh);
+      this.mtcTex = new Map();
+    }
+    this.mtcMesh.visible = true;
+    if (this.mtcKey === key) return;
+    this.mtcKey = key;
+    this.mtcInfo = cyc;
+    this.onMtc?.(cyc);
+    ['tA', 'tB', 'tC'].forEach((u, k) => {
+      const url = this.base + 'data/' + (this.canBig ? cyc[k].img8k : cyc[k].img4k);
+      const apply = (tex) => { if (this.mtcKey !== key) return; this.mtcMesh.material.uniforms[u].value = tex; };
+      if (this.mtcTex.has(url)) apply(this.mtcTex.get(url));
+      else this._texture(url, (tex) => { this.mtcTex.set(url, tex); if (this.mtcTex.size > 9) { const [k0, t0] = this.mtcTex.entries().next().value; t0.dispose(); this.mtcTex.delete(k0); } apply(tex); });
+    });
+  }
+
   // ---------------------------------------------------------------- region picking
   /**
    * Draw mode: press and drag on the globe to draw a rectangle (lat/lon box). The globe does not rotate
@@ -514,6 +574,7 @@ export class GlobeView {
 
   /** Outline of the selected analysis window. */
   showBox(box) {
+    this.boxShown = !!box;
     if (!box) { this.globe.pathsData([]); return; }
     const [w, s, e, n] = box, ring = [];
     const k = 12;
@@ -546,7 +607,7 @@ export class GlobeView {
   _updateTiles() {
     const c = this.currentCycle, T = c && c.tiles;
     const pov = this.globe.pointOfView();
-    if (!T || !this.layers.mosaic || this.paused || pov.altitude > 1.1) {
+    if (!T || !this.layers.mosaic || this.layers.mtc || this.paused || pov.altitude > 1.1) {
       for (const m of this.tiles.values()) m.visible = false;
       return;
     }

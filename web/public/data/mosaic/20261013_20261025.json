@@ -1832,5 +1832,10 @@
     35
    ]
   ]
+ },
+ "gapFilledPct": 1.1,
+ "polarFill": {
+  "north": 77.72,
+  "south": -88.04
  }
 }

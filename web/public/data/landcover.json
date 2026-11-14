@@ -1,0 +1,22 @@
+{
+ "cycles": [
+  "20260615_20260627",
+  "20260627_20260709",
+  "20260709_20260721",
+  "20260814_20260826",
+  "20260826_20260907",
+  "20260907_20260919",
+  "20261001_20261013",
+  "20261013_20261025"
+ ],
+ "hvThreshold": 140.0,
+ "swingThreshold": 0.122,
+ "sharesPct": {
+  "cropland": 31.6,
+  "forest": 39.4,
+  "tree crops / mixed": 10.0,
+  "grass / bare / built": 19.0
+ },
+ "method": "two-axis rule on the NISAR world mosaics: seasonal swing of RVI vs mean HV",
+ "img": "landcover_4k.webp"
+}

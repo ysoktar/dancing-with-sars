@@ -261,7 +261,13 @@ def blend(patches, Hc, Wc, row0, land, feather_px, gains=None):
             ph, pw = rgba.shape[:2]
             rows, keep, cols = _ix(y0, x0, ph, pw, Hc, Wc, row0)
             if not len(rows): continue
-            w = _weight(rgba[..., 3], g["mode"], feather_px)[keep]
+            alpha = rgba[..., 3]
+            if feather_px >= 40:
+                # fine tiles: drop the dim 1-pixel rim of every swath (antenna-pattern edge), which otherwise
+                # shows as thin dark lines wherever only one frame covers the ground
+                from scipy import ndimage
+                alpha = ndimage.binary_erosion(alpha > 0, iterations=1).astype(np.uint8) * 255
+            w = _weight(alpha, g["mode"], feather_px)[keep]
             px = rgba[keep, :, :3].astype(np.float32)
             gn = gain_of(g)
             if gn is not None:
@@ -339,6 +345,59 @@ def keep_mask():
     return m
 
 
+def fill_polar_caps(im: np.ndarray) -> dict:
+    """NISAR is left-looking on a 98.4° orbit: nothing beyond ~78°N or ~87.5°S is ever imaged.
+    Fill each polar cap so the globe is closed: along every meridian, the mean of the first
+    ~1° of observed data is carried poleward and blended towards the cap-wide mean at the pole
+    (equirectangular columns converge there, so a per-column value would streak).
+    Returns the latitude where the fill starts on each side (recorded in the cycle json)."""
+    Hh, Ww = im.shape[:2]
+    lat = 90 - (np.arange(Hh) + 0.5) * 180 / Hh
+    band = max(2, int(round(Hh / 180)))           # ~1° of rows
+    out = {}
+    for side in ("north", "south"):
+        rows = np.arange(Hh) if side == "north" else np.arange(Hh)[::-1]
+        a = im[..., 3] > 0
+        cov = a.mean(1)
+        # the orbit limit: most poleward row with any data at all (open ocean has no frames,
+        # so coverage there is sparse; only the cap beyond the last imaged latitude is filled)
+        idx = next((int(r) for r in rows if cov[r] >= 0.002), None)
+        if idx is None or abs(lat[idx]) < 60:
+            continue
+        step = 1 if side == "north" else -1
+        rr = np.arange(idx, idx + step * 3 * band, step)    # edge values from the last ~3° of data
+        edge = np.zeros((Ww, 3), np.float32); n = np.zeros(Ww, np.float32)
+        for r in rr:
+            m = a[r]
+            edge[m] += im[r, m, :3]; n += m
+        ok = n > 0
+        if not ok.any():
+            continue
+        edge[ok] /= n[ok, None]
+        # columns without data at the edge: interpolate around the circle
+        xs = np.arange(Ww)
+        for k in range(3):
+            edge[~ok, k] = np.interp(xs[~ok], xs[ok], edge[ok, k], period=Ww)
+        # smooth along the circle (~10°) so the cap has no radial streaks
+        kern = max(3, Ww // 36)
+        pad = np.concatenate([edge[-kern:], edge, edge[:kern]])
+        cs = np.cumsum(np.pad(pad, ((1, 0), (0, 0))), 0)
+        edge = (cs[2 * kern + 1:] - cs[:-2 * kern - 1])[:Ww] / (2 * kern + 1)
+        cap = edge.mean(0)
+        pole_rows = np.arange(0, idx) if side == "north" else np.arange(idx + 1, Hh)
+        span = abs(90 - abs(lat[idx]))
+        for r in pole_rows:
+            hole = im[r, :, 3] == 0
+            if not hole.any():
+                continue
+            w = np.clip((90 - abs(lat[r])) / span, 0, 1) ** 0.7     # 1 at the data edge, 0 at the pole
+            val = edge * w + cap * (1 - w)
+            im[r, hole, :3] = np.clip(val[hole], 0, 255).astype(np.uint8)
+            im[r, hole, 3] = 255
+        out[side] = round(float(lat[idx]), 2)
+    return out
+
+
 def fill_gaps():
     """Fill pixels a period has no data for from the nearest period (in time) that has data there.
     Runs over every cycle listed in mosaic.json, at both 8k and 4k. Records the filled share per cycle."""
@@ -360,10 +419,12 @@ def fill_gaps():
                     im[take] = imgs[o["id"]][take]
                     hole &= ~take
                     filled += int(take.sum())
+            polar = fill_polar_caps(im)
             Image.fromarray(im, "RGBA").save(out / f"{c['id']}_{size}.webp", quality=80, method=6)
             if size == "8k":
                 e = json.loads((out / f"{c['id']}.json").read_text())
                 e["gapFilledPct"] = round(filled / max(1, total + filled) * 100, 1)
+                e["polarFill"] = polar
                 (out / f"{c['id']}.json").write_text(json.dumps(e, indent=1))
                 print(f"   {c['id']}: filled {e['gapFilledPct']} % of its pixels from neighbouring periods")
     cycles = sorted((json.loads(f.read_text()) for f in out.glob("*.json")), key=lambda c: c["start"])

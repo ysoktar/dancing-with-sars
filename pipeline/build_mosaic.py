@@ -8,6 +8,9 @@ georeferenced from the granule footprint, shrunk to the mosaic resolution and
 painted into one global equirectangular canvas. The full-size PNG is discarded
 right away, so disk use stays small even though ~60 GB is streamed.
 
+Open ocean and sea ice are masked with Natural Earth land + ice-shelf polygons.
+Frames that cross the antimeridian are wrapped around.
+
 Painting order (later wins): other polarization modes first, then dual-pol
 HH/HV ("DH..."), each in acquisition-time order, so the mosaic shows the most
 recent dual-pol view wherever one exists.
@@ -82,8 +85,10 @@ def list_granules(t0: str, t1: str):
         except (KeyError, IndexError, TypeError, ValueError):
             continue
         lats, lons = nums[0::2], nums[1::2]
-        if not png or max(lons) - min(lons) > 180:
-            continue  # no browse, or crosses the antimeridian
+        if not png:
+            continue
+        if max(lons) - min(lons) > 180:   # crosses the antimeridian: unwrap to one side (> 180°)
+            lons = [x + 360 if x < 0 else x for x in lons]
         parts = e["title"].split("_")
         mode = parts[9] if len(parts) > 9 else ""
         gs.append({"id": e["title"], "png": png, "lats": lats, "lons": lons, "time": e["time_start"],
@@ -141,6 +146,48 @@ def shrink(g):
     return g, round(x0), round(y0), rgba
 
 
+def paint(canvas, rgba, x0, y0):
+    """Paste a patch, wrapping around the antimeridian (x is periodic)."""
+    ph, pw = rgba.shape[:2]
+    ys0, ys1 = max(0, y0), min(H, y0 + ph)
+    if ys1 <= ys0:
+        return
+    for shift in (0, -W, W):
+        xa = x0 + shift
+        xs0, xs1 = max(0, xa), min(W, xa + pw)
+        if xs1 <= xs0:
+            continue
+        sub = rgba[ys0 - y0:ys1 - y0, xs0 - xa:xs1 - xa]
+        m = sub[..., 3] > 0
+        canvas[ys0:ys1, xs0:xs1][m] = sub[m]
+
+
+NE = 'https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/'
+
+
+def land_mask(dilate_px=3):
+    """Land + Antarctic ice shelves (Natural Earth 1:50m) rasterised on the mosaic grid, cached."""
+    from PIL import ImageDraw, ImageFilter
+    path = ROOT / 'pipeline' / '.cache' / f'landmask_{RES}_{dilate_px}.png'
+    if path.exists():
+        return np.asarray(Image.open(path)) > 0
+    img = Image.new('L', (W, H), 0)
+    draw = ImageDraw.Draw(img)
+    for name in ('ne_50m_land.geojson', 'ne_50m_antarctic_ice_shelves_polys.geojson'):
+        gj = json.loads(get(NE + name)[0])
+        for f in gj['features']:
+            g = f['geometry']
+            polys = g['coordinates'] if g['type'] == 'MultiPolygon' else [g['coordinates']]
+            for poly in polys:
+                for k, ring in enumerate(poly):
+                    pts = [((lo + 180) / RES, (90 - la) / RES) for lo, la in ring]
+                    draw.polygon(pts, fill=255 if k == 0 else 0)
+    if dilate_px:
+        img = img.filter(ImageFilter.MaxFilter(2 * dilate_px + 1))
+    img.save(path)
+    return np.asarray(img) > 0
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--start", default="2026-10-01")
@@ -180,30 +227,14 @@ def main():
                 if rgba is None:
                     fails += 1
                     continue
-                ph, pw = rgba.shape[:2]
-                ys0, xs0 = max(0, y0), max(0, x0)
-                ys1, xs1 = min(H, y0 + ph), min(W, x0 + pw)
-                if ys1 <= ys0 or xs1 <= xs0:
-                    continue
-                sub = rgba[ys0 - y0:ys1 - y0, xs0 - x0:xs1 - x0]
-                m = sub[..., 3] > 0
-                canvas[ys0:ys1, xs0:xs1][m] = sub[m]
+                paint(canvas, rgba, x0, y0)
                 done += 1
                 if done % 250 == 0:
                     el = time.time() - t0
                     print(f"   {done}/{len(gs)} painted · {el / 60:.1f} min · eta {el / done * (len(gs) - done) / 60:.0f} min", flush=True)
 
-    # open ocean is mostly noise in L-band browse images: keep land (+~50 km coast) and polar seas (sea ice)
-    wm = ROOT / "web" / "public" / "textures" / "earth-water.png"
-    if wm.exists():
-        water = np.asarray(Image.open(wm).convert("L")) > 128
-        landm = ~water
-        for _ in range(2):  # dilate the coarse land mask
-            landm = landm | np.roll(landm, 1, 0) | np.roll(landm, -1, 0) | np.roll(landm, 1, 1) | np.roll(landm, -1, 1)
-        keep = np.asarray(Image.fromarray(landm.astype(np.uint8) * 255).resize((W, H), Image.NEAREST)) > 0
-        lat = 90 - (np.arange(H) + 0.5) * RES
-        keep |= (np.abs(lat) > 60)[:, None]
-        canvas[..., 3] = np.where(keep, canvas[..., 3], 0)
+    # open ocean and sea ice are mostly noise in L-band browse images: keep land, ice sheets and ice shelves (+~8 km of coast)
+    np.multiply(canvas[..., 3], land_mask(), out=canvas[..., 3], casting='unsafe')   # in place: no extra 400 MB copy
     land = canvas[..., 3] > 0
     print(f"   painted {done}, failed {fails}, covered {land.mean() * 100:.1f}% of the globe grid")
     out = OUT / "mosaic"

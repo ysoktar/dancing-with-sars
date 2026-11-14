@@ -23,8 +23,9 @@ export class GlobeView {
     this.loader = new THREE.TextureLoader();
     this.selected = null;
 
-    this.globe = new Globe(el, { rendererConfig: { antialias: true, alpha: true } })
+    this.globe = new Globe(el, { rendererConfig: { antialias: true, alpha: true, powerPreference: 'high-performance' } })
       .backgroundColor('rgba(0,0,0,0)')
+      .globeCurvatureResolution(2)          // denser globe mesh: less pinching near the poles
       .globeImageUrl(base + 'textures/earth-blue-marble.jpg')
       .bumpImageUrl(base + 'textures/earth-topology.png')
       .showAtmosphere(true)
@@ -49,14 +50,6 @@ export class GlobeView {
       .polygonStrokeColor(() => 'rgba(125,211,252,0.55)')
       .polygonAltitude(0.004)
       .polygonsTransitionDuration(0)
-      // satellite + orbit trail
-      .objectLat('lat').objectLng('lng').objectAltitude('alt')
-      .objectThreeObject(() => this._satelliteModel())
-      .objectLabel(() => '<div class="tip"><b>NISAR</b><br>NASA–ISRO SAR · 747 km sun-synchronous orbit<br>L-band 24 cm + S-band 10 cm · 12-day repeat</div>')
-      .pathPoints('pts').pathPointLat((p) => p[0]).pathPointLng((p) => p[1]).pathPointAlt((p) => p[2])
-      .pathColor(() => ['rgba(232,176,74,0)', 'rgba(232,176,74,0.85)'])
-      .pathStroke(1.2)
-      .pathTransitionDuration(0)
       // natural events (NASA EONET)
       .pointLat('lat').pointLng('lon').pointAltitude(0.006).pointRadius(0.35)
       .pointColor((d) => d.color)
@@ -69,6 +62,13 @@ export class GlobeView {
     const mat = this.globe.globeMaterial();
     mat.bumpScale = 6;
     mat.shininess = 8;
+    const renderer = this.globe.renderer();
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));   // retina at 1.5x: ~45 % fewer pixels than 2x
+    this.maxAniso = renderer.capabilities.getMaxAnisotropy();
+    // sharp textures at grazing angles and near the poles (less smearing / radial streaks)
+    this.globe.onGlobeReady(() => {
+      for (const m of [mat.map, mat.bumpMap]) if (m) { m.anisotropy = this.maxAniso; m.needsUpdate = true; }
+    });
     this.globe.controls().autoRotate = true;
     this.globe.controls().autoRotateSpeed = 0.25;
     this.globe.controls().enableDamping = true;
@@ -83,7 +83,20 @@ export class GlobeView {
 
     el.addEventListener('pointerdown', () => { this.globe.controls().autoRotate = false; });
     this.satT0 = performance.now();
+    this._buildSatellite();
     this._animate();
+    document.addEventListener('visibilitychange', () => (document.hidden ? this.pause() : this.resume()));
+  }
+
+  /** Stop rendering while the globe is hidden (page in front, tab in background). */
+  pause() {
+    if (this.paused) return;
+    this.paused = true; this.globe.pauseAnimation();
+  }
+
+  resume() {
+    if (!this.paused || document.hidden || document.body.classList.contains('sheet-open')) return;
+    this.paused = false; this.globe.resumeAnimation();
   }
 
   setSites(sites) {
@@ -106,7 +119,7 @@ export class GlobeView {
     this.canBig = window.innerWidth > 800 && gl.getParameter(gl.MAX_TEXTURE_SIZE) >= 8192;
     this.mosTex = new Map(); // url -> texture (LRU)
     const r = this.globe.getGlobeRadius() * 1.0012;
-    const geo = new THREE.SphereGeometry(r, 180, 90, (90 - 180) * DEG, 2 * Math.PI, 0, Math.PI);
+    const geo = new THREE.SphereGeometry(r, 256, 128, (90 - 180) * DEG, 2 * Math.PI, 0, Math.PI);
     this.mosaic = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ transparent: true, depthWrite: false, opacity: 0.92 }));
     this.mosaic.renderOrder = 1;
     this.mosaic.visible = false;
@@ -130,7 +143,7 @@ export class GlobeView {
     }
     this.loader.load(url, (tex) => {
       tex.colorSpace = THREE.SRGBColorSpace;
-      tex.anisotropy = 8;
+      tex.anisotropy = this.maxAniso;
       this.mosTex.set(url, tex);
       while (this.mosTex.size > 4) {
         const [k, old] = this.mosTex.entries().next().value;
@@ -170,7 +183,7 @@ export class GlobeView {
     if (name === 'night') this.globe.globeImageUrl(this.base + (on ? 'textures/earth-night.jpg' : 'textures/earth-blue-marble.jpg'));
     if (name === 'frames') this.frameGroup.visible = on;
     if (name === 'mosaic' && this.mosaic) this._showMosaic(this.date || new Date());
-    if (name === 'satellite' && !on) { this.globe.objectsData([]); this.globe.pathsData([]); }
+    if (name === 'satellite') this.satGroup.visible = on;
     this.update(this.date, true);
   }
 
@@ -250,7 +263,7 @@ export class GlobeView {
     if (this.texCache.has(url)) apply(this.texCache.get(url));
     else this.loader.load(url, (tex) => {
       tex.colorSpace = THREE.SRGBColorSpace;
-      tex.anisotropy = 4;
+      tex.anisotropy = this.maxAniso;
       this.texCache.set(url, tex);
       apply(tex);
     });
@@ -289,27 +302,45 @@ export class GlobeView {
     return g;
   }
 
+  /** Satellite and its trail as plain three.js objects, updated in place (no layer rebuild per frame). */
+  _buildSatellite() {
+    this.satGroup = new THREE.Group();
+    this.sat = this._satelliteModel();
+    this.sat.scale.setScalar(0.9);
+    this.satGroup.add(this.sat);
+    this.trailN = 60;
+    const pos = new Float32Array(this.trailN * 3), col = new Float32Array(this.trailN * 3);
+    for (let i = 0; i < this.trailN; i++) {             // fade from transparent-looking dark to amber
+      const k = i / (this.trailN - 1);
+      col.set([0.91 * k, 0.69 * k, 0.29 * k], i * 3);
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    this.trail = new THREE.Line(geo, new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
+    this.trail.frustumCulled = false;
+    this.satGroup.add(this.trail);
+    this.globe.scene().add(this.satGroup);
+  }
+
   _animate() {
+    const v = new THREE.Vector3();
     const tick = () => {
       requestAnimationFrame(tick);
-      if (!this.layers.satellite) return;
-      const now = performance.now();
-      if (now - (this._lastSat || 0) < 120) return;
-      this._lastSat = now;
-      // Accelerated circular orbit model: 1 real second = 1 orbital minute
-      const tMin = (now - this.satT0) / 1000;
-      const pos = (tm) => orbitLatLng(tm);
-      const p = pos(tMin);
-      const trail = [];
-      for (let k = 40; k >= 0; k--) { const q = pos(tMin - k * 0.9); trail.push([q.lat, q.lng, q.alt]); }
-      // split trail at the antimeridian
-      const segs = [[]];
-      for (let i = 0; i < trail.length; i++) {
-        if (i && Math.abs(trail[i][1] - trail[i - 1][1]) > 180) segs.push([]);
-        segs[segs.length - 1].push(trail[i]);
+      if (this.paused || !this.layers.satellite) return;
+      // accelerated circular orbit model: 1 real second = 1 orbital minute
+      const tMin = (performance.now() - this.satT0) / 1000;
+      const p = orbitLatLng(tMin);
+      const c = this.globe.getCoords(p.lat, p.lng, p.alt);
+      this.sat.position.set(c.x, c.y, c.z);
+      this.sat.lookAt(0, 0, 0);
+      const arr = this.trail.geometry.attributes.position.array;
+      for (let i = 0; i < this.trailN; i++) {
+        const q = orbitLatLng(tMin - (this.trailN - 1 - i) * 0.6);
+        const cc = this.globe.getCoords(q.lat, q.lng, q.alt);
+        v.set(cc.x, cc.y, cc.z); arr[i * 3] = v.x; arr[i * 3 + 1] = v.y; arr[i * 3 + 2] = v.z;
       }
-      this.globe.objectsData([p]);
-      this.globe.pathsData(segs.filter((s) => s.length > 1).map((pts) => ({ pts })));
+      this.trail.geometry.attributes.position.needsUpdate = true;
     };
     tick();
   }

@@ -125,6 +125,18 @@ const CAPS = {
   wildfire: [['Burn scar extent (HV loss)', 'Regrowth over years', 'Snow onset'], ['Burn severity (with optical dNBR)', 'Carbon released'], ['Smoke and air quality']],
 };
 
+const STORYMAPS = 'https://nisar.jpl.nasa.gov/applications/arcgis-storymaps/';
+const LEARN = {
+  flood: [['NISAR StoryMap: floods', STORYMAPS]],
+  wetland: [['NISAR StoryMap: floods and wetlands', STORYMAPS]],
+  wildfire: [['NISAR StoryMap: wildfires', STORYMAPS]],
+  groundwater: [['NISAR StoryMap: land subsidence', STORYMAPS]],
+  agriculture: [['NISAR StoryMap: land subsidence', STORYMAPS], ['UAVSAR postcards: crops in L-band false colour', 'https://uavsar.jpl.nasa.gov/education/postcards.html']],
+  volcano: [['NISAR StoryMap: land deformation', STORYMAPS]],
+  glacier: [['NISAR StoryMap: glacier motion', STORYMAPS]],
+  deforestation: [['UAVSAR postcards: forests in L-band false colour', 'https://uavsar.jpl.nasa.gov/education/postcards.html']],
+};
+
 function overview(el) {
   const st = STORIES[S.site.id] || {};
   const th = themeOf(S.site);
@@ -175,6 +187,9 @@ function overview(el) {
         </div>
       </div>
       <div class="panel" style="border-left:3px solid ${th.color}"><h3>Next for NISAR</h3><p class="muted" style="margin:0">${st.future || ''}</p></div>
+      <div class="panel"><h3>Learn more</h3><ul class="plain small">${(LEARN[st.theme] || []).map(([t, u]) => `<li><a href="${u}" target="_blank" rel="noopener">${t}</a></li>`).join('')}
+        <li><a href="https://nisar.jpl.nasa.gov/applications/societal-benefit/" target="_blank" rel="noopener">NISAR applications white papers</a></li>
+        <li><a href="https://appliedsciences.nasa.gov/get-involved/training" target="_blank" rel="noopener">NASA ARSET trainings on SAR and NISAR</a></li></ul></div>
     </div>
   </div>`;
   // render the thumbnails as proper colour composites (the PNGs store HH/HV in R/G)

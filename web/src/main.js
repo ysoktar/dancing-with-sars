@@ -36,6 +36,7 @@ async function boot() {
 
   app.globe = new GlobeView($('#globeViz'), { base: BASE, onSiteClick: (s) => go(`#/site/${s.id}`) });
   app.globe.setSites(app.sites);
+  window.__pov = (lat, lng, altitude = 1.8) => { app.globe.globe.controls().autoRotate = false; app.globe.globe.pointOfView({ lat, lng, altitude }); };   // debugging / screenshots
   app.globe.setCoverage(coverage);
   if (mosaic.cycles.length) app.globe.setMosaics(mosaic.cycles);
   else $('#mosaicLayer').style.display = 'none';
@@ -100,11 +101,13 @@ function route() {
 
 function openSheet() {
   document.body.classList.add('sheet-open');
+  app.globe.pause();                 // the globe is hidden behind the page: stop rendering it
   if (app.tl.playing) togglePlay();
 }
 function closeSheet() {
   closeSitePage();
   document.body.classList.remove('sheet-open');
+  app.globe.resume();
   $('#sheet').innerHTML = '';
   $$('.rail-item').forEach((b) => b.classList.remove('on'));
   app.globe.blur();

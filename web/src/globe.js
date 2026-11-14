@@ -179,7 +179,7 @@ export class GlobeView {
     this.mosTex = new Map(); // url -> texture (LRU)
     const r = this.globe.getGlobeRadius() * 1.0012;
     const geo = new THREE.SphereGeometry(r, 256, 128, (90 - 180) * DEG, 2 * Math.PI, 0, Math.PI);
-    this.mosaic = new THREE.Mesh(geo, this._litMaterial({ opacity: 0.92 }));
+    this.mosaic = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ transparent: true, depthWrite: false }));   // unlit: the browse values as they are
     this.mosaic.renderOrder = 1;
     this.mosaic.visible = false;
     this.globe.scene().add(this.mosaic);
@@ -401,14 +401,13 @@ export class GlobeView {
       for (const g of pick) {
         const id = g.productID || g.granuleName;
         if (this.native.has(id) || this.currentCycle !== c) continue;
-        const ref = await this._mosaicReference(c);
-        const frame = await loadFrame(g, ref).catch(() => null);
+        const frame = await loadFrame(g).catch(() => null);   // raw NISAR browse values, no colour matching
         if (!frame || this.currentCycle !== c) continue;
         const [W, S, E, N] = frame.bounds, r = this.globe.getGlobeRadius() * 1.0022;
         const geo = new THREE.SphereGeometry(r, 64, 64, (90 + W) * DEG, (E - W) * DEG, (90 - N) * DEG, (N - S) * DEG);
         const tex = new THREE.Texture(frame.canvas);
         tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = this.maxAniso || 4; tex.flipY = false; tex.needsUpdate = true;
-        const mat = this._litMaterial({ map: tex }, [(W + 180) / 360, (S + 90) / 180, (E - W) / 360, (N - S) / 180]);
+        const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false });
         const mesh = new THREE.Mesh(geo, mat);
         mesh.renderOrder = 3; mesh.userData.cycle = c.id;
         this.globe.scene().add(mesh);
@@ -439,6 +438,41 @@ export class GlobeView {
       const j = (y * R.w + x) * 4;
       return R.d[j + 3] < 200 ? null : [R.d[j], R.d[j + 1], R.d[j + 2]];
     };
+  }
+
+  /** Monthly acquisition density as a small heat-map texture on its own sphere (no per-hexagon geometry on the main thread). */
+  _densityTexture(bins) {
+    if (!bins) { if (this.densMesh) this.densMesh.visible = false; return; }
+    const W = 360, H = 180, c = new OffscreenCanvas(W, H), x = c.getContext('2d');
+    const max = this._maxW || Math.max(1, ...bins.map((b) => b[2]));
+    for (const [lat, lng, w] of bins) {
+      const t = Math.sqrt(w / max);
+      x.fillStyle = densityColor(w, Math.min(0.85, 0.25 + 0.75 * t));
+      x.fillRect(Math.floor(lng + 180 - 1.5), Math.floor(90 - lat - 1.5), 3, 3);
+    }
+    createImageBitmap(c, { imageOrientation: 'flipY' }).then((bmp) => {
+      const tex = new THREE.Texture(bmp); tex.flipY = false; tex.magFilter = THREE.NearestFilter; tex.needsUpdate = true;
+      if (!this.densMesh) {
+        const geo = new THREE.SphereGeometry(this.globe.getGlobeRadius() * 1.004, 128, 64, (90 - 180) * DEG, 2 * Math.PI, 0, Math.PI);
+        this.densMesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ transparent: true, depthWrite: false }));
+        this.densMesh.renderOrder = 5;
+        this.globe.scene().add(this.densMesh);
+      }
+      this.densMesh.material.map?.dispose();
+      this.densMesh.material.map = tex; this.densMesh.material.needsUpdate = true; this.densMesh.visible = true;
+    });
+  }
+
+  /** Night lights: decoded off the main thread, shown as an overlay instead of rebuilding the globe material. */
+  _night(on) {
+    if (on && !this.nightMesh) {
+      const geo = new THREE.SphereGeometry(this.globe.getGlobeRadius() * 1.0028, 128, 64, (90 - 180) * DEG, 2 * Math.PI, 0, Math.PI);
+      this.nightMesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.9, depthWrite: false }));
+      this.nightMesh.renderOrder = 6;
+      this.globe.scene().add(this.nightMesh);
+      this._texture(this.base + 'textures/earth-night.jpg', (tex) => { this.nightMesh.material.map = tex; this.nightMesh.material.needsUpdate = true; });
+    }
+    if (this.nightMesh) this.nightMesh.visible = on;
   }
 
   // ---------------------------------------------------------------- region picking
@@ -539,14 +573,14 @@ export class GlobeView {
       const [r, col] = k.split('_').map(Number);
       const N = 90 - r * T.deg, S = N - T.deg, Wl = -180 + col * T.deg;
       const geo = new THREE.SphereGeometry(this.globe.getGlobeRadius() * 1.0016, 24, 24, (90 + Wl) * DEG, T.deg * DEG, (90 - N) * DEG, T.deg * DEG);
-      const mesh = new THREE.Mesh(geo, this._litMaterial({ opacity: 0 }, [(Wl + 180) / 360, (S + 90) / 180, T.deg / 360, T.deg / 180]));
+      const mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ transparent: true, depthWrite: false, opacity: 0 }));
       mesh.renderOrder = 1;
       this.tiles.set(k, mesh);
       this.globe.scene().add(mesh);
       const cyc = c.id;
       this._texture(`${this.base}data/${T.path}/${k}.webp`, (tex) => {
         if (this.currentCycle?.id !== cyc || this.tiles.get(k) !== mesh) { tex.dispose(); return; }
-        mesh.material.map = tex; mesh.material.opacity = 0.95; mesh.material.needsUpdate = true;
+        mesh.material.map = tex; mesh.material.opacity = 1; mesh.material.needsUpdate = true;
       });
     }
   }

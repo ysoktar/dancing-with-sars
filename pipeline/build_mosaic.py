@@ -252,7 +252,7 @@ def _weight(alpha, mode, feather_px):
     return (w * (1.0 if dual else 0.03)).astype(np.float32)
 
 
-def blend(patches, Hc, Wc, row0, land, feather_px, gains=None):
+def blend(patches, Hc, Wc, row0, land, feather_px, gains=None, match=False):
     """Seamless mosaic: feathered weighted mean of all frames, then every frame's brightness is matched
     (per channel gain/offset) to the consensus of its neighbours and the frames are blended again.
     If `gains` is given (from a coarser pass) the matching step is skipped and those gains are applied."""
@@ -280,6 +280,10 @@ def blend(patches, Hc, Wc, row0, land, feather_px, gains=None):
             wsum[ix] += w
         return acc, wsum
 
+    # raw values: by default no frame is rescaled; overlaps are only weight-averaged (feathered).
+    # match=True restores per-frame gain/offset matching to the neighbour consensus (seamless but altered values).
+    if gains is None and not match:
+        gains = {}
     if gains is None:
         acc, wsum = accumulate(lambda g: None)
         ref = (acc / np.maximum(wsum, 1e-6)[..., None]).astype(np.uint8)

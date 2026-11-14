@@ -91,7 +91,7 @@ export function openSitePage(sheet, site, tab) {
   const fresh = S.site !== site;
   if (fresh) {
     destroyCharts();
-    Object.assign(S, { site, cmpT: 0, pixel: null, ml: {}, swipe: false, stack: null, agri: null, agTool: S.agToolNext || 'patterns', agSeg: -1 });
+    Object.assign(S, { site, cmpT: 0, pixel: null, ml: {}, swipe: false, stack: null, agri: null, agTool: S.agToolNext || 'deep', agSeg: -1 });
     S.t = nearestIndex(app.tl.start + app.tl.day * DAY);
     app.selectedSite = site;
     drawTimeline();
@@ -856,10 +856,8 @@ const AG_THEMES = new Set(['agriculture', 'groundwater', 'flood']);
 export function isAgSite(site) { if (site.region) return true; return AG_THEMES.has((STORIES[site.id] || {}).theme || site.theme); }
 
 const AG_TOOLS = [
-  ['patterns', 'Cropping intensity (radar)', 'Growing seasons per year, not crop type'],
-  ['fields', 'Fields', 'Segments with their own calendar'],
-  ['yield', 'Yield segmentation', 'Fields ranked by yield potential'],
   ['deep', 'Crop types (deep learning)', 'U-TAE or your U-Mamba / SITSMamba'],
+  ['yield', 'Yield segmentation', 'Fields ranked by yield potential'],
   ['landcover', 'Cropland vs forest', 'Where fields end and forest begins'],
   ['calendar', 'Crop calendar', 'Start, peak and end of season'],
   ['harvest', 'Harvest & flooding', 'When fields were harvested or flooded'],
@@ -891,7 +889,7 @@ function agriTab(el) {
 
 function showAgTool() {
   destroyCharts();
-  ({ calendar: agCalendar, harvest: agHarvest, patterns: agPatterns, fields: agFields, context: agContext, landcover: toolLandcover, yield: agYield, deep: agDeep }[S.agTool] || agPatterns)($('#agTool'));
+  ({ calendar: agCalendar, harvest: agHarvest, patterns: agPatterns, fields: agFields, context: agContext, landcover: toolLandcover, yield: agYield, deep: agDeep }[S.agTool] || agDeep)($('#agTool'));
 }
 
 async function agMap(canvas, mode, opts = {}) {
@@ -1151,13 +1149,11 @@ function regionOverview(el) {
         <div class="stat"><b>${Math.round((tOf(last.date) - tOf(first.date)) / DAY)}</b><span>days covered</span></div>
         <div class="stat"><b id="rsCrop">…</b><span>cropland</span></div>
         <div class="stat"><b id="rsForest">…</b><span>forest / tree cover</span></div>
-        <div class="stat"><b id="rsFields">…</b><span>field segments</span></div>
+
         <div class="stat"><b id="rsPeak">…</b><span>main peak month</span></div>
       </div>
       <div class="panel"><h3>Start here</h3><ul class="plain">
-        <li><a href="${hrefOf(R)}/agri" data-agtool="patterns">Cropping intensity</a>: how many growing seasons each field had, flooded fields, steady vegetation.</li>
         <li><a href="${hrefOf(R)}/agri" data-agtool="deep">Crop types (deep learning)</a>: crop type per field from a trained network.</li>
-        <li><a href="${hrefOf(R)}/agri" data-agtool="fields">Fields</a>: field-like segments, each with its own calendar.</li>
         <li><a href="${hrefOf(R)}/agri" data-agtool="yield">Yield segmentation</a>: fields ranked by relative yield potential, zones inside fields.</li>
         <li><a href="${hrefOf(R)}/agri" data-agtool="landcover">Cropland vs forest</a>.</li></ul></div>
       <div class="panel"><h3>Crops grown here</h3><div id="rsMix" class="small muted">Loading SPAM 2010 crop statistics…</div></div>
@@ -1196,7 +1192,7 @@ function regionOverview(el) {
     if (S.tab !== 'overview' || !$('#rsCrop')) return;
     $('#rsCrop').textContent = `${Math.round(A.croplandKm2)} km²`;
     $('#rsForest').textContent = `${Math.round(L.classes[0].km2)} km²`;
-    $('#rsFields').textContent = A.segments.length;
+
     const pk = Object.entries(A.peakMonthHist || {}).sort((p, q) => q[1] - p[1])[0];
     $('#rsPeak').textContent = pk ? new Date(pk[0] + '-15').toLocaleDateString('en-GB', { month: 'short', year: 'numeric' }) : '–';
   });

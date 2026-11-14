@@ -151,7 +151,7 @@ export async function renderReport(el, ctx) {
       </div>
       <div class="panel">
         <h3>2 · Radar vegetation index signatures: crops and forest</h3>
-        <p class="small muted" style="margin:4px 0 10px">L-band pulses interact with plant structure (HV volume scattering) and soil moisture [1, 2, 6]. Reference curves are adapted to this window's climate (${frost ?? '–'} frost days, ${rain ?? '–'} mm rain, elevation ${elev?.mean ?? '–'} m). <b>Black dots: this window's cropland, measured by NISAR</b> (rescaled to the reference range). NISAR's dominant pattern here: <b>${esc(dom ? dom.name : '–')}</b> · climate-based expectation: ${esc(expect)}.</p>
+        <p class="small muted" style="margin:4px 0 10px">L-band pulses interact with plant structure (HV volume scattering) and soil moisture [1, 2, 6]. Reference curves are adapted to this window's climate (${frost ?? '–'} frost days, ${rain ?? '–'} mm rain, elevation ${elev?.mean ?? '–'} m). <b>Black dots: this window's cropland, measured by NISAR</b> (rescaled to the reference range). Climate-based expectation: ${esc(expect)}.</p>
         <div class="chart lg"><canvas id="rp2"></canvas></div>
       </div>
       <div class="panel">

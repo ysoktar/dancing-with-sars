@@ -858,7 +858,7 @@ const AG_TOOLS = [
   ['patterns', 'Cropping intensity (radar)', 'Growing seasons per year, not crop type'],
   ['fields', 'Fields', 'Segments with their own calendar'],
   ['yield', 'Yield segmentation', 'Fields ranked by yield potential'],
-  ['deep', 'Deep learning (U-TAE)', 'Crop types from Sentinel-2, pretrained'],
+  ['deep', 'Crop types (deep learning)', 'U-TAE or your U-Mamba / SITSMamba'],
   ['landcover', 'Cropland vs forest', 'Where fields end and forest begins'],
   ['calendar', 'Crop calendar', 'Start, peak and end of season'],
   ['harvest', 'Harvest & flooding', 'When fields were harvested or flooded'],
@@ -1216,8 +1216,9 @@ async function agDeep(el) {
       <p class="muted" style="max-width:900px"><b>U-TAE</b> (Garnot &amp; Landrieu, ICCV 2021) is a deep network for satellite image time series: a convolutional U-Net whose skip connections are combined over time by lightweight temporal attention. We run the <b>published weights trained on PASTIS</b> (2,433 patches of French farmland, 18 crop types; test mIoU 63–65 %) directly in your browser (ONNX Runtime, WebAssembly). Its input is a <b>Sentinel-2</b> time series, which is read for a 1.28 × 1.28 km window straight from the public Cloud-Optimized GeoTIFFs on AWS. Click the radar map to move the window, then run.</p>
       <div class="controls">
         <label>Season <select id="dlSeason">${[2025, 2024, 2023, 2022, 2018].map((y) => `<option value="${y}">Sep ${y} – Oct ${y + 1}${y === 2018 ? ' (PASTIS season)' : ''}</option>`).join('')}</select></label>
+        <label>Model <select id="dlModel"><option value="utae_pastis">U-TAE (PASTIS, published weights)</option></select></label>
         <label>Dates <select id="dlDates"><option>12</option><option selected>16</option><option>24</option></select></label>
-        <button class="btn primary" id="dlRun">Run U-TAE here</button>
+        <button class="btn primary" id="dlRun">Run model here</button>
         <span class="small muted mono" id="dlWhere"></span>
       </div>
       <div class="result">
@@ -1228,6 +1229,12 @@ async function agDeep(el) {
       <p class="note"><b>Domain shift:</b> the network learned French crops and the French calendar (winter cereals sown in autumn, maize and sunflower in spring). Outside that setting, classes are the nearest French equivalent: rice paddies, cotton or sugar cane have no class of their own. Treat results outside Western Europe as field delineation plus a crop-group hint, not as a crop census. ${R.lat < 35 || R.lat > 60 || R.lon < -10 || R.lon > 30 ? '<b>This region is outside the training domain.</b>' : ''}</p>
     </div>`;
   $('#dlSeason').value = S.dl.season;
+  // models listed in web/public/models/index.json (U-TAE + the team's U-Mamba / SITSMamba once exported)
+  fetch(`${app.base}models/index.json`).then((r) => r.json()).then((idx) => {
+    if (!$('#dlModel')) return;
+    $('#dlModel').innerHTML = (idx.models || []).map((m) => `<option value="${m.id}">${esc(m.label)}</option>`).join('');
+    $('#dlModel').value = S.dl.model || 'utae_pastis';
+  }).catch(() => {});
   const pick = $('#dlPick');
   const base = await renderImage(S.stack.id, S.t, 'rgb', { filtered: true });
   const drawPick = () => {
@@ -1245,17 +1252,18 @@ async function agDeep(el) {
     S.dl.lat = b.N - ((e.clientY - r.top) / r.height) * (b.N - b.S);
     drawPick();
   });
-  if (S.dl.result && S.dl.result.key === `${S.dl.lon},${S.dl.lat},${S.dl.season}`) showDeep(S.dl.result);
+  if (S.dl.result && S.dl.result.key === `${S.dl.lon},${S.dl.lat},${S.dl.season},${S.dl.model}`) showDeep(S.dl.result);
   $('#dlRun').addEventListener('click', async () => {
     S.dl.season = +$('#dlSeason').value;
     const out = $('#dlOut');
     out.innerHTML = '<div class="loading-region"><div class="small muted" id="dlStage">Starting…</div><div class="bar"><i id="dlBar"></i></div></div>';
     try {
-      const r = await dlCall({ lon: S.dl.lon, lat: S.dl.lat, season: S.dl.season, maxDates: +$('#dlDates').value, base: new URL(app.base, location.href).href }, (p) => {
+      S.dl.model = $('#dlModel').value;
+      const r = await dlCall({ lon: S.dl.lon, lat: S.dl.lat, season: S.dl.season, maxDates: +$('#dlDates').value, model: S.dl.model, base: new URL(app.base, location.href).href }, (p) => {
         if ($('#dlStage')) $('#dlStage').textContent = `${p.stage}${p.total > 1 ? ` · ${p.done} / ${p.total}` : ''}`;
         if ($('#dlBar')) $('#dlBar').style.width = `${p.total ? (100 * p.done) / p.total : 8}%`;
       });
-      r.key = `${S.dl.lon},${S.dl.lat},${S.dl.season}`;
+      r.key = `${S.dl.lon},${S.dl.lat},${S.dl.season},${S.dl.model}`;
       S.dl.result = r;
       if ($('#dlOut')) showDeep(r);
     } catch (e) {
@@ -1278,7 +1286,31 @@ const CROP_GROUPS = [
 ];
 const GROUP_OF = (() => { const g = new Uint8Array(20); CROP_GROUPS.forEach((G, k) => G.of.forEach((c) => (g[c] = k))); return g; })();
 
+const GENERIC_COLORS = ['#f48120', '#ffe600', '#9acd32', '#e6c44a', '#5b9c2d', '#c71585', '#006400', '#ff69b4', '#22d3ee', '#a0522d'];
+function showDeepGeneric(r) {
+  const P = r.size, N = P * P, total = r.counts.reduce((a, c) => a + c, 0);
+  const isSem = r.head === 'sem';
+  const colOf = (k) => (isSem ? PASTIS_COLORS[k] : k === r.classes.length - 1 ? '#1f1f1f' : GENERIC_COLORS[k % GENERIC_COLORS.length]);
+  const order = r.counts.map((c, k) => [c, k]).filter(([c]) => c > 0).sort((a, b2) => b2[0] - a[0]);
+  let ymin = Infinity, ymax = -Infinity, ysum = 0, yn = 0;
+  if (r.yieldMap) for (const v of r.yieldMap) if (Number.isFinite(v)) { ymin = Math.min(ymin, v); ymax = Math.max(ymax, v); ysum += v; yn++; }
+  $('#dlOut').innerHTML = `
+    <div class="grid g-${r.yieldMap ? 3 : 2}" style="gap:8px">
+      <figure style="margin:0"><canvas id="dlRgb" width="${P}" height="${P}" style="width:100%;aspect-ratio:1;border-radius:6px;image-rendering:pixelated"></canvas><figcaption class="small muted">Sentinel-2, mid-season</figcaption></figure>
+      <figure style="margin:0"><canvas id="dlCls" width="${P}" height="${P}" style="width:100%;aspect-ratio:1;border-radius:6px;image-rendering:pixelated"></canvas><figcaption class="small muted">${esc(r.model.label)}: ${isSem ? 'crop types' : 'crops'}</figcaption></figure>
+      ${r.yieldMap ? `<figure style="margin:0"><canvas id="dlYld" width="${P}" height="${P}" style="width:100%;aspect-ratio:1;border-radius:6px;image-rendering:pixelated"></canvas><figcaption class="small muted">Predicted yield, ${ymin.toFixed(1)}–${ymax.toFixed(1)} t/ha (mean ${(ysum / Math.max(1, yn)).toFixed(2)})</figcaption></figure>` : ''}
+    </div>
+    <div class="classes" style="margin-top:10px">${order.map(([c, k]) => `<div class="row"><i style="background:${colOf(k)}"></i><div><b>${esc(r.classes[k] || '')}</b><div class="bar-conf"><i style="width:${(r.meanConf[k] * 100).toFixed(0)}%"></i></div></div><div class="v">${(c * 0.01).toFixed(1)} ha<br><span class="muted">${pct(c / total)} · conf ${pct(r.meanConf[k], 0)}</span></div></div>`).join('')}</div>
+    <p class="note">Input: Sentinel-2 on a ${r.post.grid} grid (${r.post.stepsObserved} steps observed); Sentinel-1 channels empty (the model was trained with random S1 drop-out). Post-processing: ${r.post.worldcover ? 'ESA WorldCover bare / built / water and' : ''} pixels that never green (NDVI &lt; 0.3) or that the model's field-extent head rejects are not fields (${(r.post.maskedWcPx * 0.01).toFixed(1)} ha).${r.model.metrics ? ` Validation: ${esc(JSON.stringify(r.model.metrics).slice(0, 160))}.` : ''}</p>`;
+  const put = (id, fn) => { const c = $('#' + id); if (!c) return; const x = c.getContext('2d'), im = x.createImageData(P, P); for (let i = 0; i < N; i++) im.data.set(fn(i), i * 4); x.putImageData(im, 0, 0); };
+  const hex = (h) => [1, 3, 5].map((k) => parseInt(h.slice(k, k + 2), 16));
+  put('dlRgb', (i) => r.rgb.subarray(i * 4, i * 4 + 4));
+  put('dlCls', (i) => [...hex(colOf(r.cls[i])), 255]);
+  if (r.yieldMap) put('dlYld', (i) => { const v = r.yieldMap[i]; if (!Number.isFinite(v)) return [31, 31, 31, 255]; const t = (v - ymin) / Math.max(1e-6, ymax - ymin); const st = [[185, 28, 28], [250, 204, 21], [21, 128, 61]]; const k = t < 0.5 ? 0 : 1, f = t < 0.5 ? t * 2 : (t - 0.5) * 2; return [...st[k].map((c, j) => c + (st[k + 1][j] - c) * f), 255]; });
+}
+
 function showDeep(r) {
+  if (r.generic) return showDeepGeneric(r);
   const P = r.size, N = P * P, total = r.counts.reduce((a, c) => a + c, 0);
   const useGroups = S.dlGroups ?? !r.post?.inDomain;
   const gCounts = new Array(CROP_GROUPS.length).fill(0), gConf = new Array(CROP_GROUPS.length).fill(0);

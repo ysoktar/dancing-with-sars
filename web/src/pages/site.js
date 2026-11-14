@@ -23,7 +23,7 @@ const TABS = [
 ];
 
 const stacks = new Map();
-export const hrefOf = (site) => (site.region ? `#/region/${site.lon.toFixed(4)}/${site.lat.toFixed(4)}/${site.half_deg}` : `#/site/${site.id}`);
+export const hrefOf = (site) => (site.region ? `#/region/${site.box.map((v) => v.toFixed(4)).join('/')}` : `#/site/${site.id}`);
 const REGION_TABS = [['overview', 'Summary'], ['agri', 'Crops & yield'], ['report', 'Parcel report'], ['archive', 'Archive 1978→'], ['images', 'Radar images'], ['analysis', 'Change & ML'], ['forecast', 'Forecast']];
 const dems = new Map();
 function getDem() {
@@ -70,7 +70,10 @@ function nearestIndex(t) {
 function siteEvents() {
   return (app.events.sites?.[S.site.id] || []).filter((e) => e.date);
 }
+/** Width of the analysis window on the ground (km). */
+export const windowKm = (site) => (site.box ? [(site.box[2] - site.box[0]) * 111.32 * Math.cos((site.lat * Math.PI) / 180), (site.box[3] - site.box[1]) * 111.32] : [2 * site.half_deg * 111.32, 2 * site.half_deg * 111.32]);
 function aoiBounds() {
+  if (S.site.box) { const [W, S0, E, N] = S.site.box; return { S: S0, N, W, E }; }
   const { lat, lon, half_deg: h } = S.site;
   const hl = h / Math.max(Math.cos((lat * Math.PI) / 180), 0.05);
   return { S: lat - h, N: lat + h, W: lon - hl, E: lon + hl };
@@ -106,6 +109,8 @@ export function openSitePage(sheet, site, tab) {
   if (fresh || S.tab !== tab) {
     destroyCharts();
     S.tab = tab;
+    const [kw, kh] = windowKm(site);
+    sheet.style.setProperty('--map-ar', (kw / kh).toFixed(3));
     $$('.tabs a', sheet).forEach((a) => a.classList.toggle('on', a.dataset.tab === tab));
     const body = $('#tabBody', sheet);
     body.scrollTop = 0;
@@ -280,7 +285,7 @@ function images(el) {
     return `<button data-i="${i}" class="${near ? 'ev' : ''}" title="${near ? esc(near.title) : a.granule}">${fmtShort(tOf(a.date))}</button>`;
   }).join('');
   $$('#dates button').forEach((b) => b.addEventListener('click', () => { S.t = +b.dataset.i; setDate(times()[S.t]); refreshDate(); }));
-  const km = 2 * S.site.half_deg * 111.32;
+  const km = windowKm(S.site)[0];
   const bar = niceKm(km / 4);
   $('#v .scale i').style.width = (bar / km) * 100 + '%';
   $('#v .scale span').textContent = `${bar} km`;
@@ -465,7 +470,7 @@ function motion(el) {
       <div class="panel"><h3>This pair</h3><dl class="kv" id="mMeta"></dl></div>
     </div>
   </div>`;
-  const km = 2 * S.site.half_deg * 111.32, bar = niceKm(km / 4);
+  const km = windowKm(S.site)[0], bar = niceKm(km / 4);
   $('#mv .scale i').style.width = (bar / km) * 100 + '%';
   $('#mv .scale span').textContent = `${bar} km`;
   const EXPLAIN = {
@@ -1133,7 +1138,7 @@ function regionOverview(el) {
     <div class="stack">
       <div class="panel">
         <h3>This window</h3>
-        <p class="muted" style="margin:0">${(R.half_deg * 2 * 111.32).toFixed(0)} × ${(R.half_deg * 2 * 111.32).toFixed(0)} km around ${R.lat.toFixed(3)}°, ${R.lon.toFixed(3)}°. Every NISAR GCOV pass on track ${R.track.path} / frame ${R.track.frame} (${R.track.dir.toLowerCase()}) was fetched live from the ASF archive, aligned by phase correlation and cropped in your browser.</p>
+        <p class="muted" style="margin:0">${windowKm(R)[0].toFixed(1)} × ${windowKm(R)[1].toFixed(1)} km (${Math.round(windowKm(R)[0] * windowKm(R)[1]).toLocaleString()} km²) drawn around ${R.lat.toFixed(3)}°, ${R.lon.toFixed(3)}°. Every NISAR GCOV pass on track ${R.track.path} / frame ${R.track.frame} (${R.track.dir.toLowerCase()}) was fetched live from the ASF archive, aligned by phase correlation and cropped in your browser.</p>
       </div>
       <div class="stats">
         <div class="stat"><b>${a.length}</b><span>NISAR passes</span></div>
@@ -1228,7 +1233,7 @@ async function agDeep(el) {
     drawTo(pick, base);
     const ctx = pick.getContext('2d'), W = pick.width;
     const x = ((S.dl.lon - b.W) / (b.E - b.W)) * W, y = ((b.N - S.dl.lat) / (b.N - b.S)) * W;
-    const s = Math.max(6, (1.28 / (R.half_deg * 2 * 111.32)) * W);
+    const s = Math.max(6, (1.28 / windowKm(R)[0]) * W);
     ctx.strokeStyle = '#e8b04a'; ctx.lineWidth = 2; ctx.strokeRect(x - s / 2, y - s / 2, s, s);
     $('#dlWhere').textContent = `${S.dl.lat.toFixed(4)}°, ${S.dl.lon.toFixed(4)}°`;
   };
@@ -1316,7 +1321,7 @@ async function archiveTab(el) {
       ${then ? `<div class="panel"><h3>L-band then and now: ALOS PALSAR ${then.date.slice(0, 4)} vs NISAR ${acqs()[acqs().length - 1].date.slice(0, 4)}</h3>
         <div class="grid g-2" style="gap:10px">
           <figure style="margin:0"><img src="${then.browse}" alt="ALOS PALSAR browse" loading="lazy" style="width:100%;border-radius:6px;background:#07090b"><figcaption class="small muted">ALOS PALSAR ${esc(then.pol || '')} ${then.date}, radiometrically terrain-corrected browse (ASF), whole scene ~70 km</figcaption></figure>
-          <figure style="margin:0"><canvas id="arNow" width="256" height="256" style="width:100%;aspect-ratio:1;border-radius:6px;background:#07090b"></canvas><figcaption class="small muted">NISAR ${acqs()[acqs().length - 1].date}, this ${(S.site.half_deg * 222.6).toFixed(0)} km window, HH</figcaption></figure>
+          <figure style="margin:0"><canvas id="arNow" width="256" height="256" style="width:100%;aspect-ratio:1;border-radius:6px;background:#07090b"></canvas><figcaption class="small muted">NISAR ${acqs()[acqs().length - 1].date}, this ${windowKm(S.site).map((v) => v.toFixed(0)).join(' × ')} km window, HH</figcaption></figure>
         </div>
         <p class="note">Both are L-band (23–24 cm): the same physics, 15+ years apart, so cleared forest, new reservoirs, towns and irrigation schemes stand out. The ALOS image is the archive's browse of the whole scene (not cropped to the window; north is up after terrain correction).</p></div>` : ''}
       <div class="panel"><h3>Missions</h3>

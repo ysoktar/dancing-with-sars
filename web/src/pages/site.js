@@ -13,6 +13,7 @@ import { renderReport } from './report.js';
 import { fetchArchive, ARCHIVE_PLATFORMS } from '../archive.js';
 import { cropMix } from '../cropPrior.js';
 import { suitability, suitClass, GAEZ_TO_SPAM, ENERGY } from '../suitability.js';
+import { terrain, susceptibility, catalogNear, rainTrigger, hazard, HAZARD_COLORS } from '../landslide.js';
 import { era5Soil, powerWetness, windowAnomaly, ERA5_LAYERS } from '../soil.js';
 
 const TABS = [
@@ -512,6 +513,7 @@ const TOOLS = [
   ['classes', 'Surface types', 'Unsupervised k-means clustering'],
   ['landcover', 'Cropland vs forest', 'Seasonal swing vs canopy volume'],
   ['floodhist', 'Flood history', 'NISAR water vs 20 years of floods'],
+  ['landslide', 'Landslides', 'Detect slides + rain-triggered hazard'],
 ];
 
 function analysis(el) {
@@ -530,7 +532,7 @@ function analysis(el) {
 
 function showTool() {
   destroyCharts();
-  ({ change: toolChange, classes: toolClasses, landcover: toolLandcover, floodhist: toolFloodHist }[S.tool] || toolChange)($('#tool'));
+  ({ change: toolChange, classes: toolClasses, landcover: toolLandcover, floodhist: toolFloodHist, landslide: toolLandslide }[S.tool] || toolChange)($('#tool'));
 }
 
 // ---------------------------------------------------------------- cropland vs forest
@@ -1071,6 +1073,95 @@ async function agContext(el) {
       scales: { x: { ...timeAxis(), min: xmin, max: xmax }, y: { beginAtZero: true, title: { display: true, text: 'mm / week' } }, y1: { position: 'right', grid: { display: false }, title: { display: true, text: '°C' } } },
       plugins: { legend: { labels: { boxWidth: 10 } } } },
   });
+}
+
+// ---------------------------------------------------------------- landslides
+const terrains = new Map();
+async function toolLandslide(el) {
+  el.innerHTML = '<div class="empty">Loading elevation (slope), the NASA landslide catalog and rainfall since 2001…</div>';
+  const b = aoiBounds(), box = [b.W, b.S, b.E, b.N], key = box.join(',');
+  if (!terrains.has(key)) terrains.set(key, terrain(box));
+  const radius = Math.max(25, ((b.E - b.W) * 111 * Math.cos((S.site.lat * Math.PI) / 180)) / 2 + 15);
+  const [T, cat, rain] = await Promise.all([
+    terrains.get(key),
+    catalogNear(app.base, S.site.lat, S.site.lon, radius).catch(() => ({ events: [] })),
+    rainTrigger(S.site.lat, S.site.lon).catch((e) => ({ error: String(e) })),
+  ]);
+  if (S.tab !== 'analysis' || S.tool !== 'landslide') return;
+  const sus = susceptibility(T, cat.events.length);
+  const last = rain.obs?.[rain.obs.length - 1];
+  const now = last ? hazard(sus.k, last.pct) : null;
+  const A = acqs(), def = Math.max(1, Math.min(A.length - 1, A.length - 3));
+  el.innerHTML = `
+    <div class="panel">
+      <h3 style="margin:0 0 6px">Hazard: now and the next 7 days</h3>
+      <p class="muted" style="max-width:880px">Rain-triggered landslide hazard in the spirit of NASA's LHASA model: susceptible terrain (steep slopes, past landslides) combined with heavy recent rainfall compared with this place's own record. It says when conditions favour landslides, not where one will happen.</p>
+      <div class="stats" style="margin:10px 0">
+        <div class="stat"><b>${sus.label}</b><span>terrain susceptibility · slope p90 ${T.p90.toFixed(0)}°, ${Math.round(T.steepFrac * 100)} % of area ≥ 15°</span></div>
+        <div class="stat"><b>${cat.events.length}</b><span>catalogued landslides within ${Math.round(radius)} km (1988–2017)</span></div>
+        ${last ? `<div class="stat"><b>${Math.round(last.pct * 100)}th</b><span>percentile of 7-day rain index on ${last.date}</span></div>
+        <div class="stat"><b style="color:${HAZARD_COLORS[now.k]}">${now.label}</b><span>hazard on ${last.date}</span></div>` : `<div class="stat"><b>–</b><span>rainfall unavailable${rain.error ? `: ${esc(rain.error)}` : ''}</span></div>`}
+      </div>
+      ${rain.fc?.length ? `<div class="ls-days">${rain.fc.map((d) => { const h = hazard(sus.k, d.pct); return `<div style="--c:${HAZARD_COLORS[h.k]}"><b>${new Date(d.date + 'T12:00:00Z').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}</b><span>${h.label}</span><small>${d.rain.toFixed(0)} mm · ${Math.round(d.pct * 100)}th pct</small></div>`; }).join('')}</div>` : ''}
+      ${rain.obs ? '<div class="chart sm" style="margin-top:10px"><canvas id="lsRain"></canvas></div>' : ''}
+      <p class="note">7-day antecedent rainfall index (weights 1/(k+1)², as LHASA 1.0) against its 90th / 95th / 99th percentiles over ${rain.years || '–'} years at this point. Hazard table: rain above the 90th / 95th / 99th percentile gives moderate / high / very high on high-susceptibility terrain, one level lower on moderate terrain, two lower on low terrain, nothing on flat ground. ${esc(rain.source || '')}. Slope from Terrarium elevation tiles (zoom ${T.zoom}, ~${Math.round(T.pxM)} m grid). Not an official warning: check the national geological survey or civil protection agency.</p>
+
+      <h3 style="margin:18px 0 6px">Detection with NISAR</h3>
+      <p class="muted" style="max-width:880px">A landslide strips vegetation and exposes soil and rock: L-band HV (volume scattering from plants) drops sharply on a steep slope and stays low. Candidates are pixels on slopes ≥ 15° whose HV fell more than 2.5× the change seen on flat ground (where no landslide can happen) between the passes before and after the chosen date, and stayed low afterwards.</p>
+      <div class="controls">
+        <label>Event between the passes before and <select id="lsT">${A.map((a, i) => `<option value="${i}" ${i === def ? 'selected' : ''} ${i === 0 ? 'disabled' : ''}>${a.date}</option>`).join('')}</select></label>
+        <label>Min. slope <select id="lsSlope"><option>10</option><option selected>15</option><option>20</option><option>25</option></select>°</label>
+        <label>Sensitivity <select id="lsK"><option value="2">high (2σ)</option><option value="2.5" selected>normal (2.5σ)</option><option value="3">strict (3σ)</option></select></label>
+      </div>
+      <div class="result">
+        <canvas class="map" id="lsMap" width="512" height="512"></canvas>
+        <div id="lsOut"><div class="empty">Detecting…</div></div>
+      </div>
+      ${cat.events.length ? `<h3 class="small muted" style="font-weight:500;margin-top:14px">Landslides reported nearby (NASA Global Landslide Catalog)</h3>
+      <table class="t"><tr><th>Date</th><th>Where</th><th>Type</th><th>Trigger</th><th>Size</th><th style="text-align:right">Deaths</th><th style="text-align:right">km</th></tr>
+      ${cat.events.slice(0, 12).map((e) => `<tr><td>${e.date}</td><td class="small">${esc(e.title)}</td><td>${esc(e.category)}</td><td>${esc(e.trigger)}</td><td>${esc(e.size)}</td><td class="num">${e.fatalities ?? '–'}</td><td class="num">${e.km.toFixed(0)}</td></tr>`).join('')}</table>
+      <p class="note">${esc(cat.source || '')}. The catalog ends in 2017 and NISAR began in 2025, so these events show where slopes have failed before, not a validation of this year's detections.</p>` : ''}
+    </div>`;
+  if (rain.obs) {
+    const pts = [...rain.obs, ...(rain.fc || []).filter((d) => d.forecast)];
+    const tt = (d) => Date.parse(d + 'T12:00:00Z');
+    const line = (v, label, c) => ({ label, data: [{ x: tt(pts[0].date), y: v }, { x: tt(pts[pts.length - 1].date), y: v }], borderColor: c, borderDash: [4, 4], pointRadius: 0, borderWidth: 1 });
+    chart('lsRain', {
+      data: { datasets: [
+        { type: 'bar', label: 'Daily rain, mm', data: pts.map((d) => ({ x: tt(d.date), y: d.rain })), backgroundColor: pts.map((d) => (d.forecast ? 'rgba(63,184,255,0.3)' : 'rgba(63,184,255,0.7)')), yAxisID: 'y' },
+        { type: 'line', label: '7-day rain index', data: pts.map((d) => ({ x: tt(d.date), y: d.ari })), borderColor: '#e8b04a', pointRadius: 0, borderWidth: 2, yAxisID: 'y' },
+        { type: 'line', ...line(rain.p90, '90th pct', '#e8b04a') }, { type: 'line', ...line(rain.p95, '95th pct', '#f97316') }, { type: 'line', ...line(rain.p99, '99th pct', '#ef4444') },
+      ] },
+      options: { maintainAspectRatio: false, animation: false, parsing: false, scales: { x: { ...timeAxis(), min: tt(pts[0].date) - 864e5, max: tt(pts[pts.length - 1].date) + 864e5 }, y: { beginAtZero: true, title: { display: true, text: 'mm' } } }, plugins: { legend: { labels: { boxWidth: 10 } } } },
+    });
+  }
+  const run = async () => {
+    const t = +$('#lsT').value, tok = ++viewToken;
+    $('#lsOut').innerHTML = '<div class="empty">Detecting…</div>';
+    const r = await call('landslide', { id: S.stack.id, t, slope: T.slope.slice().buffer, minSlope: +$('#lsSlope').value, k: +$('#lsK').value });
+    const base = await renderImage(S.stack.id, t, 'rgb');
+    if (tok !== viewToken || !$('#lsMap')) return;
+    if (r.error) { $('#lsOut').innerHTML = `<div class="empty">${esc(r.error)}</div>`; return; }
+    const ov = new Uint8ClampedArray(r.data), d = base.data;
+    for (let i = 0; i < ov.length; i += 4) {
+      const a = ov[i + 3] / 255;
+      if (!a) continue;
+      for (let c = 0; c < 3; c++) d[i + c] = d[i + c] * (1 - a) + ov[i + c] * a;
+    }
+    drawTo($('#lsMap'), base);
+    const lonOf = (x) => b.W + ((x + 0.5) / SIZE) * (b.E - b.W), latOf = (y) => b.N - ((y + 0.5) / SIZE) * (b.N - b.S);
+    $('#lsOut').innerHTML = `
+      <div class="stats" style="margin-bottom:10px">
+        <div class="stat"><b>${r.n}</b><span>candidate patches</span></div>
+        <div class="stat"><b>${r.km2.toFixed(2)} km²</b><span>of ${r.steepKm2.toFixed(0)} km² steep ground</span></div>
+      </div>
+      <div class="legend" style="margin-bottom:10px"><span><i style="background:#ff3c28"></i>HV drop (vegetation lost)</span><span><i style="background:#ffd60a"></i>HV drop + HH change (new bare surface)</span><span><i style="background:rgba(255,255,255,0.3)"></i>slope ≥ ${$('#lsSlope').value}°</span></div>
+      ${r.patches.length ? `<table class="t"><tr><th>Patch</th><th style="text-align:right">km²</th><th style="text-align:right">slope</th><th style="text-align:right">HV drop</th><th>Location</th></tr>
+      ${r.patches.slice(0, 10).map((p, i) => `<tr><td>${i + 1}</td><td class="num">${p.km2.toFixed(3)}</td><td class="num">${p.slope.toFixed(0)}°</td><td class="num">${(-p.z).toFixed(1)}σ</td><td class="small">${latOf(p.y).toFixed(4)}, ${lonOf(p.x).toFixed(4)}</td></tr>`).join('')}</table>` : '<p class="muted">No candidate on steep ground between these passes.</p>'}
+      <p class="note">Before = passes ${A[r.before[0]].date}–${A[r.before[1]].date}, after = ${A[r.after[0]].date}–${A[r.after[1]].date}${r.persist ? ', checked against the later passes' : ' (no later passes to check persistence)'}; noise σ = ${r.sigma.toFixed(1)} browse units from ${r.noiseFrom}. Background: the radar colour image (HH/HV) of the chosen date. Candidates also come from logging, fire, harvest of terrace fields or snow; check them against optical images (Optical view) before calling them landslides. Steep slopes facing away from the radar can be in shadow, and slopes facing it are compressed (layover): browse pixels there are less reliable.</p>`;
+  };
+  ['lsT', 'lsSlope', 'lsK'].forEach((id) => $('#' + id).addEventListener('change', run));
+  run();
 }
 
 // ---------------------------------------------------------------- crop suggestions (GAEZ suitability vs SPAM)

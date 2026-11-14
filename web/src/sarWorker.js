@@ -242,6 +242,41 @@ const ops = {
     const l = km ? km.labels.slice() : null;
     return { labels: l, transfer: l ? [l.buffer] : [] };
   },
+  /**
+   * Relative surface wetness from the NISAR series (change detection, Wagner et al. 1999, applied to L-band HH):
+   * per pixel, m_t = (HH_t - HH_driest) / (HH_wettest - HH_driest) in the dB-like browse values. Only passes on which
+   * the pixel is bare or nearly bare count (HV below the 30th percentile of all pixels and passes: little vegetation
+   * volume at that date), because only then does L-band HH mostly follow the moisture of the top few centimetres of soil.
+   * Driest / wettest are taken over the pixel's own bare passes; the mean over the bare pixels of each pass is returned.
+   */
+  wetness({ id }) {
+    const st = stacks.get(id), T = st.T;
+    if (T < 4) return { sm: [], px: 0 };
+    const sample = [];
+    for (let i = 0; i < N; i += 7) if (st.valid[i]) for (let t = 0; t < T; t++) sample.push(st.hvF[t][i]);
+    sample.sort((a, b) => a - b);
+    const cut = sample[Math.floor(sample.length * 0.3)] ?? 0;
+    const sum = new Float64Array(T), cnt = new Float64Array(T);
+    let used = 0;
+    const bare = new Uint8Array(T);
+    for (let i = 0; i < N; i++) {
+      if (!st.valid[i]) continue;
+      let lo = Infinity, hi = -Infinity, nb = 0, mh = 0;
+      for (let t = 0; t < T; t++) {
+        const h = st.hhF[t][i];
+        mh += h;
+        bare[t] = st.hvF[t][i] <= cut ? 1 : 0;
+        if (!bare[t]) continue;
+        nb++; if (h < lo) lo = h; if (h > hi) hi = h;
+      }
+      if (mh / T < 60 || nb < 3 || hi - lo < 6) continue;   // water / shadow, too few bare passes, no dynamic range
+      used++;
+      for (let t = 0; t < T; t++) if (bare[t]) { sum[t] += (st.hhF[t][i] - lo) / (hi - lo); cnt[t]++; }
+    }
+    const minPx = Math.max(30, used * 0.05);
+    return { sm: Array.from(sum, (v, t) => (cnt[t] >= minPx ? v / cnt[t] : null)), px: used, km2: used * st.pixelKm2, cut };
+  },
+
   pixel({ id, x, y }) {
     const st = stacks.get(id);
     const avg = (arr) => {

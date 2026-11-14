@@ -80,7 +80,7 @@ Dancing with the SARs is a planetary surface fingerprint explorer built on the N
 • Hazards. Landslides: scars detected as a lasting HV drop on steep slopes, a rain-triggered hazard nowcast and 7-day outlook (terrain susceptibility × rainfall against the local 25-year record), and the NASA Global Landslide Catalog nearby. Mine spill / mudflow: the physical spread between two passes and the farmland it reached. Change detection, flood history, archive back to 1978 and a parcel report complete the lab.
 
 HOW IT WORKS
-Region analysis happens entirely in the browser: the ASF search API, NISAR browse images, NASA POWER, NASA GIBS, Sentinel-2 Cloud-Optimized GeoTIFFs, ESA WorldCover, ERA5-Land (Open-Meteo) and elevation tiles are all public and CORS-enabled, so Web Workers download, co-register, filter and analyse the radar series and run the deep network with ONNX Runtime (WebAssembly). A Python pipeline without login builds the world mosaics (about 16,000 frames per 12-day cycle, raw browse values, feathered blending, temporal gap filling, polar caps), the archetype library, the GAEZ suitability tiles, the crop-mix prior and the landslide catalog; GitHub Actions publishes the site.
+Region analysis happens entirely in the browser: the ASF search API, NISAR browse images, NASA POWER, NASA GIBS, Sentinel-2 Cloud-Optimized GeoTIFFs, ESA WorldCover, ERA5-Land (Open-Meteo) and elevation tiles are all public and CORS-enabled, so Web Workers download, co-register, filter and analyse the radar series and run the deep network with ONNX Runtime (WebAssembly). A Python pipeline without login builds the world mosaics (about 16,000 frames per 12-day cycle, raw browse values, feathered blending, temporal gap filling, polar caps), the Brazilian reference library, the GAEZ suitability tiles, the crop-mix prior and the landslide catalog; GitHub Actions publishes the site.
 
 BENEFITS AND IMPACT
 Radar works through cloud and at night. Scientists get a way to read unlabelled surface change against known land uses; farmers and agencies can see which crops a district grows, which it could grow, how wet its soil is, and which slopes are primed by rain; responders can map a spill's spread and the fields it reached. Every result states its confidence and whether SAR measures it directly, estimates it with other data, or cannot see it.
@@ -194,7 +194,7 @@ Heavy work runs in Web Workers; the globe pauses while a page covers it.
 
 ## 3. Regions
 
-There are no predefined places: any area covered by NISAR can be analysed. The fingerprint library uses 30 fixed Brazilian areas (§5.10). The pipeline still contains 17 benchmark regions (`pipeline/sites.json`: Punjab, Nile Delta, Iowa, Mato Grosso, Poltava, Mekong, Phu Prao/Sirindhorn, Konya, Tulare, Sylhet, Rondônia, …) used to develop and test the methods; their precomputed data (crops, DEM, weather, flood history) remain in `web/public/data/` and are used by the README figures and the cross-checks below.
+There are no predefined places: any area covered by NISAR can be analysed. The two-area comparison offers 30 fixed Brazilian reference areas (§5.10). The pipeline still contains 17 benchmark regions (`pipeline/sites.json`: Punjab, Nile Delta, Iowa, Mato Grosso, Poltava, Mekong, Phu Prao/Sirindhorn, Konya, Tulare, Sylhet, Rondônia, …) used to develop and test the methods; their precomputed data (crops, DEM, weather, flood history) remain in `web/public/data/` and are used by the README figures and the cross-checks below.
 
 ## 4. Data sources
 

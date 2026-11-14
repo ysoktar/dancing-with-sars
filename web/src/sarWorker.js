@@ -59,10 +59,11 @@ function speckle(stack) {
   return E.map((e) => leeFilter(Float32Array.from(e, (v, i) => Math.min(255, (v + 1) * R[i] / T)), 3));
 }
 
-function makeStack(id, hh, hv, valid, half_deg) {
+function makeStack(id, hh, hv, valid, half_deg, kmWH = null) {
   erode(valid, 3);
   const side = 2 * half_deg * 111.32;
-  const st = { T: hh.length, hh, hv, valid, pixelKm2: (side * side) / N, aoiKm: side };
+  const [wKm, hKm] = kmWH || [side, side];          // drawn rectangles are resampled to the square grid
+  const st = { T: hh.length, hh, hv, valid, pixelKm2: (wKm * hKm) / N, aoiKm: wKm, aoiKmH: hKm };
   st.hhF = speckle(hh);
   st.hvF = speckle(hv);
   stacks.set(id, st);
@@ -94,10 +95,12 @@ async function load({ id, urls, half_deg }) {
 }
 
 /** Live region: search ASF, download, co-register and crop in the worker (see regionFetch.js). */
-async function region({ id, lon, lat, half_deg, maxDates }, progress) {
+async function region({ id, box, maxDates }, progress) {
   if (!stacks.has(id)) {
-    const r = await buildRegion({ lon, lat, half: half_deg, maxDates }, progress);
-    const st = makeStack(id, r.hh, r.hv, r.valid, half_deg);
+    const r = await buildRegion({ box, maxDates }, progress);
+    const lat = (box[1] + box[3]) / 2;
+    const kmW = (box[2] - box[0]) * 111.32 * Math.cos((lat * Math.PI) / 180), kmH = (box[3] - box[1]) * 111.32;
+    const st = makeStack(id, r.hh, r.hv, r.valid, (box[3] - box[1]) / 2, [kmW, kmH]);
     st.meta = { acquisitions: r.acquisitions, track: r.track, box: r.box, fullCover: r.fullCover };
   }
   const st = stacks.get(id);

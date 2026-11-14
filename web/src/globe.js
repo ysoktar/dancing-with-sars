@@ -481,10 +481,40 @@ export class GlobeView {
   }
 
   // ---------------------------------------------------------------- region picking
-  setPickMode(on, cb) {
+  /**
+   * Draw mode: press and drag on the globe to draw a rectangle (lat/lon box). The globe does not rotate
+   * while drawing; release to finish. cb([west, south, east, north]) gets the box.
+   */
+  setDrawMode(on, cb) {
     this.picking = on;
     document.body.classList.toggle('picking', on);
-    this.globe.onGlobeClick(on ? ({ lat, lng }) => cb(lat, lng) : () => {});
+    const el = this.globe.renderer().domElement, controls = this.globe.controls();
+    if (this._drawOff) { this._drawOff(); this._drawOff = null; }
+    if (!on) { controls.enabled = true; return; }
+    controls.autoRotate = false;
+    let start = null;
+    const at = (e) => { const r = el.getBoundingClientRect(); return this.globe.toGlobeCoords(e.clientX - r.left, e.clientY - r.top); };
+    const boxOf = (a, b) => {
+      let w = Math.min(a.lng, b.lng), e = Math.max(a.lng, b.lng);
+      if (e - w > 180) [w, e] = [e, w + 360];                     // across the antimeridian
+      return [w, Math.min(a.lat, b.lat), e, Math.max(a.lat, b.lat)];
+    };
+    const down = (e) => {
+      const c = at(e);
+      if (!c) return;                                              // pressed on space: rotate as usual
+      start = c; controls.enabled = false; e.preventDefault();
+      el.setPointerCapture?.(e.pointerId);
+    };
+    const move = (e) => { if (!start) return; const c = at(e); if (c) { this._drawBox = boxOf(start, c); this.showBox(this._drawBox); this.onDrawMove?.(this._drawBox); } };
+    const up = () => {
+      if (!start) return;
+      const box = this._drawBox; start = null; controls.enabled = true;
+      if (box && (box[2] - box[0]) > 0.01 && (box[3] - box[1]) > 0.01) cb(box);
+    };
+    el.addEventListener('pointerdown', down, true);
+    el.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+    this._drawOff = () => { el.removeEventListener('pointerdown', down, true); el.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); };
   }
 
   /** Outline of the selected analysis window. */

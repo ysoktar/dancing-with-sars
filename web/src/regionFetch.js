@@ -28,14 +28,13 @@ function inside(poly, x, y) {
 }
 
 /** Search ASF and pick the track + one granule per date. */
-export async function planRegion(lon, lat, half, maxDates = 24) {
+export async function planRegion(lon, lat, box, maxDates = 24) {
   const q = new URLSearchParams({ dataset: 'NISAR', processingLevel: 'GCOV', intersectsWith: `POINT(${lon.toFixed(4)} ${lat.toFixed(4)})`, output: 'jsonlite', maxResults: '2000' });
   const r = await fetch(`${SEARCH}?${q}`);
   if (!r.ok) throw new Error(`ASF search failed (${r.status})`);
   const all = (await r.json()).results || [];
   const gs = all.filter((g) => (g.browse || []).some((b) => b.endsWith('_LATLON.png')) && g.wkt);
   if (!gs.length) return { granules: [], total: all.length };
-  const box = aoiBox(lon, lat, half);
   const full = gs.filter((g) => { const p = polygon(g.wkt); return [[box[0], box[1]], [box[0], box[3]], [box[2], box[1]], [box[2], box[3]]].every(([x, y]) => inside(p, x, y)); });
   const pool = full.length ? full : gs;
   const key = (g) => `${g.path}|${g.frame}|${g.flightDirection}`;
@@ -159,11 +158,13 @@ function phaseShift(a, b, n) {
   return { dy: by, dx: bx, conf: best / sd };
 }
 
-function coregister(items, lon, lat, half) {
+function coregister(items, lon, lat, aoi) {
   if (items.length < 2) return;
   const kmlItems = items.filter((it) => it.kml);
   const ref = kmlItems.length ? kmlItems[kmlItems.length - 1] : items[items.length >> 1];
-  const box = aoiBox(lon, lat, half * 2.2);
+  // co-registration window: 2.2x the drawn area around its centre, square on the ground
+  const halfLat = Math.max(aoi[3] - aoi[1], (aoi[2] - aoi[0]) * Math.cos((lat * Math.PI) / 180)) * 1.1;
+  const box = aoiBox(lon, lat, halfLat);
   const wdx = (box[2] - box[0]) / COREG, wdy = (box[3] - box[1]) / COREG;
   const refF = feature(sample(ref, box, COREG), COREG);
   const good = [];
@@ -224,9 +225,10 @@ function validMask(it, box, rgba) {
  * Full live build. progress(stage, done, total) is called as it goes.
  * Returns { hh[], hv[], valid, acquisitions[], track }.
  */
-export async function buildRegion({ lon, lat, half = 0.22, maxDates = 24 }, progress = () => {}) {
+export async function buildRegion({ box, maxDates = 24 }, progress = () => {}) {
+  const lon = (box[0] + box[2]) / 2, lat = (box[1] + box[3]) / 2;
   progress('Searching the ASF archive', 0, 1);
-  const plan = await planRegion(lon, lat, half, maxDates);
+  const plan = await planRegion(lon, lat, box, maxDates);
   if (!plan.granules.length) throw new Error(plan.total ? 'NISAR has passes here, but none with a geocoded browse image yet.' : 'No NISAR GCOV acquisitions cover this point yet.');
   const items = [];
   let done = 0;
@@ -242,8 +244,7 @@ export async function buildRegion({ lon, lat, half = 0.22, maxDates = 24 }, prog
   items.sort((a, b) => a.g.startTime.localeCompare(b.g.startTime));
   if (!items.length) throw new Error('The radar images could not be downloaded.');
   progress('Aligning the dates (phase correlation)', 0, 1);
-  coregister(items, lon, lat, half);
-  const box = aoiBox(lon, lat, half);
+  coregister(items, lon, lat, box);
   const N = SIZE * SIZE, hh = [], hv = [], acqs = [];
   const validAll = new Uint8Array(N).fill(1);
   for (const it of items) {

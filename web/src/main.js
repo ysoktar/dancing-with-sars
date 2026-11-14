@@ -83,8 +83,11 @@ function route() {
   if (current && current !== 'region') closeSitePage();
   if (page === 'region') {
     if (parts.length < 3) { closeSheet(); setPicking(true); return; }
-    const [, lon, lat, half = '0.22', rtab] = parts;
-    openRegion(+lon, +lat, +half, rtab || 'overview');
+    // #/region/<west>/<south>/<east>/<north>/<tab>  (older links #/region/<lon>/<lat>/<half>/<tab> still open)
+    const nums = parts.slice(1).filter((x) => /^-?\d/.test(x)).map(Number);
+    const rtab = parts.slice(1).find((x) => !/^-?\d/.test(x)) || 'overview';
+    const box = nums.length >= 4 ? nums.slice(0, 4) : regionBox(nums[0], nums[1], nums[2] || 0.22);
+    openRegion(box, rtab);
     current = 'region';
     return;
   }
@@ -117,49 +120,49 @@ export function sheetHead(title, sub = '') {
 
 // ===================================================================== region selection
 const regions = new Map();            // key -> Promise<region>
-const RECENT_KEY = 'dws.recentRegions';
-let pickHalf = 0.22;
+const RECENT_KEY = 'dws.recentRegions2';
 const recent = () => { try { return JSON.parse(localStorage.getItem(RECENT_KEY) || '[]'); } catch (e) { return []; } };
+const boxKey = (b) => b.map((v) => v.toFixed(4)).join('/');
+const boxKm = (b) => { const lat = (b[1] + b[3]) / 2; return [(b[2] - b[0]) * 111.32 * Math.cos((lat * Math.PI) / 180), (b[3] - b[1]) * 111.32]; };
 function remember(r) {
   try {
-    const list = [{ lon: r.lon, lat: r.lat, half: r.half_deg, label: r.name }, ...recent().filter((x) => !(Math.abs(x.lon - r.lon) < 1e-3 && Math.abs(x.lat - r.lat) < 1e-3))].slice(0, 6);
+    const list = [{ box: r.box, label: r.name }, ...recent().filter((x) => boxKey(x.box) !== boxKey(r.box))].slice(0, 6);
     localStorage.setItem(RECENT_KEY, JSON.stringify(list));
   } catch (e) { /* storage may be blocked */ }
   drawRecent();
 }
 function regionBox(lon, lat, h) { const hl = h / Math.max(Math.cos((lat * Math.PI) / 180), 0.05); return [lon - hl, lat - h, lon + hl, lat + h]; }
+const MAX_KM = 200, MIN_KM = 3;
 
 export function setPicking(on) {
-  app.globe.setPickMode(on, (lat, lng) => {
+  app.globe.onDrawMove = (b) => {
+    const [w, h] = boxKm(b);
+    $('#drawInfo').textContent = `${w.toFixed(1)} × ${h.toFixed(1)} km · ${Math.round(w * h).toLocaleString()} km²${Math.max(w, h) > MAX_KM ? ` · too large (max ${MAX_KM} km)` : ''}`;
+  };
+  app.globe.setDrawMode(on, (b) => {
+    const [w, h] = boxKm(b);
+    if (Math.max(w, h) > MAX_KM) { $('#drawInfo').textContent = `Too large: ${w.toFixed(0)} × ${h.toFixed(0)} km. Draw at most ${MAX_KM} km across (radar pixels are ~165 m).`; return; }
+    if (Math.min(w, h) < MIN_KM) { $('#drawInfo').textContent = `Too small: draw at least ${MIN_KM} km across.`; return; }
     setPicking(false);
-    go(`#/region/${lng.toFixed(4)}/${lat.toFixed(4)}/${pickHalf}/overview`);
+    go(`#/region/${boxKey(b)}/overview`);
   });
   $('#pickBtn').classList.toggle('on', on);
-  $('#pickBtn').textContent = on ? 'Click a point on the globe…' : 'Pick a point on the globe';
+  $('#pickBtn').textContent = on ? 'Drag on the globe to draw… (click to cancel)' : 'Draw an area on the globe';
+  if (on) $('#drawInfo').textContent = 'Press and drag to draw a rectangle. Zoom in first for a field-scale area.';
 }
 
 function buildRegionPanel() {
   $('#railList').innerHTML = `
     <div class="region-panel">
-      <button class="btn primary" id="pickBtn">Pick a point on the globe</button>
-      <form class="field" id="coordForm"><span class="small muted">or search a place / “lat, lon”</span>
+      <button class="btn primary" id="pickBtn">Draw an area on the globe</button>
+      <span class="small muted mono" id="drawInfo"></span>
+      <form class="field" id="coordForm"><span class="small muted">Find a place first (then draw)</span>
         <div style="display:flex;gap:6px"><input id="cQuery" placeholder="e.g. Polatlı, Ankara  or  39.58, 32.14" style="flex:1"><button class="btn">Go</button></div>
         <span class="small" id="cMsg" style="color:var(--warn)"></span></form>
-      <div class="field"><span class="small muted">Window width</span>
-        <div style="display:flex;gap:6px;align-items:center"><div class="seg" id="halfSeg"><button data-h="0.1">22 km</button><button data-h="0.22" class="on">49 km</button><button data-h="0.4">89 km</button></div>
-        <input id="cKm" type="number" min="5" max="120" step="1" placeholder="km" title="any width in km (5–120)" style="width:64px"></div>
-        <span class="small muted">NISAR browse pixels are ~165 m: below ~10 km a window holds only a few dozen pixels across.</span></div>
       <div id="recentList"></div>
-      <p class="small muted" style="margin-top:10px">Every NISAR pass over the window is fetched live from the ASF archive, aligned and analysed in your browser: crop segmentation, fields, yield segmentation, cropland vs forest, crop calendar.</p>
+      <p class="small muted" style="margin-top:10px">Every NISAR pass over the drawn area is fetched live from the ASF archive, aligned and analysed in your browser: crop segmentation, fields, yield segmentation, cropland vs forest, crop calendar. NISAR browse pixels are ~165 m, so a 5 km area holds about 30 × 30 radar pixels.</p>
     </div>`;
   $('#pickBtn').addEventListener('click', () => setPicking(!app.globe.picking));
-  $$('#halfSeg button').forEach((b) => b.addEventListener('click', () => { pickHalf = +b.dataset.h; $('#cKm').value = ''; $$('#halfSeg button').forEach((x) => x.classList.toggle('on', x === b)); }));
-  $('#cKm').addEventListener('change', () => {
-    const km = Math.max(5, Math.min(120, parseFloat($('#cKm').value)));
-    if (!Number.isFinite(km)) return;
-    pickHalf = +(km / 2 / 111.32).toFixed(4);
-    $$('#halfSeg button').forEach((x) => x.classList.remove('on'));
-  });
   $('#coordForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     const q = $('#cQuery').value.trim();
@@ -173,8 +176,12 @@ function buildRegionPanel() {
         if (r[0]) { la = +r[0].lat; lo = +r[0].lon; }
       } catch (err) { /* offline */ }
     }
-    if (Number.isFinite(la) && Number.isFinite(lo) && Math.abs(la) <= 85) go(`#/region/${lo.toFixed(4)}/${la.toFixed(4)}/${pickHalf}/overview`);
-    else $('#cMsg').textContent = 'Place not found. Try “lat, lon”.';
+    if (!(Number.isFinite(la) && Number.isFinite(lo) && Math.abs(la) <= 85)) { $('#cMsg').textContent = 'Place not found. Try “lat, lon”.'; return; }
+    // fly there and switch to drawing: the user draws the area themselves
+    if (document.body.classList.contains('sheet-open')) go('#/');
+    app.globe.globe.controls().autoRotate = false;
+    app.globe.globe.pointOfView({ lat: la, lng: lo, altitude: 0.12 }, 1400);
+    setPicking(true);
   });
   drawRecent();
 }
@@ -183,7 +190,7 @@ function drawRecent() {
   const list = recent();
   const el = $('#recentList');
   if (!el) return;
-  el.innerHTML = list.length ? `<div class="rail-group">Recent regions</div>` + list.map((r) => `<button class="rail-item" data-href="#/region/${r.lon.toFixed(4)}/${r.lat.toFixed(4)}/${r.half}/overview"><span class="sw" style="--c:#e8b04a"></span><span><b>${esc(r.label)}</b><small>${r.lat.toFixed(2)}°, ${r.lon.toFixed(2)}° · ${(r.half * 222.6).toFixed(0)} km</small></span></button>`).join('') : '';
+  el.innerHTML = list.length ? `<div class="rail-group">Recent areas</div>` + list.map((r) => { const [w, h] = boxKm(r.box); return `<button class="rail-item" data-href="#/region/${boxKey(r.box)}/overview"><span class="sw" style="--c:#e8b04a"></span><span><b>${esc(r.label)}</b><small>${w.toFixed(0)} × ${h.toFixed(0)} km</small></span></button>`; }).join('') : '';
   $$('#recentList .rail-item').forEach((b) => b.addEventListener('click', () => go(b.dataset.href)));
 }
 
@@ -196,35 +203,35 @@ async function placeName(lon, lat) {
   } catch (e) { return ''; }
 }
 
-function openRegion(lon, lat, half, tab) {
-  const key = `${lon.toFixed(4)},${lat.toFixed(4)},${half}`;
+function openRegion(box, tab) {
+  const key = boxKey(box);
+  const lon = (box[0] + box[2]) / 2, lat = (box[1] + box[3]) / 2, [kw, kh] = boxKm(box);
   const sheet = $('#sheet');
-  const box = regionBox(lon, lat, half);
   app.globe.showBox(box);
   app.globe.focus({ id: key, lat, lon }, 1200);
   openSheet();
   if (!regions.has(key)) {
-    sheet.innerHTML = sheetHead(`Region ${lat.toFixed(3)}°, ${lon.toFixed(3)}°`, `${(half * 222.6).toFixed(0)} km window`) +
+    sheet.innerHTML = sheetHead(`Area ${lat.toFixed(3)}°, ${lon.toFixed(3)}°`, `${kw.toFixed(1)} × ${kh.toFixed(1)} km`) +
       `<div class="sheet-body"><div class="page"><div class="loading-region"><div class="small muted" id="rgStage">Searching the ASF archive…</div><div class="bar"><i id="rgBar"></i></div><p class="note">The radar images are public NISAR browse products (~4 MB each). Nothing is installed or uploaded.</p></div></div></div>`;
     const id = `r_${key}`;
     regions.set(key, Promise.all([
-      call('region', { id, lon, lat, half_deg: half, maxDates: 24 }, [], (p) => {
+      call('region', { id, box, maxDates: 24 }, [], (p) => {
         if ($('#rgStage')) $('#rgStage').textContent = `${p.stage}${p.total > 1 ? ` · ${p.done} / ${p.total}` : ''}`;
         if ($('#rgBar')) $('#rgBar').style.width = `${p.total ? (100 * p.done) / p.total : 5}%`;
       }),
       placeName(lon, lat),
     ]).then(([info, name]) => ({
-      id, region: true, lon, lat, half_deg: half, name: name || `${lat.toFixed(3)}°, ${lon.toFixed(3)}°`, country: '', theme: 'agriculture',
-      track: info.track, acquisitions: info.acquisitions, box,
+      id, region: true, lon, lat, half_deg: (box[3] - box[1]) / 2, box, name: name || `${lat.toFixed(3)}°, ${lon.toFixed(3)}°`, country: '', theme: 'agriculture',
+      track: info.track, acquisitions: info.acquisitions,
     })));
   }
   regions.get(key).then((r) => {
-    if (!location.hash.startsWith(`#/region/${lon.toFixed(4)}/${lat.toFixed(4)}`) && !location.hash.startsWith(`#/region/${lon}/${lat}`)) return;
+    if (!location.hash.startsWith('#/region/')) return;
     remember(r);
     openSitePage(sheet, r, tab);
   }).catch((e) => {
     regions.delete(key);
-    sheet.innerHTML = sheetHead(`Region ${lat.toFixed(3)}°, ${lon.toFixed(3)}°`) + `<div class="sheet-body"><div class="page"><div class="empty">${esc(e.message)}<br><br><a href="#/region">Pick another point</a></div></div></div>`;
+    sheet.innerHTML = sheetHead(`Area ${lat.toFixed(3)}°, ${lon.toFixed(3)}°`) + `<div class="sheet-body"><div class="page"><div class="empty">${esc(e.message)}<br><br><a href="#/region">Draw another area</a></div></div></div>`;
   });
 }
 

@@ -14,17 +14,12 @@
     "QPDH": 99,
     "NASV": 53
    },
-   "coverage": 0.0761,
+   "coverage": 0.0772,
    "resolutionDeg": 0.025,
    "betaFrames": 3157,
    "img8k": "mosaic/20251012_20251123_8k.webp",
    "img4k": "mosaic/20251012_20251123_4k.webp",
-   "generated": "2026-11-14T13:11:19Z",
-   "gapFilledPct": 85.5,
-   "polarFill": {
-    "north": 89.98,
-    "south": -89.98
-   }
+   "generated": "2026-11-14T14:04:10Z"
   },
   {
    "id": "20251123_20251229",
@@ -40,17 +35,12 @@
     "SHSH": 186,
     "NASV": 103
    },
-   "coverage": 0.0793,
+   "coverage": 0.0841,
    "resolutionDeg": 0.025,
    "betaFrames": 4566,
    "img8k": "mosaic/20251123_20251229_8k.webp",
    "img4k": "mosaic/20251123_20251229_4k.webp",
-   "generated": "2026-11-14T09:27:15Z",
-   "gapFilledPct": 0.0,
-   "polarFill": {
-    "north": 89.98,
-    "south": -89.98
-   }
+   "generated": "2026-11-14T14:06:27Z"
   },
   {
    "id": "20251229_20260122",
@@ -66,17 +56,12 @@
     "SHSH": 151,
     "NASV": 62
    },
-   "coverage": 0.0762,
+   "coverage": 0.0802,
    "resolutionDeg": 0.025,
    "betaFrames": 2959,
    "img8k": "mosaic/20251229_20260122_8k.webp",
    "img4k": "mosaic/20251229_20260122_4k.webp",
-   "generated": "2026-11-14T09:31:18Z",
-   "gapFilledPct": 0.0,
-   "polarFill": {
-    "north": 89.98,
-    "south": -89.98
-   }
+   "generated": "2026-11-14T14:08:26Z"
   },
   {
    "id": "20260122_20260615",
@@ -92,17 +77,12 @@
     "NASV": 132,
     "NADV": 52
    },
-   "coverage": 0.019,
+   "coverage": 0.0206,
    "resolutionDeg": 0.025,
    "betaFrames": 0,
    "img8k": "mosaic/20260122_20260615_8k.webp",
    "img4k": "mosaic/20260122_20260615_4k.webp",
-   "generated": "2026-11-14T09:35:08Z",
-   "gapFilledPct": 0.0,
-   "polarFill": {
-    "north": 89.98,
-    "south": -89.98
-   }
+   "generated": "2026-11-14T14:10:52Z"
   },
   {
    "id": "20260615_20260627",
@@ -118,17 +98,12 @@
     "NADV": 395,
     "SVSH": 393
    },
-   "coverage": 0.4371,
+   "coverage": 0.4385,
    "resolutionDeg": 0.025,
    "betaFrames": 0,
    "img8k": "mosaic/20260615_20260627_8k.webp",
    "img4k": "mosaic/20260615_20260627_4k.webp",
-   "generated": "2026-11-14T10:37:02Z",
-   "gapFilledPct": 0.0,
-   "polarFill": {
-    "north": 89.98,
-    "south": -89.98
-   }
+   "generated": "2026-11-14T14:17:13Z"
   },
   {
    "id": "20260627_20260709",
@@ -144,17 +119,12 @@
     "SVSH": 518,
     "NADV": 456
    },
-   "coverage": 0.3306,
+   "coverage": 0.4462,
    "resolutionDeg": 0.025,
    "betaFrames": 0,
    "img8k": "mosaic/20260627_20260709_8k.webp",
    "img4k": "mosaic/20260627_20260709_4k.webp",
-   "generated": "2026-11-14T09:43:48Z",
-   "gapFilledPct": 0.0,
-   "polarFill": {
-    "north": 89.98,
-    "south": -89.98
-   }
+   "generated": "2026-11-14T14:24:38Z"
   },
   {
    "id": "20260709_20260721",
@@ -170,17 +140,12 @@
     "NADV": 471,
     "SHNA": 359
    },
-   "coverage": 0.4398,
+   "coverage": 0.4408,
    "resolutionDeg": 0.025,
    "betaFrames": 0,
    "img8k": "mosaic/20260709_20260721_8k.webp",
    "img4k": "mosaic/20260709_20260721_4k.webp",
-   "generated": "2026-11-14T10:43:19Z",
-   "gapFilledPct": 0.0,
-   "polarFill": {
-    "north": 89.98,
-    "south": -89.98
-   }
+   "generated": "2026-11-14T14:32:04Z"
   },
   {
    "id": "20260721_20260814",
@@ -196,17 +161,12 @@
     "NADV": 412,
     "SHNA": 324
    },
-   "coverage": 0.4376,
+   "coverage": 0.4388,
    "resolutionDeg": 0.025,
    "betaFrames": 0,
    "img8k": "mosaic/20260721_20260814_8k.webp",
    "img4k": "mosaic/20260721_20260814_4k.webp",
-   "generated": "2026-11-14T10:51:39Z",
-   "gapFilledPct": 0.0,
-   "polarFill": {
-    "north": 89.98,
-    "south": -89.98
-   }
+   "generated": "2026-11-14T14:38:58Z"
   },
   {
    "id": "20260814_20260826",
@@ -222,17 +182,12 @@
     "NADV": 468,
     "SHNA": 392
    },
-   "coverage": 0.4398,
+   "coverage": 0.4408,
    "resolutionDeg": 0.025,
    "betaFrames": 0,
    "img8k": "mosaic/20260814_20260826_8k.webp",
    "img4k": "mosaic/20260814_20260826_4k.webp",
-   "generated": "2026-11-14T10:58:43Z",
-   "gapFilledPct": 0.0,
-   "polarFill": {
-    "north": 89.98,
-    "south": -89.98
-   }
+   "generated": "2026-11-14T14:46:16Z"
   },
   {
    "id": "20260826_20260907",
@@ -326,17 +281,12 @@
     "NADV": 464,
     "SHNA": 372
    },
-   "coverage": 0.4435,
+   "coverage": 0.4445,
    "resolutionDeg": 0.025,
    "betaFrames": 0,
    "img8k": "mosaic/20261001_20261013_8k.webp",
    "img4k": "mosaic/20261001_20261013_4k.webp",
-   "generated": "2026-11-14T11:45:20Z",
-   "gapFilledPct": 0.0,
-   "polarFill": {
-    "north": 89.98,
-    "south": -89.98
-   }
+   "generated": "2026-11-14T14:01:50Z"
   },
   {
    "id": "20261013_20261025",

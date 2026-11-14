@@ -12,15 +12,10 @@
   "NASV": 132,
   "NADV": 52
  },
- "coverage": 0.019,
+ "coverage": 0.0206,
  "resolutionDeg": 0.025,
  "betaFrames": 0,
  "img8k": "mosaic/20260122_20260615_8k.webp",
  "img4k": "mosaic/20260122_20260615_4k.webp",
- "generated": "2026-11-14T09:35:08Z",
- "gapFilledPct": 0.0,
- "polarFill": {
-  "north": 89.98,
-  "south": -89.98
- }
+ "generated": "2026-11-14T14:10:52Z"
 }

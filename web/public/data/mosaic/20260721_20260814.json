@@ -12,15 +12,10 @@
   "NADV": 412,
   "SHNA": 324
  },
- "coverage": 0.4376,
+ "coverage": 0.4388,
  "resolutionDeg": 0.025,
  "betaFrames": 0,
  "img8k": "mosaic/20260721_20260814_8k.webp",
  "img4k": "mosaic/20260721_20260814_4k.webp",
- "generated": "2026-11-14T10:51:39Z",
- "gapFilledPct": 0.0,
- "polarFill": {
-  "north": 89.98,
-  "south": -89.98
- }
+ "generated": "2026-11-14T14:38:58Z"
 }

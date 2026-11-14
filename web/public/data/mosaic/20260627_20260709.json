@@ -12,15 +12,10 @@
   "SVSH": 518,
   "NADV": 456
  },
- "coverage": 0.3306,
+ "coverage": 0.4462,
  "resolutionDeg": 0.025,
  "betaFrames": 0,
  "img8k": "mosaic/20260627_20260709_8k.webp",
  "img4k": "mosaic/20260627_20260709_4k.webp",
- "generated": "2026-11-14T09:43:48Z",
- "gapFilledPct": 0.0,
- "polarFill": {
-  "north": 89.98,
-  "south": -89.98
- }
+ "generated": "2026-11-14T14:24:38Z"
 }

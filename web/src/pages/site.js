@@ -11,6 +11,7 @@ import { forecast, FORECASTABILITY, MIN_POINTS } from '../forecast.js';
 import { liveContext } from '../liveContext.js';
 import { renderReport } from './report.js';
 import { fetchArchive, ARCHIVE_PLATFORMS } from '../archive.js';
+import { cropMix } from '../cropPrior.js';
 
 const TABS = [
   ['overview', 'Overview'],
@@ -1101,6 +1102,7 @@ async function agYield(el) {
       <h3 class="small muted" style="font-weight:500;margin-top:14px">Fields ranked by yield potential (click to highlight)</h3>
       <div style="max-height:260px;overflow:auto"><table class="t" id="yTab"><tr><th>Rank</th><th>Class</th><th style="text-align:right">km²</th><th style="text-align:right">Index</th><th style="text-align:right">Spread inside</th></tr>
       ${F.slice(0, 80).map((f, k) => `<tr data-id="${f.id}" style="cursor:pointer"><td class="num">${k + 1}</td><td><span class="tag" style="--c:${YIELD_COLORS[f.cls]}"><i></i>${Y.classes[f.cls].name}</span></td><td class="num">${f.km2.toFixed(1)}</td><td class="num">${f.index.toFixed(2)}</td><td class="num">±${f.spread.toFixed(2)}</td></tr>`).join('')}</table></div>
+      <p class="note" id="yRef"></p>
       <p class="note">Assumes the same crop and the same season across the window; a field sown later or with a different crop ranks differently for that reason alone. Flooded paddies early in the season lower the index of rice fields until the canopy closes.</p>
     </div>`;
   let mode = 'pixel', sel = -1;
@@ -1120,6 +1122,10 @@ async function agYield(el) {
     if (seg >= 0) select(seg);
   });
   draw();
+  { const b = aoiBounds();
+    cropMix(app.base, [b.W, b.S, b.E, b.N]).then((mix) => {
+      if ($('#yRef') && mix.totalHa) $('#yRef').innerHTML = `<b>Typical yields here</b> (SPAM 2010, for scale; the index above is relative): ${mix.list.filter((c) => c.tHa).slice(0, 5).map((c) => `${esc(c.name)} ${c.tHa.toFixed(1)} t/ha`).join(' · ')}.`;
+    }).catch(() => {}); }
   chart('yProf', {
     type: 'line',
     data: { datasets: [
@@ -1154,6 +1160,7 @@ function regionOverview(el) {
         <li><a href="${hrefOf(R)}/agri" data-agtool="fields">Fields</a>: field-like segments, each with its own calendar.</li>
         <li><a href="${hrefOf(R)}/agri" data-agtool="yield">Yield segmentation</a>: fields ranked by relative yield potential, zones inside fields.</li>
         <li><a href="${hrefOf(R)}/agri" data-agtool="landcover">Cropland vs forest</a>.</li></ul></div>
+      <div class="panel"><h3>Crops grown here</h3><div id="rsMix" class="small muted">Loading SPAM 2010 crop statistics…</div></div>
       <div class="panel"><h3>Passes</h3><div style="max-height:220px;overflow:auto"><table class="t"><tr><th>Date</th><th>Product</th><th style="text-align:right">valid</th><th style="text-align:right">shift km</th></tr>
         ${a.map((x) => `<tr><td class="mono">${x.date}</td><td class="small">${/PROVISIONAL/.test(x.collection || '') ? 'provisional' : 'validated / beta'}</td><td class="num">${pct(x.valid, 0)}</td><td class="num">${x.kml ? 'KML' : x.coregShiftKm.join(', ')}</td></tr>`).join('')}</table></div></div>
     </div>
@@ -1175,6 +1182,12 @@ function regionOverview(el) {
     </div>
   </div>`;
   $$('a[data-agtool]', el).forEach((l) => l.addEventListener('click', () => { S.agTool = l.dataset.agtool; }));
+  cropMix(app.base, R.box).then((mix) => {
+    if (!$('#rsMix')) return;
+    if (!mix.totalHa) { $('#rsMix').textContent = 'No crop statistics for this area (SPAM 2010 maps no cropland here).'; return; }
+    $('#rsMix').innerHTML = `<table class="t"><tr><th>Crop</th><th style="text-align:right">share of crop area</th><th style="text-align:right">typical yield</th></tr>${mix.list.slice(0, 10).map((c) => `<tr><td>${esc(c.name)}</td><td class="num">${(c.share * 100).toFixed(0)} %</td><td class="num">${c.tHa != null ? c.tHa.toFixed(1) + ' t/ha' : '–'}</td></tr>`).join('')}</table>
+      <p class="note">${Math.round(mix.totalHa).toLocaleString()} ha of crops in the 0.25° cells around this area, around 2010. Source: ${esc(mix.source)}. Used as a prior by the crop-type models.</p>`;
+  }).catch(() => { if ($('#rsMix')) $('#rsMix').textContent = 'Crop statistics could not be loaded.'; });
   getStack().then(async (stack) => {
     S.stack = stack;
     $$('.rthumb', el).forEach((cv) => renderImage(stack.id, +cv.dataset.i, 'rgb', { filtered: true }).then((im) => drawTo(cv, im)));
@@ -1259,7 +1272,9 @@ async function agDeep(el) {
     out.innerHTML = '<div class="loading-region"><div class="small muted" id="dlStage">Starting…</div><div class="bar"><i id="dlBar"></i></div></div>';
     try {
       S.dl.model = $('#dlModel').value;
-      const r = await dlCall({ lon: S.dl.lon, lat: S.dl.lat, season: S.dl.season, maxDates: +$('#dlDates').value, model: S.dl.model, base: new URL(app.base, location.href).href }, (p) => {
+      // crops grown around the window (SPAM 2010, 0.25° cells): prior against crop classes not grown here
+      const mix = await cropMix(app.base, [S.dl.lon - 0.15, S.dl.lat - 0.15, S.dl.lon + 0.15, S.dl.lat + 0.15]).catch(() => null);
+      const r = await dlCall({ lon: S.dl.lon, lat: S.dl.lat, season: S.dl.season, maxDates: +$('#dlDates').value, model: S.dl.model, mix: mix && mix.totalHa ? mix : null, base: new URL(app.base, location.href).href }, (p) => {
         if ($('#dlStage')) $('#dlStage').textContent = `${p.stage}${p.total > 1 ? ` · ${p.done} / ${p.total}` : ''}`;
         if ($('#dlBar')) $('#dlBar').style.width = `${p.total ? (100 * p.done) / p.total : 8}%`;
       });
@@ -1326,7 +1341,7 @@ function showDeep(r) {
       <figure style="margin:0"><canvas id="dlCls" width="${P}" height="${P}" style="width:100%;aspect-ratio:1;border-radius:6px;image-rendering:pixelated"></canvas><figcaption class="small muted">U-TAE crops, post-processed · <label><input type="checkbox" id="dlConf"> shade by confidence</label> · <label><input type="checkbox" id="dlGroups" ${useGroups ? 'checked' : ''}> crop groups</label></figcaption></figure>
     </div>
     <div class="classes" style="margin-top:10px">${order.map(([c, k]) => `<div class="row"><i style="background:${colOf(k)}"></i><div><b>${esc(nameOf(k))}</b><div class="bar-conf" title="mean confidence"><i style="width:${(confOf(k) * 100).toFixed(0)}%"></i></div></div><div class="v">${(c * 0.01).toFixed(1)} ha<br><span class="muted">${pct(c / total)} · conf ${pct(confOf(k), 0)}</span></div></div>`).join('')}</div>
-    <p class="note"><b>Post-processing</b> (the network only knows French farmland): ${r.post?.worldcover ? `${(r.post.maskedWcPx * 0.01).toFixed(1)} ha set to background because ESA WorldCover does not map cropland there` : 'ESA WorldCover could not be read'}; ${(r.post?.maskedGreenPx * 0.01 || 0).toFixed(1)} ha never green this season (max NDVI &lt; 0.3, e.g. desert, rock, towns); patches under ${r.post?.mmuHa ?? 0.3} ha merged into their neighbours (${(r.post?.mergedPx * 0.01 || 0).toFixed(1)} ha); one crop per field by soft vote of the class probabilities; ${(r.post?.unrecognisedPx * 0.01 || 0).toFixed(1)} ha that the network called background but WorldCover maps as cropland (or that has a crop-like greening season) are kept as <i>cropland, crop not recognised</i>.${r.post && !r.post.inDomain ? ' <b>Outside the training domain (Western Europe): crop groups are shown instead of French crop names.</b>' : ''}</p>
+    <p class="note"><b>Post-processing</b> (the network only knows French farmland): ${r.post?.worldcover ? `${(r.post.maskedWcPx * 0.01).toFixed(1)} ha set to background because ESA WorldCover does not map cropland there` : 'ESA WorldCover could not be read'}; ${(r.post?.maskedGreenPx * 0.01 || 0).toFixed(1)} ha never green this season (max NDVI &lt; 0.3, e.g. desert, rock, towns); patches under ${r.post?.mmuHa ?? 0.3} ha merged into their neighbours (${(r.post?.mergedPx * 0.01 || 0).toFixed(1)} ha); one crop per field by soft vote of the class probabilities;${r.post?.prior ? ` regional crop mix (${esc(r.post.prior.top.join(', '))}; SPAM 2010) used as a prior${r.post.prior.suppressed.length ? `, suppressing classes not grown here: ${esc(r.post.prior.suppressed.join(', '))}` : ''};` : ''} ${(r.post?.unrecognisedPx * 0.01 || 0).toFixed(1)} ha that the network called background but WorldCover maps as cropland (or that has a crop-like greening season) are kept as <i>cropland, crop not recognised</i>.${r.post && !r.post.inDomain ? ' <b>Outside the training domain (Western Europe): crop groups are shown instead of French crop names.</b>' : ''}</p>
     <p class="note">${r.dates.length} Sentinel-2 dates (${r.dates[0]} → ${r.dates[r.dates.length - 1]}), 10 m pixels, 1 pixel = 0.01 ha. Confidence = softmax probability of the chosen class. Weights: U-TAE fold ${r.model.fold} (Zenodo 5172293)${r.model.testMetrics?.test_IoU ? `, PASTIS test mIoU ${(+r.model.testMetrics.test_IoU).toFixed(1)} %, OA ${(+r.model.testMetrics.test_accuracy).toFixed(1)} %` : ''}.</p>`;
   const put = (id, fn) => { const c = $('#' + id), x = c.getContext('2d'), im = x.createImageData(P, P); for (let i = 0; i < N; i++) { const v = fn(i); im.data.set(v, i * 4); } x.putImageData(im, 0, 0); };
   put('dlRgb', (i) => r.rgb.subarray(i * 4, i * 4 + 4));

@@ -5,6 +5,7 @@
 import * as ort from 'onnxruntime-web';
 import { fromUrl } from 'geotiff';
 import { readWorldCover } from './worldcover.js';
+import { classWeights, PASTIS_TO_SPAM, spamOfName } from './cropPrior.js';
 
 ort.env.wasm.wasmPaths = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/';
 ort.env.wasm.numThreads = 1;
@@ -62,7 +63,7 @@ async function readWindow(href, x0, y1, size, px) {
   return r;
 }
 
-async function run({ lon, lat, season, maxDates = 16, base }, progress) {
+async function run({ lon, lat, season, maxDates = 16, base, mix }, progress) {
   progress('Loading the U-TAE model', 0, 1);
   const M = await loadModel(base);
   progress('Searching Sentinel-2 scenes (Earth Search)', 0, 1);
@@ -104,6 +105,15 @@ async function run({ lon, lat, season, maxDates = 16, base }, progress) {
   for (let i = 0; i < N; i++) {
     let mx = -Infinity; for (let k = 0; k < K - 1; k++) mx = Math.max(mx, lg[k * N + i]);
     let sum = 0; for (let k = 0; k < K - 1; k++) { const e = Math.exp(lg[k * N + i] - mx); prob[k * N + i] = e; sum += e; }
+    for (let k = 0; k < K - 1; k++) prob[k * N + i] /= sum;
+  }
+  // regional crop-mix prior (SPAM 2010): classes not grown in this region are suppressed before any decision
+  const W = mix ? classWeights(mix, PASTIS_TO_SPAM.slice(0, K - 1)) : null;
+  const suppressed = new Set();
+  if (W) for (let i = 0; i < N; i++) {
+    let b0 = 0, bv0 = -1; for (let k = 0; k < K - 1; k++) if (prob[k * N + i] > bv0) { bv0 = prob[k * N + i]; b0 = k; }
+    if (W[b0] < 1) suppressed.add(b0);
+    let sum = 0; for (let k = 0; k < K - 1; k++) { prob[k * N + i] *= W[k]; sum += prob[k * N + i]; }
     for (let k = 0; k < K - 1; k++) prob[k * N + i] /= sum;
   }
   const raw = new Uint8Array(N);
@@ -176,7 +186,7 @@ async function run({ lon, lat, season, maxDates = 16, base }, progress) {
   const conf = new Float32Array(N), counts = new Array(K).fill(0), confSum = new Array(K).fill(0);
   for (let i = 0; i < N; i++) { const c = cls[i]; conf[i] = c < K - 1 ? prob[c * N + i] : 1 - prob[i]; counts[c]++; confSum[c] += conf[i]; }
   const inDomain = lat >= 36 && lat <= 60 && lon >= -10 && lon <= 25;      // Western / Central Europe, like PASTIS
-  const post = { unrecognisedPx: unrec, worldcover: !!wc, maskedWcPx: maskedWc, maskedGreenPx: maskedGreen, mergedPx: merged, mmuHa: MMU * 0.01, inDomain };
+  const post = { prior: W ? { suppressed: [...suppressed].map((k) => M.classes[k]), source: mix.source, top: mix.list.slice(0, 6).map((c) => `${c.name} ${Math.round(c.share * 100)} %`) } : null, unrecognisedPx: unrec, worldcover: !!wc, maskedWcPx: maskedWc, maskedGreenPx: maskedGreen, mergedPx: merged, mmuHa: MMU * 0.01, inDomain };
   // true-colour image of the median date, for context
   const mid = rgb[Math.floor(rgb.length / 2)], img = new Uint8ClampedArray(N * 4);
   for (let i = 0; i < N; i++) { for (let c = 0; c < 3; c++) img[i * 4 + c] = Math.min(255, (mid[c][i] / 2800) * 255); img[i * 4 + 3] = 255; }
@@ -220,7 +230,7 @@ async function powerSteps(lon, lat, t0, steps, stepDays) {
   return out.map((o) => Object.fromEntries(Object.entries(o).map(([k, v]) => [k, v.length ? (k === 'total_prec' ? v.reduce((a, b) => a + b, 0) : v.reduce((a, b) => a + b, 0) / v.length) : null])));
 }
 
-async function runGrid({ lon, lat, season, base, model }, progress) {
+async function runGrid({ lon, lat, season, base, model, mix }, progress) {
   progress('Loading the model', 0, 1);
   const { M, S } = await loadAny(base, model);
   const P = 128, N = P * P, steps = M.grid.steps, sd = M.grid.step_days;
@@ -281,10 +291,13 @@ async function runGrid({ lon, lat, season, base, model }, progress) {
   const head = M.tasks.sem ? 'sem' : 'crop', K = M.tasks[head], names = (M.classes[head] || []).slice(0, K);
   const cls = new Uint8Array(N), conf = new Float32Array(N), field = new Uint8Array(N).fill(1);
   const lg = outs[head];
+  const Wc = mix ? classWeights(mix, head === 'sem' ? PASTIS_TO_SPAM.slice(0, K) : names.map(spamOfName)) : null;
+  const pr = new Float32Array(K);
   for (let i = 0; i < N; i++) {
-    let b = 0, bv = -Infinity; for (let k = 0; k < K; k++) if (lg[k * N + i] > bv) { bv = lg[k * N + i]; b = k; }
-    let sum = 0; for (let k = 0; k < K; k++) sum += Math.exp(lg[k * N + i] - bv);
-    cls[i] = b; conf[i] = 1 / sum;
+    let mx = -Infinity; for (let k = 0; k < K; k++) mx = Math.max(mx, lg[k * N + i]);
+    let sum = 0; for (let k = 0; k < K; k++) { pr[k] = Math.exp(lg[k * N + i] - mx) * (Wc ? Wc[k] : 1); sum += pr[k]; }
+    let b = 0; for (let k = 1; k < K; k++) if (pr[k] > pr[b]) b = k;
+    cls[i] = b; conf[i] = pr[b] / sum;
     if (outs.extent) field[i] = 1 / (1 + Math.exp(-outs.extent[i])) > 0.5 ? 1 : 0;
   }
   // post-processing: land-cover prior + greenness (as for U-TAE); YieldSAT crops have no background class -> use the field mask

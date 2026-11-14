@@ -363,23 +363,37 @@ const ops = {
   },
 
   /**
-   * Mine-tailings spill / mudflow extent between passes a (before) and b (after): pixels whose HV dropped (vegetation
-   * buried or stripped) or whose HH went dark (smooth wet mud, standing water) by more than k robust sigmas of the
-   * change over the whole window (most of which is unchanged). Pixels that were already water are excluded. Connected
-   * patches of >= minPx pixels; each changed pixel is counted against the ESA WorldCover class it covered.
+   * Mine-tailings spill / mudflow extent between passes a (before) and b (after).
+   * Mud burying the ground changes both channels: HV drops (vegetation buried / stripped) and HH changes (new smooth
+   * wet surface, or dark ponded water). Seasonal forest change, harvest and soil moisture mostly move one channel, vary
+   * from pass to pass, and come back. So a pixel counts when
+   *   1. its change exceeds k sigmas, sigma = max(window-wide robust spread, the pixel's own pass-to-pass variability
+   *      before the event): pixels that always fluctuate (forest, irrigated fields) need a larger change;
+   *   2. both channels agree: HV drop with an HH change >= 1 sigma, or HH darkening to water-like values;
+   *   3. it persists: on the pass after b (when there is one) the change is still at least half as large;
+   * and patches must have >= minPx pixels with a mean change of >= k + 0.5 sigmas.
+   * Pixels that were already water are excluded; each pixel is counted against its ESA WorldCover class.
    */
-  spill({ id, a, b, k = 3, minPx = 4 }) {
+  spill({ id, a, b, k = 3, minPx = 6 }) {
     const st = stacks.get(id), T = st.T;
     if (!(a < b) || b >= T) return { error: 'Pick a "before" date earlier than the "after" date.' };
-    const a0 = Math.max(0, a - 1);
-    const pre = (arr, i) => (a0 < a ? (arr[a0][i] + arr[a][i]) / 2 : arr[a][i]);
-    const dHV = new Float32Array(N), dHH = new Float32Array(N), keep = new Uint8Array(N);
+    const a0 = Math.max(0, a - 2), nb = a - a0 + 1;
+    const pre = (arr, i) => { let v = 0; for (let t = a0; t <= a; t++) v += arr[t][i]; return v / nb; };
+    // the pixel's own pass-to-pass variability before the event (consecutive differences, robust: mean absolute diff)
+    const own = (arr, i) => {
+      if (a < 2) return 0;
+      let v = 0;
+      for (let t = 1; t <= a; t++) v += Math.abs(arr[t][i] - arr[t - 1][i]);
+      return 1.2533 * (v / a) / Math.SQRT2;   // mean |diff| -> sigma of one pass
+    };
+    const dHV = new Float32Array(N), dHH = new Float32Array(N), sV = new Float32Array(N), sH = new Float32Array(N), keep = new Uint8Array(N);
     const sv = [], sh = [];
     for (let i = 0; i < N; i++) {
       if (!st.valid[i]) continue;
       const hhB = pre(st.hhF, i);
       if (hhB < 60 || (st.wc && st.wc[i] === 80)) continue;   // already water / shadow
       dHV[i] = st.hvF[b][i] - pre(st.hvF, i); dHH[i] = st.hhF[b][i] - hhB; keep[i] = 1;
+      sV[i] = own(st.hvF, i); sH[i] = own(st.hhF, i);
       if (i % 3 === 0) { sv.push(dHV[i]); sh.push(dHH[i]); }
     }
     const robust = (v) => {
@@ -389,12 +403,23 @@ const ops = {
     };
     if (sv.length < 100) return { error: 'Too few valid radar pixels.' };
     const nV = robust(sv), nH = robust(sh);
-    const cand = new Uint8Array(N);
+    const cand = new Uint8Array(N), zAbs = new Float32Array(N);
+    const drop = { single: 0, transient: 0, small: 0 };
+    const hasNext = b + 1 < T;
     for (let i = 0; i < N; i++) {
       if (!keep[i]) continue;
-      const zV = (dHV[i] - nV.m) / nV.s, zH = (dHH[i] - nH.m) / nH.s;
-      if (zH < -k && st.hhF[b][i] < 70) cand[i] = 2;        // dark after: water / smooth wet mud
-      else if (zV < -k) cand[i] = 1;                         // vegetation buried / stripped
+      const sigV = Math.max(nV.s, sV[i]), sigH = Math.max(nH.s, sH[i]);
+      const zV = (dHV[i] - nV.m) / sigV, zH = (dHH[i] - nH.m) / sigH;
+      let c = 0;
+      if (zH < -k && st.hhF[b][i] < 70) c = 2;                        // dark after: water / smooth wet mud
+      else if (zV < -k) { if (Math.abs(zH) >= 1) c = 1; else { drop.single += st.pixelKm2; continue; } }
+      if (!c) continue;
+      if (hasNext) {                                                   // persistence on the next pass
+        const nV2 = (st.hvF[b + 1][i] - pre(st.hvF, i) - nV.m) / sigV, nH2 = (st.hhF[b + 1][i] - pre(st.hhF, i) - nH.m) / sigH;
+        const still = c === 2 ? nH2 < -k / 2 : nV2 < -k / 2;
+        if (!still) { drop.transient += st.pixelKm2; continue; }
+      }
+      cand[i] = c; zAbs[i] = c === 2 ? -zH : -zV;
     }
     const lab = new Int32Array(N), patches = [], stack = [];
     for (let i = 0; i < N; i++) {
@@ -411,7 +436,8 @@ const ops = {
           if (cand[q] && !lab[q]) { lab[q] = pid; stack.push(q); }
         }
       }
-      if (members.length < minPx) { for (const j of members) cand[j] = 0; patches.push(null); continue; }
+      let zs = 0; for (const j of members) zs += zAbs[j];
+      if (members.length < minPx || zs / members.length < k + 0.5) { for (const j of members) cand[j] = 0; drop.small += members.length * st.pixelKm2; patches.push(null); continue; }
       let sx = 0, sy = 0, wet = 0, crop = 0;
       for (const j of members) { sx += j % SIZE; sy += (j / SIZE) | 0; if (cand[j] === 2) wet++; if (st.wc && st.wc[j] === 40) crop++; }
       const n = members.length;
@@ -432,7 +458,7 @@ const ops = {
     }
     const total = list.reduce((s2, p) => s2 + p.km2, 0);
     return { patches: list.slice(0, 30), n: list.length, km2: total, cropKm2: list.reduce((s2, p) => s2 + p.cropKm2, 0),
-      byClass: Object.entries(byClass).sort((p, q) => q[1] - p[1]), worldcover: !!st.wc, sigmaHV: nV.s, sigmaHH: nH.s,
+      byClass: Object.entries(byClass).sort((p, q) => q[1] - p[1]), worldcover: !!st.wc, sigmaHV: nV.s, sigmaHH: nH.s, drop, hasNext, before: [a0, a],
       data: img.buffer, w: SIZE, h: SIZE, transfer: [img.buffer] };
   },
 

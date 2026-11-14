@@ -1092,8 +1092,9 @@ function toolSpill(el) {
         <div id="spOut"><div class="empty">Mapping…</div></div>
       </div>
     </div>`;
-  $('#spA').value = Math.max(0, A.length - 2);
-  $('#spB').value = A.length - 1;
+  // default: the last-but-one pass as 'after', so the last pass can confirm that the change persists
+  $('#spA').value = Math.max(0, A.length - 3);
+  $('#spB').value = Math.max(1, A.length - 2);
   const b = aoiBounds();
   const run = async () => {
     const a = +$('#spA').value, bb = +$('#spB').value, tok = ++viewToken;
@@ -1115,7 +1116,8 @@ function toolSpill(el) {
       ${r.byClass.length ? `<table class="t"><tr><th>Land cover reached (WorldCover 2021)</th><th style="text-align:right">km²</th></tr>${r.byClass.map(([c, v]) => `<tr><td>${esc(c)}</td><td class="num">${v.toFixed(2)}</td></tr>`).join('')}</table>` : ''}
       ${r.patches.length ? `<table class="t" style="margin-top:8px"><tr><th>Patch</th><th style="text-align:right">km²</th><th style="text-align:right">cropland ha</th><th style="text-align:right">wet / dark</th><th>Location</th></tr>
       ${r.patches.slice(0, 8).map((p, i) => `<tr><td>${i + 1}</td><td class="num">${p.km2.toFixed(2)}</td><td class="num">${(p.cropKm2 * 100).toFixed(0)}</td><td class="num">${Math.round(p.wet * 100)} %</td><td class="small">${latOf(p.y).toFixed(4)}, ${lonOf(p.x).toFixed(4)}</td></tr>`).join('')}</table>` : '<p class="muted">Nothing changed like a spill between these passes.</p>'}
-      <p class="note">${A[a].date}${a > 0 ? ` (with ${A[a - 1].date})` : ''} → ${A[bb].date}. Changed = HV drop or HH darkening beyond ${$('#spK').value}× the robust spread of the change over the window (σ HV ${r.sigmaHV.toFixed(1)}, σ HH ${r.sigmaHH.toFixed(1)} browse units); pixels that were water before are left out; patches ≥ 4 radar pixels. Harvest, ploughing, floods, fire and new open-pit work change the radar in the same way: check the patches against the Optical view and local reports. Contamination (heavy metals, acidity) needs soil / water samples and laboratory analysis; hyperspectral imagery (EnMAP, PRISMA) can help target them.</p>`;
+      <p class="note"><b>Filtered out:</b> ${r.drop.single.toFixed(2)} km² changed in HV only (seasonal canopy, harvest), ${r.drop.transient.toFixed(2)} km² came back on the next pass (moisture, temporary water)${r.hasNext ? '' : ' (no later pass yet, so persistence could not be checked)'}, ${r.drop.small.toFixed(2)} km² in patches too small or too weak.</p>
+      <p class="note">Before = mean of ${A[r.before[0]].date}–${A[r.before[1]].date}, after = ${A[bb].date}${r.hasNext ? `, checked on ${A[bb + 1].date}` : ''}. A pixel counts when its change exceeds ${$('#spK').value}σ, σ being the larger of the window's robust spread (HV ${r.sigmaHV.toFixed(1)}, HH ${r.sigmaHH.toFixed(1)} browse units) and the pixel's own pass-to-pass variability before the event, when HV and HH change together (or HH turns water-dark), and when the change persists; patches ≥ 6 radar pixels. Pixels that were water before are left out. New open-pit work, fire and large floods can still pass these tests: check the patches against the Optical view and local reports. Contamination (heavy metals, acidity) needs soil / water samples and laboratory analysis; hyperspectral imagery (EnMAP, PRISMA) can help target them.</p>`;
   };
   ['spA', 'spB', 'spK'].forEach((id) => $('#' + id).addEventListener('change', run));
   run();

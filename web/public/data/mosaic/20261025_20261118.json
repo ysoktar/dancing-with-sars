@@ -2,25 +2,25 @@
  "id": "20261025_20261118",
  "start": "2026-10-25",
  "end": "2026-11-17",
- "granules": 10795,
+ "granules": 11394,
  "failed": 0,
  "modes": {
-  "DHDH": 5649,
-  "NASV": 3123,
-  "SHSH": 905,
-  "NADV": 300,
-  "SVSH": 288,
+  "DHDH": 6073,
+  "NASV": 3242,
+  "SHSH": 933,
+  "NADV": 320,
+  "SVSH": 296,
   "SHNA": 273
  },
- "coverage": 0.4005,
+ "coverage": 0.4168,
  "resolutionDeg": 0.025,
  "betaFrames": 0,
  "img8k": "mosaic/20261025_20261118_8k.webp",
  "img4k": "mosaic/20261025_20261118_4k.webp",
- "generated": "2026-11-14T12:06:22Z",
- "gapFilledPct": 0.0,
+ "generated": "2026-11-14T15:42:46Z",
+ "gapFilledPct": 7.0,
  "polarFill": {
-  "north": 89.98,
-  "south": -89.98
+  "north": 77.72,
+  "south": -88.04
  }
 }

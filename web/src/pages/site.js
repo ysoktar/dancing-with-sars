@@ -14,6 +14,7 @@ import { fetchArchive, ARCHIVE_PLATFORMS } from '../archive.js';
 import { cropMix } from '../cropPrior.js';
 import { suitability, suitClass, GAEZ_TO_SPAM, ENERGY } from '../suitability.js';
 import { terrain, susceptibility, catalogNear, rainTrigger, hazard, HAZARD_COLORS } from '../landslide.js';
+import { droughtData, dClass, probit } from '../drought.js';
 import { era5Soil, powerWetness, windowAnomaly, ERA5_LAYERS } from '../soil.js';
 
 const TABS = [
@@ -866,6 +867,7 @@ const AG_TOOLS = [
   ['deep', 'Crop types & calendar', 'U-TAE or your U-Mamba / SITSMamba'],
   ['suggest', 'What could grow here', 'Suitable crops vs crops grown now'],
   ['moisture', 'Soil moisture', 'Four soil layers + NISAR surface wetness'],
+  ['drought', 'Drought', 'Drier than usual? Rain, soil, heat'],
   ['landcover', 'Cropland vs forest', 'Where fields end and forest begins'],
   ['context', 'Weather & NDVI', 'Rain, temperature, optical greenness'],
 ];
@@ -895,7 +897,7 @@ function agriTab(el) {
 
 function showAgTool() {
   destroyCharts();
-  ({ calendar: agCalendar, harvest: agHarvest, patterns: agPatterns, fields: agFields, context: agContext, landcover: toolLandcover, deep: agDeep, suggest: agSuggest, moisture: agMoisture }[S.agTool] || agDeep)($('#agTool'));
+  ({ calendar: agCalendar, harvest: agHarvest, patterns: agPatterns, fields: agFields, context: agContext, landcover: toolLandcover, deep: agDeep, suggest: agSuggest, moisture: agMoisture, drought: agDrought }[S.agTool] || agDeep)($('#agTool'));
 }
 
 async function agMap(canvas, mode, opts = {}) {
@@ -1513,6 +1515,54 @@ async function agSuggest(el) {
     options: { indexAxis: 'y', maintainAspectRatio: false, animation: false,
       scales: { x: { min: 0, max: 100, title: { display: true, text: 'GAEZ suitability index (0–100)' } }, y: { ticks: { autoSkip: false } } },
       plugins: { legend: { labels: { boxWidth: 10 } }, tooltip: { callbacks: { afterLabel: (c) => suitClass(c.raw) } } } },
+  });
+}
+
+// ---------------------------------------------------------------- drought
+async function agDrought(el) {
+  el.innerHTML = '<div class="empty">Reading 25 years of rainfall and temperature (NASA POWER) and soil moisture (ERA5-Land)…</div>';
+  if (!S.stack) S.stack = await getStack();
+  const [D, wet] = await Promise.all([
+    droughtData(S.site.lat, S.site.lon).catch((e) => ({ error: String(e.message || e) })),
+    call('wetness', { id: S.stack.id }).catch(() => ({ sm: [] })),
+  ]);
+  if (S.tab !== 'agri' || S.agTool !== 'drought') return;
+  if (D.error) { el.innerHTML = `<div class="empty">Could not load the records: ${esc(D.error)}</div>`; return; }
+  const last = D.series[D.series.length - 1], soilNow = D.soil?.now;
+  const parts = [last.p90, soilNow?.p].filter((v) => v != null);
+  const blend = parts.reduce((a, b) => a + b, 0) / parts.length, cls = dClass(blend);
+  const sm = wet.sm.filter((v) => v != null), wetNow = sm.length ? sm[sm.length - 1] : null;
+  const pctLabel = (p) => `${Math.round(p * 100)}th percentile`;
+  const spi = (p) => { const v = probit(p); return Math.abs(v) < 0.05 ? '0.0' : v.toFixed(1); };
+  el.innerHTML = `
+    <div class="panel">
+      <p class="muted" style="max-width:880px">Is this area drier than it usually is at this time of year? Each number compares now with the same weeks in every year on record. A low percentile means few years were as dry.</p>
+      <div class="stats" style="margin:10px 0">
+        <div class="stat"><b style="color:${cls.color}">${esc(cls.label)}</b><span>drought level now (rain 90 days + root-zone soil)</span></div>
+        <div class="stat"><b>${pctLabel(last.p90)}</b><span>rain of the last 90 days (${Math.round(last.r90)} mm, SPI ${spi(last.p90)})</span></div>
+        <div class="stat"><b>${soilNow ? pctLabel(soilNow.p) : '–'}</b><span>root-zone soil moisture, 28–100 cm${soilNow ? ` (${soilNow.v.toFixed(2)} m³/m³)` : D.soil?.error ? `: ${esc(D.soil.error)}` : ''}</span></div>
+        <div class="stat"><b>${D.heat.now != null ? `${(D.heat.now - D.heat.normal >= 0 ? '+' : '')}${(D.heat.now - D.heat.normal).toFixed(1)} °C` : '–'}</b><span>last 30 days vs normal temperature</span></div>
+      </div>
+      <table class="t"><tr><th>Window</th><th style="text-align:right">rain, mm</th><th style="text-align:right">percentile</th><th style="text-align:right">SPI</th><th>level</th></tr>
+      ${[30, 90, 180].map((n) => { const c = dClass(last[`p${n}`]); return `<tr><td>last ${n} days</td><td class="num">${Math.round(last[`r${n}`])}</td><td class="num">${Math.round(last[`p${n}`] * 100)}</td><td class="num">${spi(last[`p${n}`])}</td><td><span class="tag" style="--c:${c.color}"><i></i>${esc(c.label)}</span></td></tr>`; }).join('')}</table>
+      <div class="chart" style="height:280px;margin-top:12px"><canvas id="drChart"></canvas></div>
+      ${wetNow != null ? `<p class="note"><b>NISAR:</b> on the latest pass the bare soil of this area was at ${Math.round(wetNow * 100)} % of its own wet–dry range (0 % = driest pass seen, 100 % = wettest). It is a relative radar measure of the top few centimetres.</p>` : ''}
+      <p class="note">Levels follow the US Drought Monitor percentiles: D0 ≤ 30th, D1 ≤ 20th, D2 ≤ 10th, D3 ≤ 5th, D4 ≤ 2nd. SPI = the percentile expressed as standard deviations (−1 moderately dry, −1.5 severely, −2 extremely). Rain percentiles compare the same calendar window (± 5 days) in ${D.years} years; soil moisture in ${D.soil?.years || '–'} years. ${esc(D.source)}. Area-wide values (~10–50 km grids): an irrigated field can be green in a drought.</p>
+    </div>`;
+  const tt = (d) => Date.parse(`${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6)}T12:00:00Z`);
+  const xs = D.series.map((o) => tt(o.date)), x0 = xs[0], x1 = xs[xs.length - 1];
+  const band = (lo, hi, c) => ({ label: '', data: [{ x: x0, y: hi }, { x: x1, y: hi }], fill: { target: { value: lo } }, backgroundColor: c, borderWidth: 0, pointRadius: 0 });
+  chart('drChart', {
+    type: 'line',
+    data: { datasets: [
+      { label: 'rain, 90 days', data: D.series.map((o, i) => ({ x: xs[i], y: o.p90 * 100 })), borderColor: '#3fb8ff', pointRadius: 0, borderWidth: 2 },
+      { label: 'rain, 30 days', data: D.series.map((o, i) => ({ x: xs[i], y: o.p30 * 100 })), borderColor: 'rgba(63,184,255,0.45)', pointRadius: 0, borderWidth: 1 },
+      ...(D.soil?.pts ? [{ label: 'root-zone soil moisture', data: D.soil.pts.map((p) => ({ x: p.t, y: p.p * 100 })), borderColor: '#a3e635', pointRadius: 0, borderWidth: 2 }] : []),
+      band(0, 2, 'rgba(127,29,29,0.35)'), band(2, 5, 'rgba(220,38,38,0.25)'), band(5, 10, 'rgba(249,115,22,0.2)'), band(10, 20, 'rgba(246,183,60,0.16)'), band(20, 30, 'rgba(253,230,138,0.12)'),
+    ] },
+    options: { maintainAspectRatio: false, animation: false, parsing: false,
+      scales: { x: { ...timeAxis(), min: x0, max: x1 }, y: { min: 0, max: 100, title: { display: true, text: 'percentile (low = dry)' } } },
+      plugins: { legend: { labels: { boxWidth: 10, filter: (l) => l.text } } } },
   });
 }
 

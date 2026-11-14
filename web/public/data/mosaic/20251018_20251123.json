@@ -1,0 +1,21 @@
+{
+ "id": "20251018_20251123",
+ "start": "2025-10-18",
+ "end": "2025-11-22",
+ "granules": 3528,
+ "failed": 0,
+ "modes": {
+  "DHDH": 2790,
+  "NADV": 310,
+  "SHSH": 141,
+  "SHNA": 114,
+  "QPDH": 99,
+  "NASV": 53
+ },
+ "coverage": 0.0727,
+ "resolutionDeg": 0.025,
+ "betaFrames": 3122,
+ "img8k": "mosaic/20251018_20251123_8k.webp",
+ "img4k": "mosaic/20251018_20251123_4k.webp",
+ "generated": "2026-11-14T09:23:23Z"
+}

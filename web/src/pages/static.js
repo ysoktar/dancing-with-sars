@@ -212,3 +212,62 @@ cd web && npm ci && npm run dev</pre>
     </div>
   </div></div>`;
 }
+
+
+// ------------------------------------------------------------------ Agriculture overview
+const AG = new Set(['agriculture', 'groundwater', 'flood']);
+
+export async function renderAgriculture(sheet) {
+  const sites = app.sites.filter((s) => AG.has((STORIES[s.id] || {}).theme || s.theme));
+  const months = [];
+  for (let d = new Date(Date.UTC(2025, 9, 1)); d <= new Date(); d.setUTCMonth(d.getUTCMonth() + 1)) months.push(d.toISOString().slice(0, 7));
+  sheet.innerHTML = sheetHead('Agriculture', `${sites.length} crop regions watched by NISAR: when crops grow, peak and are harvested`) + `
+  <div class="sheet-body"><div class="page">
+    <p class="lead" style="margin-bottom:14px">Each row is a farming region; each column a month. Colour shows how green the fields are, from low (dark) to the region's own maximum (bright). Top: the <b>NISAR radar vegetation index</b>, RVI = 4·HV/(HH+HV), which works through cloud. Bottom: <b>MODIS NDVI</b> from optical images. Matching bright bands mean both sensors see the same crop season.</p>
+    <div class="panel"><h3>Radar vegetation index (NISAR, monthly mean)</h3><canvas id="hmR" style="width:100%;display:block"></canvas></div>
+    <div class="panel" style="margin-top:14px"><h3>Optical NDVI (MODIS, monthly mean)</h3><canvas id="hmN" style="width:100%;display:block"></canvas></div>
+    <div class="panel" style="margin-top:14px"><h3>Crop regions</h3>
+      <table class="t" id="agTab"><tr><th>Region</th><th>Passes</th><th>Greenest month (radar)</th><th>Greenest month (optical)</th><th>Rain since Oct 2025</th><th></th></tr></table>
+      <p class="note">Open a region's <b>Agriculture</b> tab for per-pixel crop calendars, harvest progress, paddy flooding, cropping patterns and field segments.</p>
+    </div>
+  </div></div>`;
+  const ctx = {};
+  await Promise.all(sites.map(async (s) => { try { const r = await fetch(`${app.base}data/context/${s.id}.json`); if (r.ok) ctx[s.id] = await r.json(); } catch (e) { /* none */ } }));
+  const radar = sites.map((s) => {
+    const m = {};
+    for (const a of s.acquisitions) { const k = a.date.slice(0, 7); (m[k] = m[k] || []).push((4 * a.hv) / (a.hh + a.hv + 1)); }
+    return months.map((k) => (m[k] ? m[k].reduce((x, y) => x + y, 0) / m[k].length : null));
+  });
+  const optical = sites.map((s) => {
+    const n = ctx[s.id]?.ndvi, m = {};
+    if (n) n.dates.forEach((d, i) => { const k = d.slice(0, 7); (m[k] = m[k] || []).push(n.mean[i]); });
+    return months.map((k) => (m[k] ? m[k].reduce((x, y) => x + y, 0) / m[k].length : null));
+  });
+  heatmap($('#hmR'), sites, months, radar);
+  heatmap($('#hmN'), sites, months, optical);
+  const peak = (row) => { let b = -1, v = -Infinity; row.forEach((x, i) => { if (x != null && x > v) { v = x; b = i; } }); return b < 0 ? '–' : new Date(months[b] + '-15').toLocaleDateString('en-GB', { month: 'short', year: 'numeric' }); };
+  const rain = (s) => { const w = ctx[s.id]?.weather; return w ? Math.round(w.precip_mm.reduce((a, b) => a + (b || 0), 0)) + ' mm' : '–'; };
+  $('#agTab').insertAdjacentHTML('beforeend', sites.map((s, i) => `<tr><td><b>${esc(s.name)}</b> <span class="muted">${esc(s.country)}</span></td><td class="num">${s.acquisitions.length}</td><td>${peak(radar[i])}</td><td>${peak(optical[i])}</td><td class="num">${rain(s)}</td><td><a href="#/site/${s.id}/agri">Open →</a></td></tr>`).join(''));
+}
+
+function heatmap(cv, sites, months, rows) {
+  const w = cv.clientWidth, rowH = 22, labW = 190, top = 4, h = top + rows.length * rowH + 22;
+  const dpr = window.devicePixelRatio || 1;
+  cv.width = w * dpr; cv.height = h * dpr; cv.style.height = h + 'px';
+  const ctx = cv.getContext('2d'); ctx.scale(dpr, dpr);
+  const cw = (w - labW) / months.length;
+  const stops = [[13, 8, 135], [126, 3, 168], [204, 71, 120], [248, 149, 64], [240, 249, 33]];
+  const col = (t) => { const f = t * (stops.length - 1), k = Math.min(stops.length - 2, Math.floor(f)), u = f - k; return `rgb(${stops[k].map((v, i) => Math.round(v * (1 - u) + stops[k + 1][i] * u)).join(',')})`; };
+  ctx.font = '12px Inter, sans-serif'; ctx.textBaseline = 'middle';
+  rows.forEach((row, r) => {
+    const vals = row.filter((v) => v != null);
+    const lo = Math.min(...vals), hi = Math.max(...vals);
+    ctx.fillStyle = '#b9c0cb'; ctx.fillText(sites[r].name, 0, top + r * rowH + rowH / 2);
+    row.forEach((v, c) => {
+      ctx.fillStyle = v == null ? '#161a20' : col(hi > lo ? (v - lo) / (hi - lo) : 0.5);
+      ctx.fillRect(labW + c * cw + 1, top + r * rowH + 1, cw - 2, rowH - 2);
+    });
+  });
+  ctx.fillStyle = '#8a94a3'; ctx.font = '11px Inter, sans-serif';
+  months.forEach((m, c) => { if (c % Math.max(1, Math.round(50 / cw)) === 0) ctx.fillText(new Date(m + '-15').toLocaleDateString('en-GB', { month: 'short', year: '2-digit' }), labW + c * cw + 2, top + rows.length * rowH + 11); });
+}

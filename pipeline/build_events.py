@@ -43,6 +43,12 @@ NEWS_QUERY = {
     "kilauea": '(Kilauea OR Kīlauea) (eruption OR lava OR volcano)',
     "jasper": '(Jasper) (wildfire OR fire OR burn)',
     "thwaites": '(Thwaites) (glacier OR ice shelf OR Antarctica)',
+    "nile": '("Nile Delta" OR Gharbia OR Kafr) (wheat OR rice OR cotton OR irrigation OR harvest)',
+    "iowa": '(Iowa) (corn OR soybean OR harvest OR planting OR drought)',
+    "matogrosso": '("Mato Grosso" OR Sorriso) (soy OR soja OR corn OR milho OR harvest OR safra)',
+    "ukraine": '(Poltava OR Ukraine) (wheat OR harvest OR grain OR sowing)',
+    "mekong": '("Mekong Delta" OR "Can Tho") (rice OR salinity OR flood OR harvest)',
+    "phuprao": '("Ubon Ratchathani" OR "Sirindhorn dam") (rice OR drought OR flood OR harvest)',
 }
 
 
@@ -59,6 +65,12 @@ RELEVANCE = {
     "kilauea": (["kilauea", "kīlauea", "halemaumau", "halemaʻumaʻu"], ["erupt", "lava", "volcan", "fountain", "quake"]),
     "jasper": (["jasper"], ["fire", "wildfire", "burn", "forest"]),
     "thwaites": (["thwaites"], ["glacier", "ice", "antarctic", "melt"]),
+    "nile": (["nile delta", "gharbia", "kafr el", "egypt"], ["wheat", "rice", "cotton", "irrigation", "harvest", "crop"]),
+    "iowa": (["iowa"], ["corn", "soybean", "harvest", "planting", "crop", "drought"]),
+    "matogrosso": (["mato grosso", "sorriso"], ["soy", "soja", "corn", "milho", "harvest", "safra", "crop"]),
+    "ukraine": (["poltava", "ukrain"], ["wheat", "harvest", "grain", "sowing", "crop"]),
+    "mekong": (["mekong", "can tho"], ["rice", "salinity", "flood", "harvest", "crop"]),
+    "phuprao": (["ubon", "sirindhorn"], ["rice", "drought", "flood", "harvest", "crop", "dam", "reservoir"]),
 }
 
 

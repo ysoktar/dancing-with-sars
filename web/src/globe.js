@@ -96,6 +96,7 @@ export class GlobeView {
     this.loader.load(url, (bmp) => {
       const tex = new THREE.Texture(bmp);
       tex.flipY = false;                      // the bitmap is already flipped by createImageBitmap
+      tex.wrapS = THREE.RepeatWrapping;       // no seam where longitude wraps at ±180°
       tex.colorSpace = THREE.SRGBColorSpace;
       tex.anisotropy = this.maxAniso || 4;
       tex.needsUpdate = true;

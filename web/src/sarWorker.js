@@ -277,6 +277,91 @@ const ops = {
     return { sm: Array.from(sum, (v, t) => (cnt[t] >= minPx ? v / cnt[t] : null)), px: used, km2: used * st.pixelKm2, cut };
   },
 
+  /**
+   * Landslide candidates at pass t: on slopes >= minSlope, a strong HV drop (vegetation stripped) between the passes
+   * before t and the passes from t on, that persists. The threshold is k times the spread of the same difference on
+   * flat ground (slope < 5 degrees), where landslides cannot happen, so it adapts to the speckle and the season.
+   * Water / radar shadow (dark HH) is excluded. Patches of >= minPx connected pixels are returned with their size.
+   */
+  landslide({ id, t, slope, minSlope = 15, k = 2.5, minPx = 3 }) {
+    const st = stacks.get(id), T = st.T;
+    const S = new Float32Array(slope);
+    const b0 = Math.max(0, t - 3), b1 = t - 1, a0 = t, a1 = Math.min(T - 1, t + 2), p0 = t + 3;
+    if (b1 < b0) return { error: 'Pick a later date: there must be at least one pass before it.' };
+    const mean = (arr, i, x0, x1) => { let v = 0; for (let q = x0; q <= x1; q++) v += arr[q][i]; return v / (x1 - x0 + 1); };
+    const dHV = new Float32Array(N), dHH = new Float32Array(N), keep = new Uint8Array(N);
+    const flatHV = [], flatHH = [];
+    for (let i = 0; i < N; i++) {
+      if (!st.valid[i]) continue;
+      const hvB = mean(st.hvF, i, b0, b1), hvA = mean(st.hvF, i, a0, a1);
+      const hhB = mean(st.hhF, i, b0, b1), hhA = mean(st.hhF, i, a0, a1);
+      if (hhB < 60 && hhA < 60) continue;          // water or radar shadow
+      dHV[i] = hvA - hvB; dHH[i] = hhA - hhB; keep[i] = 1;
+      if (S[i] < 5) { flatHV.push(dHV[i]); flatHH.push(dHH[i]); }
+    }
+    const robust = (v) => {   // median absolute deviation -> sigma
+      if (v.length < 50) return null;
+      const m = v.slice().sort((x, y) => x - y)[v.length >> 1];
+      const d = v.map((x) => Math.abs(x - m)).sort((x, y) => x - y)[v.length >> 1];
+      return { m, s: Math.max(2, 1.4826 * d) };
+    };
+    // fall back to all pixels when the window has no flat ground
+    let nHV = robust(flatHV), nHH = robust(flatHH), noiseFrom = 'flat ground (slope < 5°)';
+    if (!nHV) {
+      const all = [], allH = [];
+      for (let i = 0; i < N; i += 3) if (keep[i]) { all.push(dHV[i]); allH.push(dHH[i]); }
+      nHV = robust(all); nHH = robust(allH); noiseFrom = 'the whole window (no flat ground)';
+    }
+    if (!nHV) return { error: 'Too few valid radar pixels.' };
+    const cand = new Uint8Array(N);
+    let steep = 0;
+    for (let i = 0; i < N; i++) {
+      if (!keep[i] || S[i] < minSlope) continue;
+      steep++;
+      const zHV = (dHV[i] - nHV.m) / nHV.s, zHH = (dHH[i] - nHH.m) / nHH.s;
+      if (zHV > -k) continue;
+      if (p0 < T) {   // persistence: HV still low on the later passes
+        const later = mean(st.hvF, i, p0, T - 1), before = mean(st.hvF, i, b0, b1);
+        if (later - before > -nHV.s) continue;
+      }
+      cand[i] = 1 + (Math.abs(zHH) > k ? 1 : 0);   // 2 = HH changed as well (new bare surface / debris)
+    }
+    // connected patches (8-neighbour)
+    const lab = new Int32Array(N), patches = [];
+    const stack = [];
+    for (let i = 0; i < N; i++) {
+      if (!cand[i] || lab[i]) continue;
+      const id2 = patches.length + 1;
+      let n = 0, sx = 0, sy = 0, ss = 0, sz = 0, both = 0;
+      stack.push(i); lab[i] = id2;
+      const members = [];
+      while (stack.length) {
+        const j = stack.pop(), x = j % SIZE, y = (j / SIZE) | 0;
+        members.push(j); n++; sx += x; sy += y; ss += S[j]; sz += (dHV[j] - nHV.m) / nHV.s; if (cand[j] === 2) both++;
+        for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+          const xx = x + dx, yy = y + dy;
+          if (xx < 0 || yy < 0 || xx >= SIZE || yy >= SIZE) continue;
+          const q = yy * SIZE + xx;
+          if (cand[q] && !lab[q]) { lab[q] = id2; stack.push(q); }
+        }
+      }
+      if (n < minPx) { for (const j of members) { lab[j] = -1; cand[j] = 0; } patches.push(null); continue; }
+      patches.push({ id: id2, px: n, km2: n * st.pixelKm2, x: sx / n, y: sy / n, slope: ss / n, z: sz / n, hhChanged: both / n });
+    }
+    const list = patches.filter(Boolean).sort((p, q) => q.km2 - p.km2);
+    // overlay: red = candidate (HV drop), yellow = HV drop + HH change, faint white = steep enough to slide
+    const img = new Uint8ClampedArray(N * 4);
+    for (let i = 0; i < N; i++) {
+      const o = i * 4;
+      if (cand[i] === 2) { img[o] = 255; img[o + 1] = 214; img[o + 2] = 10; img[o + 3] = 255; }
+      else if (cand[i] === 1) { img[o] = 255; img[o + 1] = 60; img[o + 2] = 40; img[o + 3] = 255; }
+      else if (keep[i] && S[i] >= minSlope) { img[o] = 255; img[o + 1] = 255; img[o + 2] = 255; img[o + 3] = 38; }
+    }
+    return { patches: list.slice(0, 50), n: list.length, km2: list.reduce((a, p) => a + p.km2, 0), steepKm2: steep * st.pixelKm2,
+      sigma: nHV.s, noiseFrom, before: [b0, b1], after: [a0, a1], persist: p0 < T,
+      data: img.buffer, w: SIZE, h: SIZE, transfer: [img.buffer] };
+  },
+
   pixel({ id, x, y }) {
     const st = stacks.get(id);
     const avg = (arr) => {

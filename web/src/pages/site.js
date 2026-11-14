@@ -517,6 +517,7 @@ const TOOLS = [
   ['floodhist', 'Flood history', 'NISAR water vs 20 years of floods'],
   ['landslide', 'Landslides', 'Detect slides + rain-triggered hazard'],
   ['spill', 'Mine spill / mudflow', 'Spread of tailings and farmland reached'],
+  ['glacier', 'Glaciers & snow', 'When and where ice melts'],
 ];
 
 function analysis(el) {
@@ -535,7 +536,7 @@ function analysis(el) {
 
 function showTool() {
   destroyCharts();
-  ({ change: toolChange, classes: toolClasses, landcover: toolLandcover, floodhist: toolFloodHist, landslide: toolLandslide, spill: toolSpill, fingerprint: toolFingerprint, compare: toolCompare }[S.tool] || toolChange)($('#tool'));
+  ({ change: toolChange, classes: toolClasses, landcover: toolLandcover, floodhist: toolFloodHist, landslide: toolLandslide, spill: toolSpill, fingerprint: toolFingerprint, compare: toolCompare, glacier: toolGlacier }[S.tool] || toolChange)($('#tool'));
 }
 
 // ---------------------------------------------------------------- cropland vs forest
@@ -1359,6 +1360,60 @@ function toolSpill(el) {
       <p class="note">Before = mean of ${A[r.before[0]].date}–${A[r.before[1]].date}, after = ${A[bb].date}${r.hasNext ? `, checked on ${A[bb + 1].date}` : ''}. A pixel counts when its change exceeds ${$('#spK').value}σ, σ being the larger of the window's robust spread (HV ${r.sigmaHV.toFixed(1)}, HH ${r.sigmaHH.toFixed(1)} browse units) and the pixel's own pass-to-pass variability before the event, when HV and HH change together (or HH turns water-dark), and when the change persists; patches ≥ 6 radar pixels. Pixels that were water before are left out. New open-pit work, fire and large floods can still pass these tests: check the patches against the Optical view and local reports. Contamination (heavy metals, acidity) needs soil / water samples and laboratory analysis; hyperspectral imagery (EnMAP, PRISMA) can help target them.</p>`;
   };
   ['spA', 'spB', 'spK'].forEach((id) => $('#' + id).addEventListener('change', run));
+  run();
+}
+
+// ---------------------------------------------------------------- glaciers and snow
+async function toolGlacier(el) {
+  el.innerHTML = '<div class="empty">Loading elevation and finding snow and ice…</div>';
+  const b = aoiBounds(), box = [b.W, b.S, b.E, b.N], key = box.join(',');
+  if (!terrains.has(key)) terrains.set(key, terrain(box));
+  const T = await terrains.get(key).catch(() => null);
+  if (S.tab !== 'analysis' || S.tool !== 'glacier') return;
+  const A = acqs(), ts = times();
+  let t = A.length - 1;
+  const run = async () => {
+    const r = await call('glacier', { id: S.stack.id, t, elev: T ? T.elev.slice().buffer : null });
+    if (!$('#glOut') && !el.isConnected) return;
+    if (r.none) {
+      el.innerHTML = `<div class="panel"><p class="muted">No glacier or permanent snow here (${r.iceKm2.toFixed(1)} km² of snow / ice in ESA WorldCover). Draw an area over a glaciated mountain range or an ice sheet margin, for example the Alps, the Karakoram, Patagonia, Alaska or Svalbard.</p></div>`;
+      return;
+    }
+    const peak = r.wetShare.indexOf(Math.max(...r.wetShare));
+    const on = r.wetShare.findIndex((w) => w >= 0.3), off = r.wetShare.length - 1 - [...r.wetShare].reverse().findIndex((w) => w >= 0.3);
+    if (!$('#glOut')) {
+      el.innerHTML = `
+        <div class="panel">
+          <p class="muted" style="max-width:880px">Melting snow and ice hold liquid water, which swallows the radar signal: a glacier turns dark in HH when it melts and bright again when it refreezes. Radar sees this through cloud and polar night, pass after pass.</p>
+          <div class="controls"><label>Pass <select id="glT">${A.map((a, i) => `<option value="${i}" ${i === t ? 'selected' : ''}>${a.date}</option>`).join('')}</select></label></div>
+          <div class="result"><canvas class="map" id="glMap" width="512" height="512"></canvas><div id="glOut"></div></div>
+          <div class="chart sm" style="margin-top:12px"><canvas id="glChart"></canvas></div>
+          <p class="note">Wet = HH more than 2 robust σ (σ = ${r.sigma.toFixed(1)} browse units, the glacier's pass-to-pass spread) below the pixel's own dry reference (its 80th percentile over the passes), after Nagler & Rott (2000). Ice area: ${r.worldcover ? 'ESA WorldCover 2021 snow / ice' : 'pixels above 3,000 m (WorldCover unavailable)'}. Wet-snow line = the highest 100 m band in which at least half of the ice is wet. Fresh dry snow, rough crevasse fields and radar shadow on steep faces can mimic or hide melt; ice speed and thickness change need interferometry (GUNW / GOFF) and are not computed here.</p>
+        </div>`;
+      $('#glT').addEventListener('change', () => { t = +$('#glT').value; run(); });
+      chart('glChart', {
+        type: 'line',
+        data: { datasets: [
+          { label: 'wet (melting) share of the ice, %', data: ts.map((x, i) => ({ x, y: Math.round(r.wetShare[i] * 100) })), borderColor: '#1e8cff', backgroundColor: 'rgba(30,140,255,0.2)', fill: true, pointRadius: 3, yAxisID: 'y' },
+          ...(r.snowLine ? [{ label: 'wet-snow line, m', data: ts.map((x, i) => ({ x, y: r.snowLine[i] })), borderColor: '#e8b04a', pointRadius: 3, spanGaps: true, yAxisID: 'y1' }] : []),
+        ] },
+        options: { maintainAspectRatio: false, animation: false, parsing: false, scales: { x: timeAxis(), y: { min: 0, max: 100, title: { display: true, text: 'wet %' } }, y1: { position: 'right', grid: { display: false }, title: { display: true, text: 'm' } } }, plugins: { legend: { labels: { boxWidth: 10 } } } },
+      });
+    }
+    drawTo($('#glMap'), new ImageData(new Uint8ClampedArray(r.data), r.w, r.h));
+    $('#glOut').innerHTML = `
+      <div class="stats" style="margin-bottom:10px">
+        <div class="stat"><b>${r.iceKm2.toFixed(1)} km²</b><span>snow and ice in this area</span></div>
+        <div class="stat"><b>${Math.round(r.wetShare[t] * 100)} %</b><span>wet (melting) on ${A[t].date}</span></div>
+        <div class="stat"><b>${r.snowLine?.[t] ? `${r.snowLine[t]} m` : '–'}</b><span>wet-snow line on that pass</span></div>
+      </div>
+      <div class="legend" style="margin-bottom:8px"><span><i style="background:#ebf2fa"></i>dry snow / ice</span><span><i style="background:#1e8cff"></i>wet: melting</span><span><i style="background:#555"></i>not ice</span></div>
+      <table class="t">
+        <tr><td>Most melt</td><td>${A[peak].date} (${Math.round(r.wetShare[peak] * 100)} % wet)</td></tr>
+        <tr><td>Melt season (≥ 30 % wet)</td><td>${on >= 0 ? `${A[on].date} → ${A[off].date}` : 'no pass with ≥ 30 % wet'}</td></tr>
+      </table>`;
+  };
+  if (!S.stack) S.stack = await getStack();
   run();
 }
 

@@ -610,6 +610,66 @@ const ops = {
       curves: { a: { hh: A.hh, hv: A.hv, rvi: A.rvi }, b: { hh: Bf.hh, hv: Bf.hv, rvi: Bf.rvi } }, transfer: [dist.buffer] };
   },
 
+  /**
+   * Glaciers and snow: wet-snow / melt mapping in the spirit of Nagler & Rott (2000). Liquid water in snow and firn
+   * absorbs L-band, so HH drops sharply below the pixel's dry reference (here: its 80th percentile over the passes).
+   * Ice pixels = ESA WorldCover snow / ice (class 70); without WorldCover, bright high pixels are used. A pixel is wet
+   * on a pass when its HH is more than k robust sigmas below its reference (sigma from the pass-to-pass spread of the
+   * glacier pixels). Per pass: wet share of the ice area and, with elevation, the wet-snow line (the elevation below
+   * which most ice pixels are wet).
+   */
+  glacier({ id, t, elev, k = 2 }) {
+    const st = stacks.get(id), T = st.T;
+    const E = elev ? new Float32Array(elev) : null;
+    const ice = new Uint8Array(N);
+    let nIce = 0;
+    for (let i = 0; i < N; i++) {
+      if (!st.valid[i]) continue;
+      if (st.wc ? st.wc[i] === 70 : (E && E[i] > 3000)) { ice[i] = 1; nIce++; }
+    }
+    if (nIce < 50) return { nIce, iceKm2: nIce * st.pixelKm2, none: true };
+    const ref = new Float32Array(N), diffs = [];
+    const tmp = new Float32Array(T);
+    for (let i = 0; i < N; i++) {
+      if (!ice[i]) continue;
+      for (let q = 0; q < T; q++) tmp[q] = st.hhF[q][i];
+      const srt = Array.from(tmp).sort((x, y) => x - y);
+      ref[i] = srt[Math.floor(0.8 * (T - 1))];
+      if (i % 5 === 0) for (let q = 1; q < T; q++) diffs.push(Math.abs(st.hhF[q][i] - st.hhF[q - 1][i]));
+    }
+    diffs.sort((x, y) => x - y);
+    const sigma = Math.max(3, 1.2533 * (diffs.reduce((a2, b2) => a2 + b2, 0) / Math.max(diffs.length, 1)) / Math.SQRT2);
+    const wetShare = [], snowLine = [];
+    for (let q = 0; q < T; q++) {
+      let w = 0;
+      const bands = new Map();
+      for (let i = 0; i < N; i++) {
+        if (!ice[i]) continue;
+        const wet = st.hhF[q][i] < ref[i] - k * sigma;
+        if (wet) w++;
+        if (E) { const b = Math.floor(E[i] / 100); const o = bands.get(b) || [0, 0]; o[0]++; if (wet) o[1]++; bands.set(b, o); }
+      }
+      wetShare.push(w / nIce);
+      if (E) {
+        let line = null;
+        for (const [b, [n, wv]] of [...bands.entries()].sort((x, y) => x[0] - y[0])) if (n >= 20 && wv / n >= 0.5) line = (b + 1) * 100;
+        snowLine.push(line);
+      }
+    }
+    // map of pass t: white = dry snow / ice, blue = wet (melting), faint = not ice
+    const img = new Uint8ClampedArray(N * 4);
+    for (let i = 0; i < N; i++) {
+      const o = i * 4;
+      if (!st.valid[i]) { img[o + 3] = 255; continue; }
+      if (!ice[i]) { const v = st.hhF[t][i] * 0.35; img[o] = v; img[o + 1] = v; img[o + 2] = v; img[o + 3] = 255; continue; }
+      const wet = st.hhF[t][i] < ref[i] - k * sigma;
+      if (wet) { img[o] = 30; img[o + 1] = 140; img[o + 2] = 255; } else { img[o] = 235; img[o + 1] = 242; img[o + 2] = 250; }
+      img[o + 3] = 255;
+    }
+    return { nIce, iceKm2: nIce * st.pixelKm2, sigma, wetShare, snowLine: E ? snowLine : null, worldcover: !!st.wc,
+      data: img.buffer, w: SIZE, h: SIZE, transfer: [img.buffer] };
+  },
+
   pixel({ id, x, y }) {
     const st = stacks.get(id);
     const avg = (arr) => {

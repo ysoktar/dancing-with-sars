@@ -113,6 +113,43 @@ async function region({ id, box, maxDates }, progress) {
   return { ...summary(st), ...st.meta };
 }
 
+/**
+ * Structural features of ~blockM blocks of a stack: mean HH, mean HV, temporal spread of HH and HV, HV range
+ * (p90 - p10 over the passes), mean RVI. Water blocks and blocks with < 50 % valid pixels are skipped.
+ */
+const FEAT_NAMES = ['mean HH', 'mean HV', 'HH variability', 'HV variability', 'HV range', 'RVI'];
+function blockFeatures(st, blockM = 280) {
+  const T = st.T, pxM = Math.sqrt(st.pixelKm2) * 1000, B = Math.max(1, Math.round(blockM / pxM)), G = Math.floor(SIZE / B), F = 6;
+  const out = new Float32Array(G * G * F), ok = new Uint8Array(G * G);
+  const hh = new Float64Array(T), hv = new Float64Array(T);
+  const curveH = new Float64Array(T), curveV = new Float64Array(T);
+  let nb = 0;
+  for (let gy = 0; gy < G; gy++) for (let gx = 0; gx < G; gx++) {
+    hh.fill(0); hv.fill(0);
+    let n = 0;
+    for (let yy = gy * B; yy < (gy + 1) * B; yy++) for (let xx = gx * B; xx < (gx + 1) * B; xx++) {
+      const i = yy * SIZE + xx;
+      if (!st.valid[i]) continue;
+      n++;
+      for (let t = 0; t < T; t++) { hh[t] += st.hhF[t][i]; hv[t] += st.hvF[t][i]; }
+    }
+    if (n < (B * B) / 2) continue;
+    let mH = 0, mV = 0, rv = 0;
+    for (let t = 0; t < T; t++) { hh[t] /= n; hv[t] /= n; mH += hh[t]; mV += hv[t]; rv += (4 * hv[t]) / (hh[t] + hv[t] + 1); }
+    mH /= T; mV /= T; rv /= T;
+    if (mH < 25 && mV < 25) continue;
+    let sH = 0, sV = 0;
+    for (let t = 0; t < T; t++) { sH += (hh[t] - mH) ** 2; sV += (hv[t] - mV) ** 2; curveH[t] += hh[t]; curveV[t] += hv[t]; }
+    const sorted = Array.from(hv).sort((x, y) => x - y);
+    const g = gy * G + gx, o = g * F;
+    out[o] = mH; out[o + 1] = mV; out[o + 2] = Math.sqrt(sH / T); out[o + 3] = Math.sqrt(sV / T);
+    out[o + 4] = sorted[Math.floor(0.9 * (T - 1))] - sorted[Math.floor(0.1 * (T - 1))]; out[o + 5] = rv;
+    ok[g] = 1; nb++;
+  }
+  const hhC = Array.from(curveH, (v) => (nb ? v / nb : null)), hvC = Array.from(curveV, (v) => (nb ? v / nb : null));
+  return { G, B, F, out, ok, nb, blockM: B * pxM, hh: hhC, hv: hvC, rvi: hhC.map((h, t) => (h == null ? null : (4 * hvC[t]) / (h + hvC[t] + 1))) };
+}
+
 const ops = {
   load,
   region,
@@ -459,6 +496,177 @@ const ops = {
     const total = list.reduce((s2, p) => s2 + p.km2, 0);
     return { patches: list.slice(0, 30), n: list.length, km2: total, cropKm2: list.reduce((s2, p) => s2 + p.cropKm2, 0),
       byClass: Object.entries(byClass).sort((p, q) => q[1] - p[1]), worldcover: !!st.wc, sigmaHV: nV.s, sigmaHH: nH.s, drop, hasNext, before: [a0, a],
+      data: img.buffer, w: SIZE, h: SIZE, transfer: [img.buffer] };
+  },
+
+  /**
+   * Structural fingerprint: every ~280 m block of the region gets the same season-light feature vector as the Brazil
+   * archetype library (pipeline/build_archetypes.py): mean HH / HV, temporal spread, HV range, RVI and HV trend.
+   * Primary output: the nearest structural class (annual cropland, semi-perennial crops, open grass / wetland, closed
+   * canopy), distance in within-class spread units, p = softmax(-d^2 / 2). Secondary: the nearest specific Brazilian
+   * archetype (weaker, see the library self-test). "Unlike the library": farther than maxD from every class.
+   * "Structural shift": WorldCover 2021 said >= 60 % bare / shrub / grass, NISAR now behaves like annual cropland.
+   */
+  fingerprint({ id, days, lib, blockM = 280, maxD = 2.5 }) {
+    const st = stacks.get(id), T = st.T;
+    if (T < 6) return { error: 'At least 6 passes are needed.' };
+    const pxM = Math.sqrt(st.pixelKm2) * 1000, B = Math.max(1, Math.round(blockM / pxM)), G = Math.floor(SIZE / B);
+    const Gs = lib.groups, K = Gs.length, A = lib.archetypes, KA = A.length, F = lib.features.length;
+    const nearest = (f, list, scale, d2) => {
+      let bk = 0;
+      for (let k = 0; k < list.length; k++) {
+        const m = list[k].median;
+        let d = 0;
+        for (let j = 0; j < F; j++) d += ((f[j] - m[j]) / scale[j]) ** 2;
+        d2[k] = d / F;
+        if (d2[k] < d2[bk]) bk = k;
+      }
+      let sum = 0;
+      for (let k = 0; k < list.length; k++) sum += Math.exp(-(d2[k] - d2[bk]) / 2);
+      return { k: bk, p: 1 / sum, d: Math.sqrt(d2[bk]) };
+    };
+    const tm = days.reduce((x, y) => x + y, 0) / T, tden = Math.max(days.reduce((x, d) => x + (d - tm) ** 2, 0), 1);
+    const best = new Int16Array(G * G).fill(-1), conf = new Float32Array(G * G), arch = new Int16Array(G * G).fill(-1), shift = new Uint8Array(G * G);
+    const area = new Float64Array(K + 1), confSum = new Float64Array(K + 1), archArea = new Float64Array(KA);
+    const hh = new Float64Array(T), hv = new Float64Array(T), f = new Float64Array(F), d2 = new Float64Array(Math.max(K, KA));
+    const blockKm2 = B * B * st.pixelKm2, annual = Gs.findIndex((g) => g.id === 'annual');
+    let shiftTotal = 0;
+    for (let gy = 0; gy < G; gy++) for (let gx = 0; gx < G; gx++) {
+      hh.fill(0); hv.fill(0);
+      let n = 0;
+      const wcCount = {};
+      for (let yy = gy * B; yy < (gy + 1) * B; yy++) for (let xx = gx * B; xx < (gx + 1) * B; xx++) {
+        const i = yy * SIZE + xx;
+        if (!st.valid[i]) continue;
+        n++;
+        for (let t = 0; t < T; t++) { hh[t] += st.hhF[t][i]; hv[t] += st.hvF[t][i]; }
+        if (st.wc) wcCount[st.wc[i]] = (wcCount[st.wc[i]] || 0) + 1;
+      }
+      if (n < (B * B) / 2) continue;
+      let mH = 0, mV = 0, rv = 0;
+      for (let t = 0; t < T; t++) { hh[t] /= n; hv[t] /= n; mH += hh[t]; mV += hv[t]; rv += (4 * hv[t]) / (hh[t] + hv[t] + 1); }
+      mH /= T; mV /= T; rv /= T;
+      if (mH < 25 && mV < 25) continue;                          // water
+      let sH = 0, sV = 0, tr = 0;
+      for (let t = 0; t < T; t++) { sH += (hh[t] - mH) ** 2; sV += (hv[t] - mV) ** 2; tr += (days[t] - tm) * (hv[t] - mV); }
+      const sorted = Array.from(hv).sort((x, y) => x - y);
+      f[0] = mH; f[1] = mV; f[2] = Math.sqrt(sH / T); f[3] = Math.sqrt(sV / T);
+      f[4] = sorted[Math.floor(0.9 * (T - 1))] - sorted[Math.floor(0.1 * (T - 1))]; f[5] = rv; f[6] = (tr / tden) * 100;
+      const g = gy * G + gx;
+      const ng = nearest(f, Gs, lib.groupScale, d2);
+      if (ng.d > maxD) { best[g] = K; area[K] += blockKm2; continue; }
+      best[g] = ng.k; conf[g] = ng.p; area[ng.k] += blockKm2; confSum[ng.k] += ng.p * blockKm2;
+      const na = nearest(f, A, lib.scale, d2);
+      arch[g] = na.k; archArea[na.k] += blockKm2;
+      if (st.wc && ng.k === annual && ng.p >= 0.4) {
+        const tot = Object.values(wcCount).reduce((x, y) => x + y, 0);
+        const open = ((wcCount[60] || 0) + (wcCount[20] || 0) + (wcCount[30] || 0)) / Math.max(tot, 1);
+        if (open >= 0.6) { shift[g] = 1; shiftTotal += blockKm2; }
+      }
+    }
+    return { G, B, blockM: B * pxM, best: best.buffer, conf: conf.buffer, arch: arch.buffer, shift: shift.buffer, worldcover: !!st.wc,
+      groups: Gs.map((x, k) => ({ id: x.id, km2: area[k], conf: area[k] ? confSum[k] / area[k] : 0 })),
+      archetypes: A.map((x, k) => ({ id: x.id, km2: archArea[k] })),
+      unlikeKm2: area[K], shiftKm2: shiftTotal, transfer: [best.buffer, conf.buffer, arch.buffer, shift.buffer] };
+  },
+
+  /**
+   * Two-area similarity. Both areas get the same block features. Each feature is scaled by its robust spread over the
+   * two areas together. Overall similarity = mean over features of the overlap of the two value distributions
+   * (histogram intersection, 0..1). Map: each block of A coloured by its distance to B's typical (median) block.
+   */
+  compare({ idA, idB }) {
+    const A = blockFeatures(stacks.get(idA)), Bf = blockFeatures(stacks.get(idB)), F = A.F;
+    if (A.nb < 10 || Bf.nb < 10) return { error: 'Too few valid land blocks in one of the areas.' };
+    const col = (X, j) => { const v = []; for (let g = 0; g < X.ok.length; g++) if (X.ok[g]) v.push(X.out[g * F + j]); return v; };
+    const med = (v) => { const s2 = v.slice().sort((x, y) => x - y); return s2[s2.length >> 1]; };
+    const feats = [], scale = [], mB = [];
+    let overlapSum = 0;
+    for (let j = 0; j < F; j++) {
+      const a = col(A, j), b = col(Bf, j), all = a.concat(b);
+      const m = med(all), sd = Math.max(1e-3, 1.4826 * med(all.map((x) => Math.abs(x - m))));
+      const lo = Math.min(...all), hi = Math.max(...all), nbins = 24, w = (hi - lo) / nbins || 1;
+      const ha = new Float64Array(nbins), hb = new Float64Array(nbins);
+      for (const x of a) ha[Math.min(nbins - 1, Math.floor((x - lo) / w))] += 1 / a.length;
+      for (const x of b) hb[Math.min(nbins - 1, Math.floor((x - lo) / w))] += 1 / b.length;
+      let ov = 0;
+      for (let k = 0; k < nbins; k++) ov += Math.min(ha[k], hb[k]);
+      overlapSum += ov;
+      const ma = med(a), mb = med(b);
+      scale.push(sd); mB.push(mb);
+      feats.push({ name: FEAT_NAMES[j], a: ma, b: mb, diffSigma: (ma - mb) / sd, overlap: ov, histA: Array.from(ha), histB: Array.from(hb), lo, hi });
+    }
+    const dist = new Float32Array(A.G * A.G).fill(-1);
+    let close = 0;
+    for (let g = 0; g < A.ok.length; g++) {
+      if (!A.ok[g]) continue;
+      let d = 0;
+      for (let j = 0; j < F; j++) d += ((A.out[g * F + j] - mB[j]) / scale[j]) ** 2;
+      dist[g] = Math.sqrt(d / F);
+      if (dist[g] < 1) close++;
+    }
+    const wcShares = (st) => { if (!st.wc) return null; const c = {}; let n = 0; for (let i = 0; i < N; i++) if (st.valid[i] && st.wc[i]) { c[st.wc[i]] = (c[st.wc[i]] || 0) + 1; n++; } for (const k in c) c[k] /= n; return n ? c : null; };
+    return { similarity: overlapSum / F, feats, G: A.G, dist: dist.buffer, wcA: wcShares(stacks.get(idA)), wcB: wcShares(stacks.get(idB)), closeShare: close / A.nb, blockM: A.blockM,
+      curves: { a: { hh: A.hh, hv: A.hv, rvi: A.rvi }, b: { hh: Bf.hh, hv: Bf.hv, rvi: Bf.rvi } }, transfer: [dist.buffer] };
+  },
+
+  /**
+   * Glaciers and snow: wet-snow / melt mapping in the spirit of Nagler & Rott (2000). Liquid water in snow and firn
+   * absorbs L-band, so HH drops sharply below the pixel's dry reference (here: its 80th percentile over the passes).
+   * Ice pixels = ESA WorldCover snow / ice (class 70); without WorldCover, bright high pixels are used. A pixel is wet
+   * on a pass when its HH is more than k robust sigmas below its reference (sigma from the pass-to-pass spread of the
+   * glacier pixels). Per pass: wet share of the ice area and, with elevation, the wet-snow line (the elevation below
+   * which most ice pixels are wet).
+   */
+  glacier({ id, t, elev, k = 2 }) {
+    const st = stacks.get(id), T = st.T;
+    const E = elev ? new Float32Array(elev) : null;
+    const ice = new Uint8Array(N);
+    let nIce = 0;
+    for (let i = 0; i < N; i++) {
+      if (!st.valid[i]) continue;
+      if (st.wc ? st.wc[i] === 70 : (E && E[i] > 3000)) { ice[i] = 1; nIce++; }
+    }
+    if (nIce < 50) return { nIce, iceKm2: nIce * st.pixelKm2, none: true };
+    const ref = new Float32Array(N), diffs = [];
+    const tmp = new Float32Array(T);
+    for (let i = 0; i < N; i++) {
+      if (!ice[i]) continue;
+      for (let q = 0; q < T; q++) tmp[q] = st.hhF[q][i];
+      const srt = Array.from(tmp).sort((x, y) => x - y);
+      ref[i] = srt[Math.floor(0.8 * (T - 1))];
+      if (i % 5 === 0) for (let q = 1; q < T; q++) diffs.push(Math.abs(st.hhF[q][i] - st.hhF[q - 1][i]));
+    }
+    diffs.sort((x, y) => x - y);
+    const sigma = Math.max(3, 1.2533 * (diffs.reduce((a2, b2) => a2 + b2, 0) / Math.max(diffs.length, 1)) / Math.SQRT2);
+    const wetShare = [], snowLine = [];
+    for (let q = 0; q < T; q++) {
+      let w = 0;
+      const bands = new Map();
+      for (let i = 0; i < N; i++) {
+        if (!ice[i]) continue;
+        const wet = st.hhF[q][i] < ref[i] - k * sigma;
+        if (wet) w++;
+        if (E) { const b = Math.floor(E[i] / 100); const o = bands.get(b) || [0, 0]; o[0]++; if (wet) o[1]++; bands.set(b, o); }
+      }
+      wetShare.push(w / nIce);
+      if (E) {
+        let line = null;
+        for (const [b, [n, wv]] of [...bands.entries()].sort((x, y) => x[0] - y[0])) if (n >= 20 && wv / n >= 0.5) line = (b + 1) * 100;
+        snowLine.push(line);
+      }
+    }
+    // map of pass t: white = dry snow / ice, blue = wet (melting), faint = not ice
+    const img = new Uint8ClampedArray(N * 4);
+    for (let i = 0; i < N; i++) {
+      const o = i * 4;
+      if (!st.valid[i]) { img[o + 3] = 255; continue; }
+      if (!ice[i]) { const v = st.hhF[t][i] * 0.35; img[o] = v; img[o + 1] = v; img[o + 2] = v; img[o + 3] = 255; continue; }
+      const wet = st.hhF[t][i] < ref[i] - k * sigma;
+      if (wet) { img[o] = 30; img[o + 1] = 140; img[o + 2] = 255; } else { img[o] = 235; img[o + 1] = 242; img[o + 2] = 250; }
+      img[o + 3] = 255;
+    }
+    return { nIce, iceKm2: nIce * st.pixelKm2, sigma, wetShare, snowLine: E ? snowLine : null, worldcover: !!st.wc,
       data: img.buffer, w: SIZE, h: SIZE, transfer: [img.buffer] };
   },
 

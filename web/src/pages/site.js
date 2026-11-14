@@ -12,8 +12,10 @@ import { liveContext } from '../liveContext.js';
 import { renderReport } from './report.js';
 import { fetchArchive, ARCHIVE_PLATFORMS } from '../archive.js';
 import { cropMix } from '../cropPrior.js';
+import { labelsNear } from '../cropHarvest.js';
 import { suitability, suitClass, GAEZ_TO_SPAM, ENERGY } from '../suitability.js';
 import { terrain, susceptibility, catalogNear, rainTrigger, hazard, HAZARD_COLORS } from '../landslide.js';
+import { droughtData, dClass, probit } from '../drought.js';
 import { era5Soil, powerWetness, windowAnomaly, ERA5_LAYERS } from '../soil.js';
 
 const TABS = [
@@ -509,12 +511,14 @@ function motion(el) {
 
 // ================================================================== ANALYSIS
 const TOOLS = [
+  ['compare', 'Compare two areas', 'How alike two places behave'],
   ['change', 'Change between two dates', 'Log-ratio + automatic threshold'],
   ['classes', 'Surface types', 'Unsupervised k-means clustering'],
   ['landcover', 'Cropland vs forest', 'Seasonal swing vs canopy volume'],
   ['floodhist', 'Flood history', 'NISAR water vs 20 years of floods'],
   ['landslide', 'Landslides', 'Detect slides + rain-triggered hazard'],
   ['spill', 'Mine spill / mudflow', 'Spread of tailings and farmland reached'],
+  ['glacier', 'Glaciers & snow', 'When and where ice melts'],
 ];
 
 function analysis(el) {
@@ -533,7 +537,7 @@ function analysis(el) {
 
 function showTool() {
   destroyCharts();
-  ({ change: toolChange, classes: toolClasses, landcover: toolLandcover, floodhist: toolFloodHist, landslide: toolLandslide, spill: toolSpill }[S.tool] || toolChange)($('#tool'));
+  ({ change: toolChange, classes: toolClasses, landcover: toolLandcover, floodhist: toolFloodHist, landslide: toolLandslide, spill: toolSpill, fingerprint: toolFingerprint, compare: toolCompare, glacier: toolGlacier }[S.tool] || toolChange)($('#tool'));
 }
 
 // ---------------------------------------------------------------- cropland vs forest
@@ -865,6 +869,7 @@ const AG_TOOLS = [
   ['deep', 'Crop types & calendar', 'U-TAE or your U-Mamba / SITSMamba'],
   ['suggest', 'What could grow here', 'Suitable crops vs crops grown now'],
   ['moisture', 'Soil moisture', 'Four soil layers + NISAR surface wetness'],
+  ['drought', 'Drought', 'Drier than usual? Rain, soil, heat'],
   ['landcover', 'Cropland vs forest', 'Where fields end and forest begins'],
   ['context', 'Weather & NDVI', 'Rain, temperature, optical greenness'],
 ];
@@ -894,7 +899,7 @@ function agriTab(el) {
 
 function showAgTool() {
   destroyCharts();
-  ({ calendar: agCalendar, harvest: agHarvest, patterns: agPatterns, fields: agFields, context: agContext, landcover: toolLandcover, deep: agDeep, suggest: agSuggest, moisture: agMoisture }[S.agTool] || agDeep)($('#agTool'));
+  ({ calendar: agCalendar, harvest: agHarvest, patterns: agPatterns, fields: agFields, context: agContext, landcover: toolLandcover, deep: agDeep, suggest: agSuggest, moisture: agMoisture, drought: agDrought }[S.agTool] || agDeep)($('#agTool'));
 }
 
 async function agMap(canvas, mode, opts = {}) {
@@ -1076,6 +1081,242 @@ async function agContext(el) {
   });
 }
 
+// ---------------------------------------------------------------- two-area similarity
+const cmpStacks = new Map();
+function toolCompare(el) {
+  const R = S.site, b = aoiBounds();
+  const hw = (b.E - b.W) / 2, hh = (b.N - b.S) / 2;
+  let recentList = [];
+  try { recentList = JSON.parse(localStorage.getItem('dws.recentRegions2') || '[]').filter((x) => x.box.join() !== [b.W, b.S, b.E, b.N].join()); } catch (e) { /* none */ }
+  const refs = (archLib?.archetypes || []).flatMap((a) => a.sites.slice(0, 1).map((x) => ({ label: `${a.name} (Brazil)`, lat: x.lat, lon: x.lon })));
+  el.innerHTML = `
+    <div class="panel">
+      <p class="muted" style="max-width:880px">Compare this area (A) with any other area (B). Both are fetched live from NISAR and described the same way: how bright the radar is (HH, HV), how much it changes from pass to pass, and the plant index RVI. The result says how similar the two surfaces behave and which parts of A look most like B.</p>
+      <div class="controls" style="flex-wrap:wrap">
+        <label>Area B at <input id="cmpLL" placeholder="lat, lon  e.g. -12.55, -55.75" style="width:220px"></label>
+        ${recentList.length ? `<label>or a recent area <select id="cmpRecent"><option value="">–</option>${recentList.map((x, i) => `<option value="${i}">${esc(x.label || x.box.map((v) => v.toFixed(2)).join(', '))}</option>`).join('')}</select></label>` : ''}
+        <label>or a reference <select id="cmpRef"><option value="">–</option>${refs.map((x, i) => `<option value="${i}">${esc(x.label)}</option>`).join('')}</select></label>
+        <label><input type="checkbox" id="cmpShift" ${(R.lat >= 0) !== true ? '' : ''}> shift B by 6 months (other hemisphere)</label>
+        <button class="btn" id="cmpGo">Compare</button>
+      </div>
+      <div id="cmpOut"><p class="note">B is drawn with the same size as A (${(2 * hw * 111 * Math.cos((R.lat * Math.PI) / 180)).toFixed(0)} × ${(2 * hh * 111).toFixed(0)} km). Fetching it takes as long as opening a new area.</p></div>
+    </div>`;
+  if (!refs.length) fetch(`${app.base}data/archetypes.json`).then((r) => r.json()).then((j) => { archLib = j; if (S.tool === 'compare') toolCompare(el); });
+  const boxAt = (lat, lon) => { const hl = hw; return [lon - hl, lat - hh, lon + hl, lat + hh]; };
+  $('#cmpGo').addEventListener('click', async () => {
+    let box = null;
+    const ll = $('#cmpLL').value.split(/[ ,;]+/).map(Number).filter((v) => !Number.isNaN(v));
+    if ($('#cmpRecent')?.value) box = recentList[+$('#cmpRecent').value].box;
+    else if ($('#cmpRef').value) { const r0 = refs[+$('#cmpRef').value]; box = boxAt(r0.lat, r0.lon); }
+    else if (ll.length === 2 && Math.abs(ll[0]) <= 90) box = boxAt(ll[0], ll[1]);
+    if (!box) { $('#cmpOut').innerHTML = '<div class="empty">Enter "lat, lon" or pick an area.</div>'; return; }
+    const key = box.map((v) => v.toFixed(4)).join('/'), idB = `cmp_${key}`;
+    $('#cmpOut').innerHTML = '<div class="loading-region"><div class="small muted" id="cmpStage">Searching the ASF archive for area B…</div><div class="bar"><i id="cmpBar"></i></div></div>';
+    try {
+      if (!cmpStacks.has(key)) cmpStacks.set(key, call('region', { id: idB, box, maxDates: 24 }, [], (p) => {
+        if ($('#cmpStage')) $('#cmpStage').textContent = `Area B: ${p.stage}${p.total > 1 ? ` · ${p.done} / ${p.total}` : ''}`;
+        if ($('#cmpBar')) $('#cmpBar').style.width = `${p.total ? (100 * p.done) / p.total : 5}%`;
+      }));
+      const infoB = await cmpStacks.get(key);
+      if (!S.stack) S.stack = await getStack();
+      const r = await call('compare', { idA: S.stack.id, idB });
+      if (S.tool !== 'compare' || !$('#cmpOut')) return;
+      if (r.error) { $('#cmpOut').innerHTML = `<div class="empty">${esc(r.error)}</div>`; return; }
+      showCompare(r, infoB, box, $('#cmpShift').checked);
+    } catch (e) {
+      cmpStacks.delete(key);
+      $('#cmpOut').innerHTML = `<div class="empty">Area B could not be loaded: ${esc(e.message)}</div>`;
+    }
+  });
+}
+
+// landscape-level similarity: several independent views of "how alike are two places", each 0..1
+const climCache = new Map();
+async function powerClim(lat, lon) {
+  const k = `${lat.toFixed(2)},${lon.toFixed(2)}`;
+  if (!climCache.has(k)) climCache.set(k, fetch(`https://power.larc.nasa.gov/api/temporal/climatology/point?parameters=T2M,PRECTOTCORR,GWETROOT&community=AG&longitude=${lon.toFixed(3)}&latitude=${lat.toFixed(3)}&format=JSON`)
+    .then((r) => r.json()).then((j) => { const P = j.properties.parameter, M = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC']; return { t: M.map((m) => P.T2M[m]), p: M.map((m) => P.PRECTOTCORR[m]), w: M.map((m) => P.GWETROOT[m]) }; }));
+  return climCache.get(k);
+}
+const WC_LABEL = { 10: 'trees', 20: 'shrub', 30: 'grass', 40: 'cropland', 50: 'built-up', 60: 'bare', 70: 'snow / ice', 80: 'water', 90: 'wetland', 95: 'mangrove', 100: 'moss' };
+const topShares = (o, names, n = 3) => Object.entries(o || {}).sort((a, b) => b[1] - a[1]).slice(0, n).map(([k, v]) => `${names(k)} ${Math.round(v * 100)} %`).join(', ');
+const intersect = (a, b) => Object.keys({ ...a, ...b }).reduce((s, k) => s + Math.min(a[k] || 0, b[k] || 0), 0);
+
+async function landscapeDims(boxA, boxB, shift, r) {
+  const c = (b) => [(b[1] + b[3]) / 2, (b[0] + b[2]) / 2];
+  const [laA, loA] = c(boxA), [laB, loB] = c(boxB);
+  const [mixA, mixB, clA, clB, tA, tB] = await Promise.all([
+    cropMix(app.base, boxA).catch(() => null), cropMix(app.base, boxB).catch(() => null),
+    powerClim(laA, loA).catch(() => null), powerClim(laB, loB).catch(() => null),
+    terrain(boxA).catch(() => null), terrain(boxB).catch(() => null),
+  ]);
+  const sh = (arr) => (shift ? arr.map((_, i) => arr[(i + 6) % 12]) : arr);
+  const dims = [{ key: 'radar', label: 'Radar behaviour', score: r.similarity, a: '', b: '', how: 'overlap of the six NISAR features' }];
+  if (r.wcA && r.wcB) dims.push({ key: 'cover', label: 'Land cover', score: intersect(r.wcA, r.wcB), a: topShares(r.wcA, (k) => WC_LABEL[k] || k), b: topShares(r.wcB, (k) => WC_LABEL[k] || k), how: 'shared share of ESA WorldCover classes' });
+  if (mixA?.totalHa && mixB?.totalHa) {
+    const sa = Object.fromEntries(mixA.list.map((x) => [x.name, x.share])), sb = Object.fromEntries(mixB.list.map((x) => [x.name, x.share]));
+    dims.push({ key: 'crops', label: 'Crop mix', score: intersect(sa, sb), a: topShares(sa, (k) => k), b: topShares(sb, (k) => k), how: 'shared share of crops grown (SPAM)' });
+  }
+  if (clA && clB) {
+    const bt = sh(clB.t), bp = sh(clB.p), bw = sh(clB.w);
+    const rmsT = Math.sqrt(clA.t.reduce((s, v, i) => s + (v - bt[i]) ** 2, 0) / 12);
+    const rmsP = Math.sqrt(clA.p.reduce((s, v, i) => s + (Math.log1p(v) - Math.log1p(bp[i])) ** 2, 0) / 12);
+    const rmsW = Math.sqrt(clA.w.reduce((s, v, i) => s + (v - bw[i]) ** 2, 0) / 12);
+    const yr = (p) => Math.round(p.reduce((a, b) => a + b, 0) * 30.4);
+    const mean = (v) => (v.reduce((a, b) => a + b, 0) / 12).toFixed(1);
+    dims.push({ key: 'climate', label: 'Climate', score: Math.exp(-rmsT / 4) * Math.exp(-rmsP / 0.6), a: `${mean(clA.t)} °C, ${yr(clA.p)} mm/yr`, b: `${mean(clB.t)} °C, ${yr(clB.p)} mm/yr`, how: `monthly temperature and rain${shift ? ' (B shifted 6 months)' : ''}, NASA POWER` });
+    dims.push({ key: 'water', label: 'Soil water regime', score: Math.exp(-rmsW / 0.12), a: `root zone ${mean(clA.w)}`, b: `root zone ${mean(clB.w)}`, how: 'monthly root-zone wetness, NASA POWER' });
+  }
+  if (tA && tB) {
+    const d = Math.abs(tA.p90 - tB.p90) / 8 + Math.abs(tA.steepFrac - tB.steepFrac) / 0.3;
+    const elev = (t) => Math.round(t.elev.reduce((a, b) => a + b, 0) / t.elev.length);
+    dims.push({ key: 'terrain', label: 'Terrain', score: Math.exp(-d), a: `${elev(tA)} m, slope p90 ${tA.p90.toFixed(0)}°`, b: `${elev(tB)} m, slope p90 ${tB.p90.toFixed(0)}°`, how: 'slope distribution (elevation tiles)' });
+  }
+  return dims;
+}
+
+function showDims(dims) {
+  const box = $('#cmpDims');
+  if (!box) return;
+  const overall = dims.reduce((s, d) => s + d.score, 0) / dims.length;
+  box.innerHTML = `
+    <h3 style="margin:16px 0 6px">How alike are the two places? <span class="muted small">(${Math.round(overall * 100)} % overall)</span></h3>
+    <div class="result"><div class="chart" style="height:320px"><canvas id="cmpRadar"></canvas></div>
+    <table class="t"><tr><th>Aspect</th><th style="text-align:right">alike</th><th>A</th><th>B</th></tr>
+    ${dims.map((d) => `<tr><td title="${esc(d.how)}">${esc(d.label)}</td><td class="num">${Math.round(d.score * 100)} %</td><td class="small">${esc(d.a)}</td><td class="small">${esc(d.b)}</td></tr>`).join('')}</table></div>
+    <p class="note">Not a pixel-by-pixel match: each aspect compares the two places as a whole. Radar behaviour and land cover come from the areas themselves; crop mix from SPAM 2010; climate and soil water from NASA POWER long-term monthly means; terrain from elevation tiles. The overall value is the plain mean of the aspects.</p>`;
+  chart('cmpRadar', {
+    type: 'radar',
+    data: { labels: dims.map((d) => d.label), datasets: [{ label: 'similarity %', data: dims.map((d) => Math.round(d.score * 100)), borderColor: '#e8b04a', backgroundColor: 'rgba(232,176,74,0.25)', pointRadius: 3 }] },
+    options: { maintainAspectRatio: false, animation: false, scales: { r: { min: 0, max: 100, ticks: { stepSize: 25, backdropColor: 'transparent', color: '#8a94a3' }, grid: { color: 'rgba(138,148,163,0.25)' }, angleLines: { color: 'rgba(138,148,163,0.25)' }, pointLabels: { color: '#c9d1d9' } } }, plugins: { legend: { display: false } } },
+  });
+}
+
+function showCompare(r, infoB, boxB, shift) {
+  const pct0 = Math.round(r.similarity * 100);
+  const verdict = pct0 >= 75 ? 'very similar' : pct0 >= 55 ? 'similar' : pct0 >= 35 ? 'partly similar' : 'different';
+  const tsA = times(), accB = infoB.acquisitions || [];
+  const doy = (t) => { const d = new Date(t); return (t - Date.UTC(d.getUTCFullYear(), 0, 1)) / DAY; };
+  const tB = accB.map((a) => Date.parse(a.date + 'T12:00:00Z'));
+  const off = shift ? 182 : 0;
+  const ptsA = (k) => tsA.map((t, i) => ({ x: doy(t), y: r.curves.a[k][i] })).filter((p) => p.y != null).sort((p, q) => p.x - q.x);
+  const ptsB = (k) => tB.map((t, i) => ({ x: (doy(t) + off) % 365, y: r.curves.b[k][i] })).filter((p) => p.y != null).sort((p, q) => p.x - q.x);
+  // calendar overlap and curve correlation (RVI) on the shared days of the year
+  const interp = (pts, x) => { for (let i = 1; i < pts.length; i++) if (pts[i].x >= x && pts[i - 1].x <= x) { const w = (x - pts[i - 1].x) / Math.max(pts[i].x - pts[i - 1].x, 1e-6); return pts[i - 1].y * (1 - w) + pts[i].y * w; } return null; };
+  const pa = ptsA('rvi'), pb = ptsB('rvi'), pairs = [];
+  for (let x = 0; x < 365; x += 6) { const ya = interp(pa, x), yb = interp(pb, x); if (ya != null && yb != null) pairs.push([ya, yb]); }
+  const rr = pairs.length >= 5 ? pearson(pairs) : null;
+  const latB = (boxB[1] + boxB[3]) / 2, lonB = (boxB[0] + boxB[2]) / 2;
+  $('#cmpOut').innerHTML = `
+    <div class="stats" style="margin:10px 0">
+      <div class="stat"><b>${pct0} %</b><span>overall similarity · ${verdict}</span></div>
+      <div class="stat"><b>${Math.round(r.closeShare * 100)} %</b><span>of area A behaves like B's typical surface</span></div>
+      <div class="stat"><b>${rr == null ? '–' : rr.toFixed(2)}</b><span>season-curve match (RVI)${rr == null ? ': the two calendars barely overlap' : ''}</span></div>
+    </div>
+    <div class="result">
+      <canvas class="map" id="cmpMap" width="512" height="512"></canvas>
+      <div>
+        <div class="legend" style="margin-bottom:8px"><span><i style="background:#22c55e"></i>like B</span><span><i style="background:#eab308"></i>somewhat</span><span><i style="background:#ef4444"></i>unlike B</span><span><i style="background:#111"></i>water / no data</span></div>
+        <table class="t"><tr><th>Feature</th><th style="text-align:right">A</th><th style="text-align:right">B</th><th style="text-align:right">overlap</th></tr>
+        ${r.feats.map((f) => `<tr><td>${esc(f.name)}</td><td class="num">${f.name === 'RVI' ? f.a.toFixed(2) : f.a.toFixed(0)}</td><td class="num">${f.name === 'RVI' ? f.b.toFixed(2) : f.b.toFixed(0)}</td><td class="num">${Math.round(f.overlap * 100)} %</td></tr>`).join('')}</table>
+        <p class="note">Area B: ${latB.toFixed(3)}°, ${lonB.toFixed(3)}°, ${accB.length} passes${accB.length ? ` (${accB[0].date} – ${accB[accB.length - 1].date})` : ''}.</p>
+      </div>
+    </div>
+    <div id="cmpDims"><p class="muted small" style="margin-top:12px">Comparing land cover, crop mix, climate, soil water and terrain…</p></div>
+    <h3 class="small muted" style="font-weight:500;margin-top:12px">Through the year (day of year${shift ? ', B shifted by 6 months' : ''})</h3>
+    <div class="chart sm"><canvas id="cmpCurve"></canvas></div>
+    <p class="note">Similarity = how much the distributions of the six features overlap (100 % = identical spread of values). The map colours every ~${Math.round(r.blockM)} m block of A by its distance to B's typical block. Radar brightness comes from 8-bit browse images, which can differ a little between tracks, so levels are compared more loosely than changes. Areas in different hemispheres have opposite seasons: tick "shift B by 6 months" to line up the crop calendars. Similar radar behaviour does not prove the same land use.</p>`;
+  const bA = aoiBounds();
+  landscapeDims([bA.W, bA.S, bA.E, bA.N], boxB, shift, r).then(showDims).catch(() => { if ($('#cmpDims')) $('#cmpDims').innerHTML = ''; });
+  const dist = new Float32Array(r.dist), G = r.G, img = new ImageData(G, G);
+  for (let g = 0; g < G * G; g++) {
+    const d = dist[g], o = g * 4;
+    img.data[o + 3] = 255;
+    if (d < 0) { img.data[o] = img.data[o + 1] = img.data[o + 2] = 17; continue; }
+    const c = d < 0.7 ? [34, 197, 94] : d < 1.4 ? [234, 179, 8] : [239, 68, 68];
+    const k = Math.max(0.45, 1 - Math.min(d, 3) / 6);
+    img.data[o] = c[0] * k; img.data[o + 1] = c[1] * k; img.data[o + 2] = c[2] * k;
+  }
+  const cv = $('#cmpMap'), cx = cv.getContext('2d'), tmp = new OffscreenCanvas(G, G);
+  tmp.getContext('2d').putImageData(img, 0, 0); cx.imageSmoothingEnabled = false; cx.drawImage(tmp, 0, 0, cv.width, cv.height);
+  chart('cmpCurve', {
+    type: 'line',
+    data: { datasets: [
+      { label: 'A · RVI', data: ptsA('rvi'), borderColor: '#e8b04a', backgroundColor: '#e8b04a', pointRadius: 3, tension: 0.25 },
+      { label: 'B · RVI', data: ptsB('rvi'), borderColor: '#3fb8ff', backgroundColor: '#3fb8ff', pointRadius: 3, tension: 0.25 },
+      { label: 'A · HV', data: ptsA('hv'), borderColor: 'rgba(232,176,74,0.45)', borderDash: [4, 3], pointRadius: 0, yAxisID: 'y1' },
+      { label: 'B · HV', data: ptsB('hv'), borderColor: 'rgba(63,184,255,0.45)', borderDash: [4, 3], pointRadius: 0, yAxisID: 'y1' },
+    ] },
+    options: { maintainAspectRatio: false, animation: false, parsing: false,
+      scales: { x: { type: 'linear', min: 0, max: 365, ticks: { callback: (v) => ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][Math.min(11, Math.floor(v / 30.42))] } },
+        y: { title: { display: true, text: 'RVI' } }, y1: { position: 'right', grid: { display: false }, title: { display: true, text: 'HV' } } },
+      plugins: { legend: { labels: { boxWidth: 10 } } } },
+  });
+}
+
+// ---------------------------------------------------------------- structural fingerprint (Brazil archetype library)
+let archLib = null;
+async function toolFingerprint(el) {
+  el.innerHTML = '<div class="empty">Loading the Brazil radar archetype library…</div>';
+  archLib = archLib || (await (await fetch(`${app.base}data/archetypes.json`)).json());
+  const L = archLib, A = acqs(), ts = times();
+  if (S.tab !== 'analysis' || S.tool !== 'fingerprint') return;
+  const months = (a, b) => `${new Date(a + 'T12:00:00Z').toLocaleDateString('en-GB', { month: 'short', year: 'numeric' })} – ${new Date(b + 'T12:00:00Z').toLocaleDateString('en-GB', { month: 'short', year: 'numeric' })}`;
+  const north = S.site.lat >= 0, ST = L.selftest;
+  el.innerHTML = `
+    <div class="panel">
+      <p class="muted" style="max-width:900px"><b>Planetary surface fingerprint.</b> Every land use leaves a structural signature in L-band radar: how rough and wet the surface is (HH), how much plant volume stands on it (HV), and how both rise and fall. NISAR passes over well-known Brazilian landscapes form a <b>radar ground-truth library</b>; every ~280 m block of this area is matched to its nearest <b>structural class</b> (annual cropland, semi-perennial crops, open grass / wetland, closed canopy) and to the closest specific Brazilian example. Blocks that WorldCover 2021 called bare or grassland but that now behave like annual cropland are flagged as <b>structural shifts</b>: new fields or new irrigation.</p>
+      <div class="controls"><div class="seg" id="fpShow"><button data-s="best" class="on">Structural class</button><button data-s="conf">Confidence</button><button data-s="arch">Closest Brazilian example</button><button data-s="shift">Structural shifts</button></div></div>
+      <div class="result">
+        <canvas class="map" id="fpMap" width="512" height="512"></canvas>
+        <div id="fpOut"><div class="empty">Matching…</div></div>
+      </div>
+      <p class="note"><b>How reliable is the library?</b> Leave-one-area-out self-test in Brazil (each area matched against a library built without it): structural class right for <b>${Math.round(ST.groups.overall * 100)} %</b> of cells (chance ${Math.round(100 / L.groups.length)} %): ${L.groups.map((g) => `${g.name.split(' (')[0].toLowerCase()} ${Math.round((ST.groups.per[g.id]?.acc || 0) * 100)} %`).join(', ')}; the specific example only ${Math.round(ST.overall * 100)} % (chance ${Math.round(100 / L.archetypes.length)} %), so read it as a hint. Library: ${L.archetypes.reduce((a, x) => a + x.sites.length, 0)} Brazilian areas, only their cells whose ESA WorldCover class fits the land use, NISAR passes ${months(L.window[0], L.window[1])} (public NISAR data over Brazil begins in June 2026). This area: ${A.length} passes, ${months(A[0].date, A[A.length - 1].date)}${north ? ". Northern hemisphere: seasons run about six months apart from Brazil's, so crops can sit in a different phase; a full-year, phase-shifted curve match becomes possible once NISAR has a year over Brazil (mid-2027)" : ''}. Features per block: mean HH, mean HV, their temporal spread, HV range, RVI, HV trend. A match says "behaves like", not "is".</p>
+    </div>`;
+  const r = await call('fingerprint', { id: S.stack.id, days: ts.map((t) => (t - ts[0]) / DAY), lib: L });
+  if (!$('#fpMap')) return;
+  if (r.error) { $('#fpOut').innerHTML = `<div class="empty">${esc(r.error)}</div>`; return; }
+  const best = new Int16Array(r.best), conf = new Float32Array(r.conf), arch = new Int16Array(r.arch), shift = new Uint8Array(r.shift), G = r.G, K = L.groups.length;
+  const hex = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
+  const gcols = L.groups.map((a) => hex(a.color)), acols = L.archetypes.map((a) => hex(a.color));
+  let show = 'best';
+  const draw = () => {
+    const img = new ImageData(G, G);
+    for (let g = 0; g < G * G; g++) {
+      const k = best[g], o = g * 4;
+      img.data[o + 3] = 255;
+      if (k < 0) { img.data[o] = img.data[o + 1] = img.data[o + 2] = 12; continue; }
+      if (k === K) { img.data[o] = img.data[o + 1] = img.data[o + 2] = 70; continue; }
+      let c = gcols[k];
+      if (show === 'conf') c = c.map((x) => x * (0.25 + 0.75 * conf[g]));
+      if (show === 'arch') c = arch[g] >= 0 ? acols[arch[g]] : [70, 70, 70];
+      if (show === 'shift') c = shift[g] ? [255, 40, 160] : c.map((x) => x * 0.3);
+      img.data[o] = c[0]; img.data[o + 1] = c[1]; img.data[o + 2] = c[2];
+    }
+    const cv = $('#fpMap'), cx = cv.getContext('2d');
+    const tmp = new OffscreenCanvas(G, G); tmp.getContext('2d').putImageData(img, 0, 0);
+    cx.imageSmoothingEnabled = false; cx.drawImage(tmp, 0, 0, cv.width, cv.height);
+  };
+  draw();
+  $$('#fpShow button').forEach((bt) => bt.addEventListener('click', () => { show = bt.dataset.s; $$('#fpShow button').forEach((x) => x.classList.toggle('on', x === bt)); draw(); }));
+  const tot = r.groups.reduce((a, c) => a + c.km2, 0) + r.unlikeKm2;
+  const rows = r.groups.map((c, k) => ({ ...c, g: L.groups[k] })).filter((c) => c.km2 > 0).sort((p, q) => q.km2 - p.km2);
+  const arows = r.archetypes.map((c, k) => ({ ...c, a: L.archetypes[k] })).filter((c) => c.km2 > 0).sort((p, q) => q.km2 - p.km2);
+  $('#fpOut').innerHTML = `
+    <div class="stats" style="margin-bottom:10px">
+      <div class="stat"><b>${rows[0] ? esc(rows[0].g.name.split(' (')[0]) : '–'}</b><span>dominant structure (${rows[0] ? Math.round((rows[0].km2 / tot) * 100) : 0} % of area)</span></div>
+      <div class="stat"><b>${r.worldcover ? `${r.shiftKm2.toFixed(1)} km²` : '–'}</b><span>structural shift: bare / grass in 2021 → annual cropland now</span></div>
+    </div>
+    <table class="t"><tr><th>Structural class</th><th style="text-align:right">km²</th><th style="text-align:right">share</th><th style="text-align:right">confidence</th></tr>
+    ${rows.map((c) => `<tr><td><span class="tag" style="--c:${c.g.color}"><i></i>${esc(c.g.name)}</span></td><td class="num">${c.km2.toFixed(1)}</td><td class="num">${Math.round((c.km2 / tot) * 100)} %</td><td class="num">${Math.round(c.conf * 100)} %</td></tr>`).join('')}
+    ${r.unlikeKm2 ? `<tr><td><span class="tag" style="--c:#464646"><i></i>unlike the library</span></td><td class="num">${r.unlikeKm2.toFixed(1)}</td><td class="num">${Math.round((r.unlikeKm2 / tot) * 100)} %</td><td></td></tr>` : ''}</table>
+    <h3 class="small muted" style="font-weight:500;margin-top:12px">Closest specific Brazilian example (a hint)</h3>
+    <table class="t">${arows.slice(0, 6).map((c) => `<tr><td><span class="tag" style="--c:${c.a.color}"><i></i>${esc(c.a.name)}</span></td><td class="num">${Math.round((c.km2 / tot) * 100)} %</td><td class="num small muted">self-test ${Math.round((ST.per[c.a.id]?.acc || 0) * 100)} %</td></tr>`).join('')}</table>
+    <details style="margin-top:8px"><summary class="small muted">Where the archetypes come from</summary>
+    <table class="t">${L.archetypes.map((a) => `<tr><td><span class="tag" style="--c:${a.color}"><i></i>${esc(a.name)}</span></td><td class="small">${a.sites.map((x) => `${x.lat.toFixed(2)}, ${x.lon.toFixed(2)} (${x.passes} passes, ${x.cells} cells)`).join(' · ')}</td></tr>`).join('')}</table></details>
+    <p class="note">Blocks of ~${Math.round(r.blockM)} m (${r.B}×${r.B} radar pixels). Confidence = how clearly the closest class beats the others.${r.worldcover ? ' Structural shifts need ≥ 60 % bare / shrub / grass in ESA WorldCover 2021 and an annual-cropland match with ≥ 40 % confidence.' : ' WorldCover was not available here, so structural shifts are not computed.'}</p>`;
+}
+
 // ---------------------------------------------------------------- mine-tailings spill / mudflow extent
 function toolSpill(el) {
   const A = acqs(), opts = A.map((a, i) => `<option value="${i}">${a.date}</option>`).join('');
@@ -1120,6 +1361,60 @@ function toolSpill(el) {
       <p class="note">Before = mean of ${A[r.before[0]].date}–${A[r.before[1]].date}, after = ${A[bb].date}${r.hasNext ? `, checked on ${A[bb + 1].date}` : ''}. A pixel counts when its change exceeds ${$('#spK').value}σ, σ being the larger of the window's robust spread (HV ${r.sigmaHV.toFixed(1)}, HH ${r.sigmaHH.toFixed(1)} browse units) and the pixel's own pass-to-pass variability before the event, when HV and HH change together (or HH turns water-dark), and when the change persists; patches ≥ 6 radar pixels. Pixels that were water before are left out. New open-pit work, fire and large floods can still pass these tests: check the patches against the Optical view and local reports. Contamination (heavy metals, acidity) needs soil / water samples and laboratory analysis; hyperspectral imagery (EnMAP, PRISMA) can help target them.</p>`;
   };
   ['spA', 'spB', 'spK'].forEach((id) => $('#' + id).addEventListener('change', run));
+  run();
+}
+
+// ---------------------------------------------------------------- glaciers and snow
+async function toolGlacier(el) {
+  el.innerHTML = '<div class="empty">Loading elevation and finding snow and ice…</div>';
+  const b = aoiBounds(), box = [b.W, b.S, b.E, b.N], key = box.join(',');
+  if (!terrains.has(key)) terrains.set(key, terrain(box));
+  const T = await terrains.get(key).catch(() => null);
+  if (S.tab !== 'analysis' || S.tool !== 'glacier') return;
+  const A = acqs(), ts = times();
+  let t = A.length - 1;
+  const run = async () => {
+    const r = await call('glacier', { id: S.stack.id, t, elev: T ? T.elev.slice().buffer : null });
+    if (!$('#glOut') && !el.isConnected) return;
+    if (r.none) {
+      el.innerHTML = `<div class="panel"><p class="muted">No glacier or permanent snow here (${r.iceKm2.toFixed(1)} km² of snow / ice in ESA WorldCover). Draw an area over a glaciated mountain range or an ice sheet margin, for example the Alps, the Karakoram, Patagonia, Alaska or Svalbard.</p></div>`;
+      return;
+    }
+    const peak = r.wetShare.indexOf(Math.max(...r.wetShare));
+    const on = r.wetShare.findIndex((w) => w >= 0.3), off = r.wetShare.length - 1 - [...r.wetShare].reverse().findIndex((w) => w >= 0.3);
+    if (!$('#glOut')) {
+      el.innerHTML = `
+        <div class="panel">
+          <p class="muted" style="max-width:880px">Melting snow and ice hold liquid water, which swallows the radar signal: a glacier turns dark in HH when it melts and bright again when it refreezes. Radar sees this through cloud and polar night, pass after pass.</p>
+          <div class="controls"><label>Pass <select id="glT">${A.map((a, i) => `<option value="${i}" ${i === t ? 'selected' : ''}>${a.date}</option>`).join('')}</select></label></div>
+          <div class="result"><canvas class="map" id="glMap" width="512" height="512"></canvas><div id="glOut"></div></div>
+          <div class="chart sm" style="margin-top:12px"><canvas id="glChart"></canvas></div>
+          <p class="note">Wet = HH more than 2 robust σ (σ = ${r.sigma.toFixed(1)} browse units, the glacier's pass-to-pass spread) below the pixel's own dry reference (its 80th percentile over the passes), after Nagler & Rott (2000). Ice area: ${r.worldcover ? 'ESA WorldCover 2021 snow / ice' : 'pixels above 3,000 m (WorldCover unavailable)'}. Wet-snow line = the highest 100 m band in which at least half of the ice is wet. Fresh dry snow, rough crevasse fields and radar shadow on steep faces can mimic or hide melt; ice speed and thickness change need interferometry (GUNW / GOFF) and are not computed here.</p>
+        </div>`;
+      $('#glT').addEventListener('change', () => { t = +$('#glT').value; run(); });
+      chart('glChart', {
+        type: 'line',
+        data: { datasets: [
+          { label: 'wet (melting) share of the ice, %', data: ts.map((x, i) => ({ x, y: Math.round(r.wetShare[i] * 100) })), borderColor: '#1e8cff', backgroundColor: 'rgba(30,140,255,0.2)', fill: true, pointRadius: 3, yAxisID: 'y' },
+          ...(r.snowLine ? [{ label: 'wet-snow line, m', data: ts.map((x, i) => ({ x, y: r.snowLine[i] })), borderColor: '#e8b04a', pointRadius: 3, spanGaps: true, yAxisID: 'y1' }] : []),
+        ] },
+        options: { maintainAspectRatio: false, animation: false, parsing: false, scales: { x: timeAxis(), y: { min: 0, max: 100, title: { display: true, text: 'wet %' } }, y1: { position: 'right', grid: { display: false }, title: { display: true, text: 'm' } } }, plugins: { legend: { labels: { boxWidth: 10 } } } },
+      });
+    }
+    drawTo($('#glMap'), new ImageData(new Uint8ClampedArray(r.data), r.w, r.h));
+    $('#glOut').innerHTML = `
+      <div class="stats" style="margin-bottom:10px">
+        <div class="stat"><b>${r.iceKm2.toFixed(1)} km²</b><span>snow and ice in this area</span></div>
+        <div class="stat"><b>${Math.round(r.wetShare[t] * 100)} %</b><span>wet (melting) on ${A[t].date}</span></div>
+        <div class="stat"><b>${r.snowLine?.[t] ? `${r.snowLine[t]} m` : '–'}</b><span>wet-snow line on that pass</span></div>
+      </div>
+      <div class="legend" style="margin-bottom:8px"><span><i style="background:#ebf2fa"></i>dry snow / ice</span><span><i style="background:#1e8cff"></i>wet: melting</span><span><i style="background:#555"></i>not ice</span></div>
+      <table class="t">
+        <tr><td>Most melt</td><td>${A[peak].date} (${Math.round(r.wetShare[peak] * 100)} % wet)</td></tr>
+        <tr><td>Melt season (≥ 30 % wet)</td><td>${on >= 0 ? `${A[on].date} → ${A[off].date}` : 'no pass with ≥ 30 % wet'}</td></tr>
+      </table>`;
+  };
+  if (!S.stack) S.stack = await getStack();
   run();
 }
 
@@ -1279,6 +1574,54 @@ async function agSuggest(el) {
   });
 }
 
+// ---------------------------------------------------------------- drought
+async function agDrought(el) {
+  el.innerHTML = '<div class="empty">Reading 25 years of rainfall and temperature (NASA POWER) and soil moisture (ERA5-Land)…</div>';
+  if (!S.stack) S.stack = await getStack();
+  const [D, wet] = await Promise.all([
+    droughtData(S.site.lat, S.site.lon).catch((e) => ({ error: String(e.message || e) })),
+    call('wetness', { id: S.stack.id }).catch(() => ({ sm: [] })),
+  ]);
+  if (S.tab !== 'agri' || S.agTool !== 'drought') return;
+  if (D.error) { el.innerHTML = `<div class="empty">Could not load the records: ${esc(D.error)}</div>`; return; }
+  const last = D.series[D.series.length - 1], soilNow = D.soil?.now;
+  const parts = [last.p90, soilNow?.p].filter((v) => v != null);
+  const blend = parts.reduce((a, b) => a + b, 0) / parts.length, cls = dClass(blend);
+  const sm = wet.sm.filter((v) => v != null), wetNow = sm.length ? sm[sm.length - 1] : null;
+  const pctLabel = (p) => `${Math.round(p * 100)}th percentile`;
+  const spi = (p) => { const v = probit(p); return Math.abs(v) < 0.05 ? '0.0' : v.toFixed(1); };
+  el.innerHTML = `
+    <div class="panel">
+      <p class="muted" style="max-width:880px">Is this area drier than it usually is at this time of year? Each number compares now with the same weeks in every year on record. A low percentile means few years were as dry.</p>
+      <div class="stats" style="margin:10px 0">
+        <div class="stat"><b style="color:${cls.color}">${esc(cls.label)}</b><span>drought level now (rain 90 days + root-zone soil)</span></div>
+        <div class="stat"><b>${pctLabel(last.p90)}</b><span>rain of the last 90 days (${Math.round(last.r90)} mm, SPI ${spi(last.p90)})</span></div>
+        <div class="stat"><b>${soilNow ? pctLabel(soilNow.p) : '–'}</b><span>root-zone soil moisture, 28–100 cm${soilNow ? ` (${soilNow.v.toFixed(2)} m³/m³)` : D.soil?.error ? `: ${esc(D.soil.error)}` : ''}</span></div>
+        <div class="stat"><b>${D.heat.now != null ? `${(D.heat.now - D.heat.normal >= 0 ? '+' : '')}${(D.heat.now - D.heat.normal).toFixed(1)} °C` : '–'}</b><span>last 30 days vs normal temperature</span></div>
+      </div>
+      <table class="t"><tr><th>Window</th><th style="text-align:right">rain, mm</th><th style="text-align:right">percentile</th><th style="text-align:right">SPI</th><th>level</th></tr>
+      ${[30, 90, 180].map((n) => { const c = dClass(last[`p${n}`]); return `<tr><td>last ${n} days</td><td class="num">${Math.round(last[`r${n}`])}</td><td class="num">${Math.round(last[`p${n}`] * 100)}</td><td class="num">${spi(last[`p${n}`])}</td><td><span class="tag" style="--c:${c.color}"><i></i>${esc(c.label)}</span></td></tr>`; }).join('')}</table>
+      <div class="chart" style="height:280px;margin-top:12px"><canvas id="drChart"></canvas></div>
+      ${wetNow != null ? `<p class="note"><b>NISAR:</b> on the latest pass the bare soil of this area was at ${Math.round(wetNow * 100)} % of its own wet–dry range (0 % = driest pass seen, 100 % = wettest). It is a relative radar measure of the top few centimetres.</p>` : ''}
+      <p class="note">Levels follow the US Drought Monitor percentiles: D0 ≤ 30th, D1 ≤ 20th, D2 ≤ 10th, D3 ≤ 5th, D4 ≤ 2nd. SPI = the percentile expressed as standard deviations (−1 moderately dry, −1.5 severely, −2 extremely). Rain percentiles compare the same calendar window (± 5 days) in ${D.years} years; soil moisture in ${D.soil?.years || '–'} years. ${esc(D.source)}. Area-wide values (~10–50 km grids): an irrigated field can be green in a drought.</p>
+    </div>`;
+  const tt = (d) => Date.parse(`${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6)}T12:00:00Z`);
+  const xs = D.series.map((o) => tt(o.date)), x0 = xs[0], x1 = xs[xs.length - 1];
+  const band = (lo, hi, c) => ({ label: '', data: [{ x: x0, y: hi }, { x: x1, y: hi }], fill: { target: { value: lo } }, backgroundColor: c, borderWidth: 0, pointRadius: 0 });
+  chart('drChart', {
+    type: 'line',
+    data: { datasets: [
+      { label: 'rain, 90 days', data: D.series.map((o, i) => ({ x: xs[i], y: o.p90 * 100 })), borderColor: '#3fb8ff', pointRadius: 0, borderWidth: 2 },
+      { label: 'rain, 30 days', data: D.series.map((o, i) => ({ x: xs[i], y: o.p30 * 100 })), borderColor: 'rgba(63,184,255,0.45)', pointRadius: 0, borderWidth: 1 },
+      ...(D.soil?.pts ? [{ label: 'root-zone soil moisture', data: D.soil.pts.map((p) => ({ x: p.t, y: p.p * 100 })), borderColor: '#a3e635', pointRadius: 0, borderWidth: 2 }] : []),
+      band(0, 2, 'rgba(127,29,29,0.35)'), band(2, 5, 'rgba(220,38,38,0.25)'), band(5, 10, 'rgba(249,115,22,0.2)'), band(10, 20, 'rgba(246,183,60,0.16)'), band(20, 30, 'rgba(253,230,138,0.12)'),
+    ] },
+    options: { maintainAspectRatio: false, animation: false, parsing: false,
+      scales: { x: { ...timeAxis(), min: x0, max: x1 }, y: { min: 0, max: 100, title: { display: true, text: 'percentile (low = dry)' } } },
+      plugins: { legend: { labels: { boxWidth: 10, filter: (l) => l.text } } } },
+  });
+}
+
 // ---------------------------------------------------------------- soil moisture
 async function agMoisture(el) {
   el.innerHTML = '<div class="empty">Fetching ERA5-Land soil moisture (4 layers), NASA POWER soil wetness and computing NISAR surface wetness…</div>';
@@ -1366,6 +1709,7 @@ function regionOverview(el) {
         <li><a href="${hrefOf(R)}/agri" data-agtool="deep">Crop types (deep learning)</a>: crop type per field from a trained network.</li>
         <li><a href="${hrefOf(R)}/agri" data-agtool="landcover">Cropland vs forest</a>.</li></ul></div>
       <div class="panel"><h3>Crops grown here</h3><div id="rsMix" class="small muted">Loading SPAM 2010 crop statistics…</div></div>
+      <div class="panel"><h3>Ground labels nearby</h3><div id="rsLab" class="small muted">Looking for NASA Harvest field labels…</div></div>
       <div class="panel"><h3>Passes</h3><div style="max-height:220px;overflow:auto"><table class="t"><tr><th>Date</th><th>Product</th><th style="text-align:right">valid</th><th style="text-align:right">shift km</th></tr>
         ${a.map((x) => `<tr><td class="mono">${x.date}</td><td class="small">${/PROVISIONAL/.test(x.collection || '') ? 'provisional' : 'validated / beta'}</td><td class="num">${pct(x.valid, 0)}</td><td class="num">${x.kml ? 'KML' : x.coregShiftKm.join(', ')}</td></tr>`).join('')}</table></div></div>
     </div>
@@ -1387,6 +1731,18 @@ function regionOverview(el) {
     </div>
   </div>`;
   $$('a[data-agtool]', el).forEach((l) => l.addEventListener('click', () => { S.agTool = l.dataset.agtool; }));
+  labelsNear(app.base, R.box).then((L) => {
+    if (!$('#rsLab')) return;
+    const P = L.points;
+    if (!P.length) { $('#rsLab').textContent = 'No NASA Harvest (CropHarvest) field labels within 25 km of this area.'; return; }
+    const crop = P.filter((p) => p.crop), groups = {};
+    crop.forEach((p) => { const g = p.label || p.group || 'crop (type not recorded)'; groups[g] = (groups[g] || 0) + 1; });
+    const rows = Object.entries(groups).sort((a, b) => b[1] - a[1]).slice(0, 8);
+    const ds = [...new Set(P.map((p) => p.dataset))].join(', '), yrs = P.map((p) => p.year).filter(Boolean);
+    $('#rsLab').innerHTML = `<p>${P.length} field labels within 25 km (${P.filter((p) => p.inside).length} inside the area): <b>${crop.length}</b> crop, <b>${P.length - crop.length}</b> not crop${yrs.length ? `, collected ${Math.min(...yrs)}–${Math.max(...yrs)}` : ''}.</p>
+      ${rows.length ? `<table class="t"><tr><th>Recorded on the ground</th><th style="text-align:right">labels</th></tr>${rows.map(([g, c]) => `<tr><td>${esc(g.replace(/_/g, ' '))}</td><td class="num">${c}</td></tr>`).join('')}</table>` : ''}
+      <p class="note">${esc(L.source)} (${esc(L.license)}); campaigns: ${esc(ds)}. Points where people recorded what grew, useful to check the crop maps.</p>`;
+  }).catch(() => { if ($('#rsLab')) $('#rsLab').textContent = 'Field labels could not be loaded.'; });
   cropMix(app.base, R.box).then((mix) => {
     if (!$('#rsMix')) return;
     if (!mix.totalHa) { $('#rsMix').textContent = 'No crop statistics for this area (SPAM 2010 maps no cropland here).'; return; }

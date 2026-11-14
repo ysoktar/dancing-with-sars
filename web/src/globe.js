@@ -38,11 +38,20 @@ function dualPol(mat) {
   return mat;
 }
 
+// precomputed metric layers (pipeline/build_metrics.py): name -> texture, drawing order, opacity
+const OVERLAYS = {
+  variability: { url: 'data/metrics/variability_4k.webp', order: 5, opacity: 0.9 },
+  melt: { url: 'data/metrics/melt_4k.webp', order: 6, opacity: 0.95 },
+  maincrop: { url: 'data/metrics/maincrop.png', order: 7, opacity: 0.9 },
+  landslides: { url: 'data/metrics/landslides.png', order: 9, opacity: 1 },
+};
+
 export class GlobeView {
   constructor(el, { base, onSiteClick }) {
     this.base = base;
     this.onSiteClick = onSiteClick;
-    this.layers = { mosaic: true, mtc: true, frames: true, density: false, footprints: false, satellite: true, night: false, events: false };
+    this.layers = { mosaic: true, mtc: true, frames: true, density: false, footprints: false, satellite: true, night: false, events: false,
+      change: false, water: false, variability: false, melt: false, maincrop: false, landslides: false };
     this.events = [];
     this.texCache = new Map();
     this.frameMeshes = new Map();
@@ -240,6 +249,7 @@ export class GlobeView {
     const c = this.cycleAt(date);
     this.currentCycle = c;
     this._showMtc(c);
+    this._showMetric(c);
     if (!c || !this.layers.mosaic) { this.mosaic.visible = false; return; }
     // small texture while the date is moving, the 8k one once it settles
     const want = (big) => this.base + 'data/' + (big ? c.img8k : c.img4k);
@@ -272,6 +282,8 @@ export class GlobeView {
     if (name === 'satellite') this.satGroup.visible = on;
     if (name === 'landcover') this.setLandcover(this.base + 'data/landcover_4k.webp', on);
     if (name === 'mtc') this._showMtc(this.currentCycle);
+    if (OVERLAYS[name]) this._overlay(name, on);
+    if (name === 'change' || name === 'water') this._showMetric(this.currentCycle);
     this.update(this.date, true);
   }
 
@@ -557,6 +569,81 @@ export class GlobeView {
       if (this.mtcTex.has(url)) apply(this.mtcTex.get(url));
       else this._texture(url, (tex) => { this.mtcTex.set(url, tex); if (this.mtcTex.size > 9) { const [k0, t0] = this.mtcTex.entries().next().value; t0.dispose(); this.mtcTex.delete(k0); } apply(tex); });
     });
+  }
+
+  // ---------------------------------------------------------------- metric layers
+  _sphere(order, scale) {
+    const r = this.globe.getGlobeRadius() * scale;
+    return new THREE.SphereGeometry(r, 256, 128, (90 - 180) * DEG, 2 * Math.PI, 0, Math.PI);
+  }
+
+  /** Precomputed global metric texture on its own sphere shell. */
+  _overlay(name, on) {
+    this.ovMesh = this.ovMesh || {};
+    const o = OVERLAYS[name];
+    if (!this.ovMesh[name] && on) {
+      const m = new THREE.Mesh(this._sphere(o.order, 1.0016 + o.order * 0.0001), new THREE.MeshBasicMaterial({ transparent: true, depthWrite: false, opacity: o.opacity }));
+      m.renderOrder = o.order;
+      m.visible = false;
+      this.globe.scene().add(m);
+      this.ovMesh[name] = m;
+      this._texture(this.base + o.url, (tex) => { m.material.map = tex; m.material.needsUpdate = true; m.visible = this.layers[name]; });
+      return;
+    }
+    if (this.ovMesh[name]) this.ovMesh[name].visible = on && !!this.ovMesh[name].material.map;
+  }
+
+  /**
+   * Live metrics from two world-mosaic cycles, computed on the GPU: "change" = the timeline's cycle against the
+   * previous full cycle (browse units, HH and HV together; cyan brighter, red darker, faint = no clear change);
+   * "water" = HH and HV both dark on the timeline's cycle (open water, flooded or very wet smooth ground).
+   */
+  _showMetric(c) {
+    const want = this.layers.change || this.layers.water;
+    if (!want || !c) { if (this.metMesh) this.metMesh.visible = false; return; }
+    const full = (this.cycles || []).filter((x) => (Date.parse(x.end) - Date.parse(x.start)) / 86400000 <= 26);
+    let i = full.findIndex((x) => x.id === c.id);
+    if (i < 0) i = full.length - 1;
+    const prev = full[i - 1] || null, cur = full[i] || c;
+    this.metricInfo = { cur, prev };
+    this.onMtc?.(this.mtcInfo || null);
+    if (!this.metMesh) {
+      const mat = new THREE.ShaderMaterial({
+        transparent: true, depthWrite: false,
+        uniforms: { tCur: { value: null }, tPrev: { value: null }, mode: { value: 0 } },
+        vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+        fragmentShader: `uniform sampler2D tCur, tPrev; uniform int mode; varying vec2 vUv;
+          vec3 toSRGB(vec3 c){ return mix(c * 12.92, 1.055 * pow(c, vec3(1.0/2.4)) - 0.055, step(0.0031308, c)); }
+          void main(){
+            vec4 a = texture2D(tCur, vUv); if (a.a < 0.5) discard;
+            vec3 ca = toSRGB(a.rgb) * 255.0;
+            if (mode == 1) {                      // water / very wet smooth surface
+              if (ca.r > 70.0 || ca.r + ca.g > 140.0) discard;
+              float k = clamp((75.0 - ca.r) / 45.0, 0.35, 1.0);
+              gl_FragColor = vec4(0.15, 0.55, 1.0, 0.85 * k); return;
+            }
+            vec4 b = texture2D(tPrev, vUv); if (b.a < 0.5) discard;
+            vec3 cb = toSRGB(b.rgb) * 255.0;
+            float d = 0.5 * ((ca.r - cb.r) + (ca.g - cb.g));      // HH and HV change, browse units
+            float m = abs(d);
+            if (m < 20.0) discard;                                // within pass-to-pass noise
+            float k = clamp((m - 20.0) / 45.0, 0.0, 1.0);
+            vec3 col = d > 0.0 ? mix(vec3(0.3, 0.8, 0.9), vec3(0.2, 1.0, 1.0), k) : mix(vec3(1.0, 0.55, 0.3), vec3(1.0, 0.15, 0.2), k);
+            gl_FragColor = vec4(col, 0.35 + 0.6 * k); }`,
+      });
+      this.metMesh = new THREE.Mesh(this._sphere(8, 1.0021), mat);
+      this.metMesh.renderOrder = 8;
+      this.globe.scene().add(this.metMesh);
+    }
+    const U = this.metMesh.material.uniforms;
+    U.mode.value = this.layers.change ? 0 : 1;
+    if (this.layers.change && !prev) { this.metMesh.visible = false; return; }
+    const key = `${cur.id}|${prev?.id}|${U.mode.value}`;
+    this.metMesh.visible = true;
+    if (this.metKey === key) return;
+    this.metKey = key;
+    const set = (u, cyc) => { if (!cyc) return; const url = this.base + 'data/' + (this.canBig ? cyc.img8k : cyc.img4k); this._texture(url, (tex) => { if (this.metKey === key) { if (U[u].value && U[u].value !== tex) U[u].value.dispose?.(); U[u].value = tex; } }); };
+    set('tCur', cur); set('tPrev', prev);
   }
 
   // ---------------------------------------------------------------- region picking

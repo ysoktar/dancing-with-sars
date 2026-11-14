@@ -416,7 +416,7 @@ export function renderLandCover(st, opts = {}) {
  * and its peak value. Both are ranked within the scene and combined (0.6 / 0.4), so the
  * index runs from 0 (weakest crop in this window) to 1 (strongest). It is RELATIVE: it
  * ranks fields against each other, it does not give tonnes per hectare. Calibrating it
- * needs harvest records (see the YieldSAT models in the notebooks).
+ * needs harvest records, which are not available here.
  */
 export const YIELD_CLASSES = [
   { name: 'Very low', color: '#b91c1c' },

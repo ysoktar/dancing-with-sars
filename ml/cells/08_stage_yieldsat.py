@@ -16,11 +16,19 @@ YS_BATCH = 4 if SMOKE else DEFAULT_BATCH['yieldsat']
 YS_LR = DEFAULT_LR['yieldsat']
 SOURCE_PASTIS_FOLD = PASTIS_FOLDS[0] if 'PASTIS_FOLDS' in globals() else 1
 
-ys_cache, ys_meta = prepare_yieldsat()
-ys_folds = yieldsat_folds(ys_meta)
-YS_DYN, YS_STATIC = yieldsat_dyn_bands(ys_meta), list(ys_meta['static'])
-YS_TASKS = {'crop': len(ys_meta['crops']), 'extent': 1, 'yld': 1}
-print(f"{len(ys_meta['fields'])} fields · crops {ys_meta['crops']} · {len(YS_DYN)} dynamic + {len(YS_STATIC)} static bands")
+# YieldSAT needs access granted by its authors. Without the data this stage is skipped and the notebook
+# still finishes (PASTIS-R stage, summary and the export for the website).
+_ys_dir = P['raw'] / 'yieldsat'
+RUN_YIELDSAT = SMOKE or (_ys_dir.exists() and any(_ys_dir.rglob('*.nc')))
+if RUN_YIELDSAT:
+    ys_cache, ys_meta = prepare_yieldsat()
+    ys_folds = yieldsat_folds(ys_meta)
+    YS_DYN, YS_STATIC = yieldsat_dyn_bands(ys_meta), list(ys_meta['static'])
+    YS_TASKS = {'crop': len(ys_meta['crops']), 'extent': 1, 'yld': 1}
+    print(f"{len(ys_meta['fields'])} fields · crops {ys_meta['crops']} · {len(YS_DYN)} dynamic + {len(YS_STATIC)} static bands")
+else:
+    YS_FOLDS = []
+    print(f'YieldSAT data not found under {_ys_dir}: stage 2 (yield) is skipped.')
 
 
 @torch.no_grad()

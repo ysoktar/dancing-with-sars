@@ -1079,7 +1079,7 @@ async function agYield(el) {
   const ts = times(), F = Y.fields;
   el.innerHTML = `
     <div class="panel">
-      <p class="muted" style="max-width:880px">For every cropland pixel the radar vegetation index is accumulated between its own start and end of season (the area under the curve above its baseline: how much canopy the crop built and for how long) and combined with its peak. Pixels are then ranked within this window into five classes. This is a <b>relative yield potential</b>: it ranks fields against their neighbours, it does not give tonnes per hectare. Turning it into t/ha needs harvest records; the YieldSAT models in the project notebooks do that step.</p>
+      <p class="muted" style="max-width:880px">For every cropland pixel the radar vegetation index is accumulated between its own start and end of season (the area under the curve above its baseline: how much canopy the crop built and for how long) and combined with its peak. Pixels are then ranked within this window into five classes. This is a <b>relative yield potential</b>: it ranks fields against their neighbours, it does not give tonnes per hectare. Turning it into t/ha needs harvest records (combine-harvester yield maps or field statistics), which are not available here; the typical yields of the region below give the scale.</p>
       <div class="controls"><div class="seg" id="ySeg"><button data-m="pixel" class="on">Per pixel</button><button data-m="field">Per field</button><button data-m="zones">Zones inside fields</button></div></div>
       <div class="result">
         <div><canvas class="map" id="yMap" width="512" height="512" style="cursor:pointer"></canvas>

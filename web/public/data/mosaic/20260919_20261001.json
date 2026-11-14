@@ -17,5 +17,10 @@
  "betaFrames": 0,
  "img8k": "mosaic/20260919_20261001_8k.webp",
  "img4k": "mosaic/20260919_20261001_4k.webp",
- "generated": "2026-11-14T11:37:58Z"
+ "generated": "2026-11-14T11:37:58Z",
+ "gapFilledPct": 0.0,
+ "polarFill": {
+  "north": 89.98,
+  "south": -89.98
+ }
 }

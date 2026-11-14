@@ -14,7 +14,8 @@
  },
  "coverage": 0.3306,
  "resolutionDeg": 0.025,
+ "betaFrames": 0,
  "img8k": "mosaic/20260627_20260709_8k.webp",
  "img4k": "mosaic/20260627_20260709_4k.webp",
- "generated": "2026-11-14T09:00:52Z"
+ "generated": "2026-11-14T09:43:48Z"
 }

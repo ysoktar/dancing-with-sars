@@ -6,7 +6,7 @@ import { $, $$, DAY, tOf, fmtDate, fmtShort, esc, pct } from '../util.js';
 import { drawTo, SIZE, CLUSTER_COLORS, loadDem, renderElevation } from '../sar.js';
 import { call, renderImage } from '../sarClient.js';
 import { Terrain3D } from '../terrain3d.js';
-import { describeCluster, trainAutoencoder } from '../ml.js';
+import { describeCluster } from '../ml.js';
 import { forecast, FORECASTABILITY, MIN_POINTS } from '../forecast.js';
 
 const TABS = [
@@ -14,6 +14,7 @@ const TABS = [
   ['images', 'Radar images'],
   ['motion', 'Ground motion'],
   ['analysis', 'Change & ML'],
+  ['agri', 'Agriculture'],
   ['forecast', 'Forecast'],
   ['events', 'Events & news'],
 ];
@@ -80,7 +81,7 @@ export function openSitePage(sheet, site, tab) {
   const fresh = S.site !== site;
   if (fresh) {
     destroyCharts();
-    Object.assign(S, { site, cmpT: 0, pixel: null, ml: {}, swipe: false, stack: null });
+    Object.assign(S, { site, cmpT: 0, pixel: null, ml: {}, swipe: false, stack: null, agri: null, agTool: 'calendar', agSeg: -1 });
     S.t = nearestIndex(app.tl.start + app.tl.day * DAY);
     app.selected = site.id;
     drawTimeline();
@@ -93,7 +94,7 @@ export function openSitePage(sheet, site, tab) {
     sheet.innerHTML = sheetHead(
       `${esc(site.name)} <span class="muted" style="font-weight:400">· ${esc(site.country)}</span>`,
       `<span class="tag" style="--c:${th.color}"><i></i>${th.label}</span>&nbsp; NISAR track ${site.track.path} · frame ${site.track.frame} · ${site.track.dir.toLowerCase()} &nbsp;·&nbsp; ${site.acquisitions.length} passes, ${fmtDate(tOf(a0.date))} – ${fmtDate(tOf(a1.date))}`,
-    ) + `<nav class="tabs">${TABS.map(([k, l]) => `<a href="#/site/${site.id}/${k}" data-tab="${k}">${l}${k === 'motion' && nMotion ? `<span class="count">${nMotion}</span>` : ''}${k === 'events' && nEv ? `<span class="count">${nEv}</span>` : ''}</a>`).join('')}</nav>
+    ) + `<nav class="tabs">${TABS.filter(([k]) => k !== 'agri' || isAgSite(site)).map(([k, l]) => `<a href="#/site/${site.id}/${k}" data-tab="${k}">${l}${k === 'motion' && nMotion ? `<span class="count">${nMotion}</span>` : ''}${k === 'events' && nEv ? `<span class="count">${nEv}</span>` : ''}</a>`).join('')}</nav>
       <div class="sheet-body"><div class="page" id="tabBody"></div></div>`;
   }
   if (fresh || S.tab !== tab) {
@@ -102,7 +103,7 @@ export function openSitePage(sheet, site, tab) {
     $$('.tabs a', sheet).forEach((a) => a.classList.toggle('on', a.dataset.tab === tab));
     const body = $('#tabBody', sheet);
     body.scrollTop = 0;
-    ({ overview, images, motion, analysis, forecast: forecastTab, events }[tab] || overview)(body);
+    ({ overview, images, motion, analysis, agri: agriTab, forecast: forecastTab, events }[tab] || overview)(body);
   }
 }
 
@@ -211,7 +212,7 @@ function overview(el) {
 }
 
 // ================================================================== IMAGES
-const MODES = [['rgb', 'Colour'], ['hh', 'HH'], ['hv', 'HV'], ['ratio', 'HV/HH'], ['tstd', 'Variability'], ['optical', 'Optical'], ['elev', 'Elevation'], ['3d', '3-D']];
+const MODES = [['rgb', 'Colour'], ['hh', 'HH'], ['hv', 'HV'], ['ratio', 'HV/HH'], ['rvi', 'RVI'], ['tstd', 'Variability'], ['optical', 'Optical'], ['elev', 'Elevation'], ['3d', '3-D']];
 
 function viewerHTML(id = 'v') {
   return `<div class="viewer" id="${id}">
@@ -309,6 +310,7 @@ const MODE_NOTES = {
   rgb: 'Red = HH, green = HV, blue = how much HH exceeds HV. Magenta areas reflect strongly in HH: buildings, flooded vegetation, rough ground. Green areas scatter strongly in HV, typical of vegetation or dry snow. Dark areas are smooth: calm water, wet snow, smooth fields.',
   hh: 'HH (sent horizontal, received horizontal) is sensitive to surface roughness, soil moisture and corner reflections.',
   hv: 'HV (sent horizontal, received vertical) only appears when the wave is scattered many times, as inside a canopy or dry snowpack. It works as a proxy for vegetation volume.',
+  rvi: 'Radar Vegetation Index, RVI = 4·HV / (HH + HV): the radar counterpart of NDVI. High (yellow) where there is a lot of leafy, branching volume; low (purple) on bare soil, water and buildings. It works through cloud. Here it is computed from browse brightness, so it is relative.',
   ratio: 'HV ÷ HH, log scale. High values (yellow) mean volume scattering such as vegetation. Low values (purple) mean surface or double-bounce scattering.',
   tstd: 'How much each pixel changed across all passes. Bright = active surfaces (crops, water, ice). Dark = stable surfaces.',
   optical: 'Optical image from NASA MODIS Terra (250 m) on the same day, via NASA GIBS. Clouds block it, radar sees through them. Compare this pass with the radar view.',
@@ -493,7 +495,8 @@ function motion(el) {
 const TOOLS = [
   ['change', 'Change between two dates', 'Log-ratio + automatic threshold'],
   ['classes', 'Surface types', 'Unsupervised k-means clustering'],
-  ['anomaly', 'Unusual behaviour', 'Neural-network autoencoder'],
+  ['landcover', 'Cropland vs forest', 'Seasonal swing vs canopy volume'],
+  ['floodhist', 'Flood history', 'NISAR water vs 20 years of floods'],
 ];
 
 function analysis(el) {
@@ -512,8 +515,105 @@ function analysis(el) {
 
 function showTool() {
   destroyCharts();
-  ({ change: toolChange, classes: toolClasses, anomaly: toolAnomaly }[S.tool])($('#tool'));
+  ({ change: toolChange, classes: toolClasses, landcover: toolLandcover, floodhist: toolFloodHist }[S.tool] || toolChange)($('#tool'));
 }
+
+// ---------------------------------------------------------------- cropland vs forest
+const LC_COLORS = ['#15803d', '#e8b04a', '#84cc16', '#2563eb', '#a8a29e'];
+async function toolLandcover(el) {
+  el.innerHTML = '<div class="empty">Separating cropland from forest…</div>';
+  if (!S.stack) S.stack = await getStack();
+  const tab = S.tab;
+  const L = await call('landcover', { id: S.stack.id });
+  if (S.tab !== tab || !el.isConnected) return;
+  const crop = L.classes[1], forest = L.classes[0];
+  el.innerHTML = `
+    <div class="panel">
+      <p class="muted" style="max-width:860px">Two physical axes separate fields from forest. <b>Forest</b> canopies depolarise L-band through volume scattering on every pass, so their HV stays high and steady. <b>Cropland</b> is sown, grows and is harvested, so its vegetation index swings strongly through the season. The thresholds are found for this scene (Otsu on mean HV, upper-quartile rule on the seasonal swing) and drawn as dashed lines in the plot.</p>
+      <div class="stats" style="margin-bottom:12px">
+        <div class="stat"><b style="color:${LC_COLORS[0]}">${forest.km2.toFixed(0)} km²</b><span>forest / tree cover · ${pct(forest.pct, 0)}</span></div>
+        <div class="stat"><b style="color:${LC_COLORS[1]}">${crop.km2.toFixed(0)} km²</b><span>cropland · ${pct(crop.pct, 0)}</span></div>
+        <div class="stat"><b>${L.edgeKm.toFixed(0)} km</b><span>forest–cropland edge</span></div>
+      </div>
+      <div class="controls"><div class="seg" id="lcSeg"><button data-s="classes" class="on">Classes</button><button data-s="confidence">Confidence</button><button data-s="edges">Forest–field edge</button></div></div>
+      <div class="result">
+        <canvas class="map" id="lcMap" width="512" height="512"></canvas>
+        <div>
+          <div class="chart"><canvas id="lcScatter"></canvas></div>
+          <div class="classes" style="margin-top:10px">${L.classes.map((c, k) => `<div class="row"><i style="background:${LC_COLORS[k]}"></i><div><b>${c.name}</b><span>${c.why}</span><div class="bar-conf" title="mean confidence"><i style="width:${(c.meanConf * 100).toFixed(0)}%"></i></div></div><div class="v">${c.km2.toFixed(0)} km²<br><span class="muted">${pct(c.pct)}</span></div></div>`).join('')}</div>
+        </div>
+      </div>
+      <p class="note">Rule-based and relative to this scene, from browse brightness: it separates <b>behaviour</b> (steady canopy vs seasonal crop), not species. Young plantations and sugar cane can look like forest in a short series; flooded forest, and very smooth dry pasture, can look like water. The edge length is a proxy for the clearing frontier, useful at deforestation sites such as Rondônia.</p>
+    </div>`;
+  const draw = async (show) => {
+    $$('#lcSeg button').forEach((b) => b.classList.toggle('on', b.dataset.s === show));
+    const r = await call('landcoverRender', { id: S.stack.id, show, t: S.t });
+    if ($('#lcMap')) drawTo($('#lcMap'), new ImageData(new Uint8ClampedArray(r.data), r.w, r.h));
+  };
+  $$('#lcSeg button').forEach((b) => b.addEventListener('click', () => draw(b.dataset.s)));
+  draw('classes');
+  const xs = L.sample.map((p) => p[0]), ys = L.sample.map((p) => p[1]);
+  const xmax = Math.max(...xs) * 1.02, ymin = Math.min(...ys), ymax = Math.max(...ys);
+  chart('lcScatter', {
+    type: 'scatter',
+    data: { datasets: [
+      ...L.classes.map((c, k) => ({ label: c.name, data: L.sample.filter((p) => p[2] === k).map((p) => ({ x: p[0], y: p[1] })), backgroundColor: LC_COLORS[k] + 'aa', pointRadius: 1.6, borderWidth: 0 })),
+      { type: 'line', label: 'HV threshold', data: [{ x: 0, y: L.hvThr }, { x: xmax, y: L.hvThr }], borderColor: '#fff', borderDash: [4, 4], borderWidth: 1, pointRadius: 0 },
+      { type: 'line', label: 'swing threshold', data: [{ x: L.ampThr, y: ymin }, { x: L.ampThr, y: ymax }], borderColor: '#fff', borderDash: [4, 4], borderWidth: 1, pointRadius: 0 },
+    ] },
+    options: { maintainAspectRatio: false, animation: false, parsing: false,
+      scales: { x: { min: 0, max: xmax, title: { display: true, text: 'seasonal swing of the vegetation index (RVI)' } }, y: { title: { display: true, text: 'mean HV brightness' } } },
+      plugins: { legend: { labels: { boxWidth: 8, filter: (it) => !it.text.includes('threshold') } } } },
+  });
+}
+
+// ---------------------------------------------------------------- flood history (Google, GLAD-derived)
+let inundationIndex = null;
+async function toolFloodHist(el) {
+  el.innerHTML = '<div class="empty">Loading flood history…</div>';
+  if (!inundationIndex) { try { inundationIndex = await (await fetch(`${app.base}data/inundation.json`)).json(); } catch (e) { inundationIndex = {}; } }
+  const info = inundationIndex[S.site.id];
+  if (!S.stack) S.stack = await getStack();
+  if (!el.isConnected) return;
+  if (!info) { el.innerHTML = '<div class="empty">This site lies outside the flood-history dataset (latitude −39° to 43°, longitude −125° to 170°).</div>'; return; }
+  const im = new Image(); im.src = `${app.base}data/${info.img}`; await im.decode();
+  const c = new OffscreenCanvas(SIZE, SIZE), cx = c.getContext('2d'); cx.drawImage(im, 0, 0, SIZE, SIZE);
+  const px = cx.getImageData(0, 0, SIZE, SIZE).data, levels = new Uint8Array(SIZE * SIZE);
+  for (let i = 0; i < levels.length; i++) levels[i] = Math.round(px[i * 4] / 85);
+  const opts = acqs().map((a, i) => `<option value="${i}">${a.date}</option>`).join('');
+  el.innerHTML = `
+    <div class="panel">
+      <p class="muted" style="max-width:860px">Coloured zones: how often each 128 m pixel was <b>wet between 1999 and 2020</b> (Google Flood Forecasting inundation history, derived from the GLAD Landsat surface-water record, permanent water removed). On top: the water <b>NISAR</b> sees on the selected pass (dark HH below the scene's Otsu threshold). Water inside the zones is the known flood regime; water outside them is unusual for the last two decades, or an irrigated paddy the optical record missed.</p>
+      <div class="controls"><label>Pass <select id="fhDate">${opts}</select></label></div>
+      <div class="result">
+        <div><canvas class="map" id="fhMap" width="512" height="512"></canvas>
+          <div class="legend" style="margin-top:6px"><span><i style="background:#7846a0"></i>wet ≥0.5% of the time</span><span><i style="background:#c85aaa"></i>≥1%</span><span><i style="background:#ff783c"></i>≥5%</span><span><i style="background:#40c8ff"></i>NISAR water in a zone</span><span><i style="background:#fff"></i>NISAR water outside</span><span><i style="background:#14286e"></i>permanent water (every pass, outside the zones)</span></div></div>
+        <div id="fhStats"></div>
+      </div>
+      <p class="note">${esc(info.source)} · <a href="${info.url}" target="_blank">dataset</a> · <a href="https://sites.research.google/gr/floodforecasting/" target="_blank">Google Flood Forecasting</a>. Rice paddies flooded every season count as wet in both records.</p>
+    </div>`;
+  $('#fhDate').value = S.t;
+  const run = async () => {
+    const t = +$('#fhDate').value, tok = ++viewToken;
+    const r = await call('floodHistory', { id: S.stack.id, levels: levels.slice().buffer, t });
+    if (tok !== viewToken || !$('#fhMap')) return;
+    drawTo($('#fhMap'), new ImageData(new Uint8ClampedArray(r.data), r.w, r.h));
+    const s = r.stats;
+    $('#fhStats').innerHTML = `
+      <div class="stats" style="grid-template-columns:1fr 1fr">
+        <div class="stat"><b>${info.km2.low.toFixed(0)} km²</b><span>flood-prone 1999–2020 (≥0.5%) · ${info.pct.low.toFixed(1)}% of the scene</span></div>
+        <div class="stat"><b>${info.km2.high.toFixed(0)} km²</b><span>frequently wet (≥5%)</span></div>
+        <div class="stat"><b>${s.wetNowKm2.toFixed(0)} km²</b><span>NISAR water on ${acqs()[t].date}</span></div>
+        <div class="stat"><b>${pct(s.wetNowInZone, 0)}</b><span>of it inside the historical zones</span></div>
+        <div class="stat"><b>${s.everKm2.toFixed(0)} km²</b><span>wet on at least one NISAR pass</span></div>
+        <div class="stat"><b>${pct(s.zoneSeenWet, 0)}</b><span>of the flood-prone zone seen wet by NISAR</span></div>
+      </div>
+      <p class="note">High agreement means NISAR reproduces the known flood regime. NISAR water far outside the zones is worth a closer look: new flooding, a reservoir change, or paddies. The comparison uses the ${acqs().length} passes available here.</p>`;
+  };
+  $('#fhDate').addEventListener('change', run);
+  run();
+}
+
 
 function toolChange(el) {
   const opts = acqs().map((a, i) => `<option value="${i}">${a.date}</option>`).join('');
@@ -602,117 +702,6 @@ function toolClasses(el) {
   $('#kDate').addEventListener('change', run);
   $$('#kShow button').forEach((b) => b.addEventListener('click', () => { show = b.dataset.s; $$('#kShow button').forEach((x) => x.classList.toggle('on', x === b)); run(); }));
   run();
-}
-
-function toolAnomaly(el) {
-  el.innerHTML = `
-    <div class="panel">
-      <p class="muted" style="max-width:860px">A small neural network learns to squeeze each pixel's full history (HH and HV on every pass) into two numbers and rebuild it. It learns the typical rhythms of the scene. Pixels it cannot rebuild behaved unusually: new clearings, new water, fresh lava, burn scars. Training runs in your browser with TensorFlow.js and takes a few seconds to a minute.</p>
-      <div class="controls">
-        <label>Training rounds <input type="range" id="aE" min="10" max="100" value="40"> <span class="mono" id="aEv">40</span></label>
-        <button class="btn primary" id="aGo">Train network</button>
-        <span class="small muted" id="aStatus"></span>
-      </div>
-      <div class="grid g-3">
-        <div><h3 class="small muted" style="font-weight:500;margin-bottom:6px">Training error</h3><div class="chart sm"><canvas id="aLoss"></canvas></div></div>
-        <div><h3 class="small muted" style="font-weight:500;margin-bottom:6px">How unusual each pixel is</h3><canvas class="map" id="aMap" width="512" height="512" style="width:100%;aspect-ratio:1;border-radius:8px;border:1px solid var(--border);background:#07090b;cursor:crosshair"></canvas></div>
-        <div><h3 class="small muted" style="font-weight:500;margin-bottom:6px">What the network learned (2-D summary, colour = surface type)</h3><div class="chart lg"><canvas id="aLatent"></canvas></div></div>
-      </div>
-      <p class="note" id="aHint">After training, click the map to compare a pixel's observed history with what the network expected.</p>
-      <div class="chart sm"><canvas id="aRecon"></canvas></div>
-    </div>`;
-  $('#aE').addEventListener('input', (e) => ($('#aEv').textContent = e.target.value));
-  $('#aGo').addEventListener('click', trainAE);
-  $('#aMap').addEventListener('click', (e) => {
-    if (!S.ml.ae) return;
-    const r = e.target.getBoundingClientRect();
-    const x = Math.floor(((e.clientX - r.left) / r.width) * SIZE), y = Math.floor(((e.clientY - r.top) / r.height) * SIZE);
-    reconChart(y * SIZE + x);
-  });
-  if (S.ml.ae) showAE();
-}
-
-async function trainAE() {
-  const btn = $('#aGo'), status = $('#aStatus');
-  btn.disabled = true;
-  status.textContent = 'Loading TensorFlow.js…';
-  const loss = chart('aLoss', {
-    type: 'line',
-    data: { labels: [], datasets: [{ label: 'training', data: [], borderColor: '#8cc4ff', pointRadius: 0 }, { label: 'held-out', data: [], borderColor: '#e8b04a', borderDash: [4, 3], pointRadius: 0 }] },
-    options: { maintainAspectRatio: false, animation: false, scales: { y: { type: 'logarithmic' }, x: { title: { display: true, text: 'round' } } }, plugins: { legend: { labels: { boxWidth: 10 } } } },
-  });
-  const site = S.site, epochs = +$('#aE').value, t0 = performance.now();
-  try {
-    status.textContent = 'Preparing pixel histories…';
-    const sig = await call('signatures', { id: S.stack.id });
-    const res = await trainAutoencoder(sig, {
-      epochs,
-      onEpoch: ({ epoch, loss: l, valLoss }) => {
-        if (S.site !== site || !S.charts.aLoss) return;
-        status.textContent = `round ${epoch} of ${epochs}`;
-        loss.data.labels.push(epoch); loss.data.datasets[0].data.push(l); loss.data.datasets[1].data.push(valLoss); loss.update('none');
-      },
-    });
-    if (S.site !== site) return;
-    await call('setAnomaly', { id: site.id, err: res.err });
-    S.ml.ae = res;
-    S.ml.aeLoss = loss.data;
-    status.textContent = `Done in ${((performance.now() - t0) / 1000).toFixed(0)} s · ${res.params.toLocaleString()} weights · ${res.backend.toUpperCase()}`;
-    if (S.tool === 'anomaly') showAE();
-  } catch (e) {
-    console.error(e);
-    status.textContent = 'Training failed: ' + e.message;
-  } finally {
-    if ($('#aGo')) $('#aGo').disabled = false;
-  }
-}
-
-async function showAE() {
-  const ae = S.ml.ae, st = S.stack;
-  if (S.ml.aeLoss && !S.charts.aLoss) {
-    chart('aLoss', { type: 'line', data: S.ml.aeLoss, options: { maintainAspectRatio: false, animation: false, scales: { y: { type: 'logarithmic' } }, plugins: { legend: { labels: { boxWidth: 10 } } } } });
-  }
-  drawTo($('#aMap'), await renderImage(st.id, S.t, 'anomaly'));
-  if (!S.ml.km) S.ml.km = await call('kmeans', { id: st.id, t: S.t, k: 5 });
-  const km = S.ml.km;
-  const { labels } = await call('labels', { id: st.id });
-  if (!$('#aLatent')) return;
-  const groups = Array.from({ length: km.k }, () => []);
-  for (let i = 0; i < SIZE * SIZE; i += 17) if (ae.valid[i] && labels && labels[i] !== 255) groups[labels[i]].push({ x: ae.latent[i * 2], y: ae.latent[i * 2 + 1], i });
-  chart('aLatent', {
-    type: 'scatter',
-    data: { datasets: groups.map((g, c) => ({ data: g, pointRadius: 1.5, backgroundColor: CLUSTER_COLORS[c] + 'bb', borderWidth: 0 })) },
-    options: { maintainAspectRatio: false, animation: false, plugins: { legend: { display: false }, tooltip: { enabled: false } }, scales: { x: { title: { display: true, text: 'learned axis 1' } }, y: { title: { display: true, text: 'learned axis 2' } } },
-      onClick: (_e, els) => { if (els.length) reconChart(els[0].element.$context.raw.i); } },
-  });
-  let best = 0;
-  for (let i = 0; i < ae.err.length; i++) if (ae.err[i] > ae.err[best]) best = i;
-  reconChart(best);
-}
-
-async function reconChart(i) {
-  const ae = S.ml.ae, st = S.stack, T = ae.T, D = ae.D, ts = times();
-  const x = i % SIZE, y = Math.floor(i / SIZE);
-  const real = ae.X.subarray(i * D, i * D + D), rec = ae.recon.subarray(i * D, i * D + D);
-  let below = 0;
-  for (let j = 0; j < ae.err.length; j++) if (ae.err[j] < ae.err[i]) below++;
-  $('#aHint').innerHTML = `Pixel ${x}, ${y} is more unusual than <b>${pct(below / ae.err.length)}</b> of the scene. Solid lines: what NISAR observed. Dashed: what the network expected.`;
-  const im = await renderImage(st.id, S.t, 'anomaly');
-  if (!$('#aMap')) return;
-  drawTo($('#aMap'), im);
-  const cv = $('#aMap'), ctx = cv.getContext('2d'), sx = cv.width / SIZE;
-  ctx.strokeStyle = '#8cc4ff'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc((x + 0.5) * sx, (y + 0.5) * sx, 12, 0, 7); ctx.stroke();
-  const pts = (arr, off) => ts.map((t, k) => ({ x: t, y: arr[off + k] * 255 }));
-  chart('aRecon', {
-    type: 'line',
-    data: { datasets: [
-      { label: 'HH observed', data: pts(real, 0), borderColor: '#ff5bd6', backgroundColor: '#ff5bd6', pointRadius: 2 },
-      { label: 'HH expected', data: pts(rec, 0), borderColor: 'rgba(255,91,214,0.55)', borderDash: [5, 4], pointRadius: 0 },
-      { label: 'HV observed', data: pts(real, T), borderColor: '#44e07a', backgroundColor: '#44e07a', pointRadius: 2 },
-      { label: 'HV expected', data: pts(rec, T), borderColor: 'rgba(68,224,122,0.55)', borderDash: [5, 4], pointRadius: 0 },
-    ] },
-    options: { maintainAspectRatio: false, animation: false, parsing: false, scales: { x: timeAxis(), y: { suggestedMin: 0, suggestedMax: 255 } }, plugins: { legend: { labels: { boxWidth: 10 } } } },
-  });
 }
 
 // ================================================================== FORECAST
@@ -847,4 +836,218 @@ function eventColorLocal(cat = '') {
   if (/fire/i.test(cat)) return '#ff6a4d';
   if (/volcan/i.test(cat)) return '#ff3d6e';
   return '#e8b04a';
+}
+
+
+// ================================================================== AGRICULTURE
+const AG_THEMES = new Set(['agriculture', 'groundwater', 'flood']);
+export function isAgSite(site) { return AG_THEMES.has((STORIES[site.id] || {}).theme || site.theme); }
+
+const AG_TOOLS = [
+  ['calendar', 'Crop calendar', 'Start, peak and end of season'],
+  ['harvest', 'Harvest & flooding', 'When fields were harvested or flooded'],
+  ['patterns', 'Cropping patterns', 'Rice, double, single, perennial'],
+  ['fields', 'Fields', 'Segments with their own calendar'],
+  ['context', 'Weather & NDVI', 'Rain, temperature, optical greenness'],
+  ['landcover', 'Cropland vs forest', 'Where fields end and forest begins'],
+];
+const MODE_LABEL = { sos: 'Start of season', pos: 'Peak of season', eos: 'End of season', harvest: 'Harvest date', flood: 'Flooding date' };
+
+function agDays() { const ts = times(); return ts.map((t) => Math.round((t - ts[0]) / DAY)); }
+function dayLabel(d) { return d == null || Number.isNaN(d) ? '–' : fmtShort(times()[0] + d * DAY); }
+
+async function agEnsure() {
+  if (!S.stack) S.stack = await getStack();
+  if (!S.agri) S.agri = await call('agri', { id: S.stack.id, days: agDays(), t0: times()[0] });
+  return S.agri;
+}
+
+function agriTab(el) {
+  el.innerHTML = `
+  <div class="grid g-side">
+    <div class="subnav" id="agTools">${AG_TOOLS.map(([k, t, d]) => `<button data-k="${k}" class="${S.agTool === k ? 'on' : ''}"><b>${t}</b><span>${d}</span></button>`).join('')}</div>
+    <div id="agTool"><div class="empty">Computing crop products from ${acqs().length} radar passes…</div></div>
+  </div>
+  <p class="note">All products are computed in your browser (Web Worker) from the NISAR HH/HV series of this site. They come from browse brightness, so they describe <b>timing and patterns</b>, not absolute biomass. With fewer than ~10 passes, or passes covering only part of a year, some seasons cannot be seen.</p>`;
+  $$('#agTools button').forEach((b) => b.addEventListener('click', () => {
+    S.agTool = b.dataset.k; $$('#agTools button').forEach((x) => x.classList.toggle('on', x === b)); showAgTool();
+  }));
+  agEnsure().then(() => { if (S.tab === 'agri') showAgTool(); });
+}
+
+function showAgTool() {
+  destroyCharts();
+  ({ calendar: agCalendar, harvest: agHarvest, patterns: agPatterns, fields: agFields, context: agContext, landcover: toolLandcover }[S.agTool])($('#agTool'));
+}
+
+async function agMap(canvas, mode, opts = {}) {
+  const r = await call('agriRender', { id: S.stack.id, mode, ...opts });
+  drawTo(canvas, new ImageData(new Uint8ClampedArray(r.data), r.w, r.h));
+}
+
+function dateLegend() {
+  const ts = times(), n = 5;
+  const labels = Array.from({ length: n }, (_, k) => fmtShort(ts[0] + (k / (n - 1)) * (ts[ts.length - 1] - ts[0])));
+  return `<div style="height:10px;border-radius:4px;background:linear-gradient(90deg,#30123b,#4662d7,#36aaf9,#1ae4b6,#72fe5e,#c8ef34,#faba39,#f66b19,#ca2a04,#7a0403)"></div>
+    <div class="legend" style="justify-content:space-between;margin-top:4px">${labels.map((l) => `<span>${l}</span>`).join('')}</div>`;
+}
+
+function monthBars(id, hist, label, color) {
+  const keys = Object.keys(hist || {}).sort();
+  chart(id, {
+    type: 'bar',
+    data: { labels: keys.map((k) => new Date(k + '-15').toLocaleDateString('en-GB', { month: 'short', year: '2-digit' })), datasets: [{ label, data: keys.map((k) => hist[k]), backgroundColor: color }] },
+    options: { maintainAspectRatio: false, animation: false, plugins: { legend: { display: false } }, scales: { y: { title: { display: true, text: 'km²' } } } },
+  });
+}
+
+function agCalendar(el) {
+  const A = S.agri;
+  el.innerHTML = `
+    <div class="panel">
+      <p class="muted" style="max-width:860px">For every pixel the radar vegetation index series is smoothed and three dates are read off: <b>start of season</b> (half-way up the rise before the peak), <b>peak</b> (maximum canopy) and <b>end of season</b> (half-way down after the peak). Only pixels with a clear seasonal cycle (cropland, ${pct(A.croplandPct, 0)} of the scene, ${Math.round(A.croplandKm2)} km²) are coloured; the rest is shown in grey.</p>
+      <div class="controls"><div class="seg" id="calSeg"><button data-m="sos" class="on">Start of season</button><button data-m="pos">Peak</button><button data-m="eos">End of season</button></div></div>
+      <div class="result">
+        <div><canvas class="map" id="agMap" width="512" height="512"></canvas>${dateLegend()}</div>
+        <div><h3 class="small muted" style="font-weight:500" id="calTitle"></h3><div class="chart"><canvas id="calHist"></canvas></div>
+        <p class="note">Where the colour changes abruptly from field to field, neighbouring farms planted or harvested at different times.</p></div>
+      </div>
+    </div>`;
+  const draw = (m) => {
+    $$('#calSeg button').forEach((b) => b.classList.toggle('on', b.dataset.m === m));
+    agMap($('#agMap'), m);
+    $('#calTitle').textContent = `${MODE_LABEL[m]}: cropland area per month`;
+    monthBars('calHist', A.hist[m], MODE_LABEL[m], '#e8b04a');
+  };
+  $$('#calSeg button').forEach((b) => b.addEventListener('click', () => draw(b.dataset.m)));
+  draw('sos');
+}
+
+function agHarvest(el) {
+  const A = S.agri, ts = times();
+  el.innerHTML = `
+    <div class="panel">
+      <p class="muted" style="max-width:860px"><b>Harvest</b> = the sharpest drop in the vegetation index from an above-average level (the canopy disappears within one 12-day revisit). <b>Flooding</b> = a pass on which a field is dark in HH like water, but bright again within about two months: the signature of paddies flooded for transplanting rice, or of a short flood.</p>
+      <div class="controls"><div class="seg" id="hvSeg"><button data-m="harvest" class="on">Harvest date</button><button data-m="flood">Flooding date</button></div></div>
+      <div class="result">
+        <div><canvas class="map" id="agMap" width="512" height="512"></canvas>${dateLegend()}</div>
+        <div class="stack">
+          <div><h3 class="small muted" style="font-weight:500">Harvest progress: share of cropland harvested</h3><div class="chart sm"><canvas id="hvCurve"></canvas></div></div>
+          <div><h3 class="small muted" style="font-weight:500">Flooded area on each pass (km², permanent water excluded)</h3><div class="chart sm"><canvas id="flCurve"></canvas></div></div>
+        </div>
+      </div>
+    </div>`;
+  const draw = (m) => { $$('#hvSeg button').forEach((b) => b.classList.toggle('on', b.dataset.m === m)); agMap($('#agMap'), m); };
+  $$('#hvSeg button').forEach((b) => b.addEventListener('click', () => draw(b.dataset.m)));
+  draw('harvest');
+  const line = (id, ys, label, color, unit) => chart(id, {
+    type: 'line', data: { datasets: [{ label, data: ts.map((x, i) => ({ x, y: ys[i] })), borderColor: color, backgroundColor: color + '33', fill: true, pointRadius: 2, tension: 0.2 }] },
+    options: { maintainAspectRatio: false, animation: false, parsing: false, scales: { x: timeAxis(), y: { beginAtZero: true, title: { display: true, text: unit } } }, plugins: { legend: { display: false } } },
+  });
+  line('hvCurve', A.harvestCum, 'harvested', '#f59e0b', '%');
+  line('flCurve', A.floodKm2, 'flooded', '#3fb8ff', 'km²');
+}
+
+function agPatterns(el) {
+  const A = S.agri, ts = times();
+  el.innerHTML = `
+    <div class="panel">
+      <p class="muted" style="max-width:860px">Each pixel is assigned a cropping pattern from the shape of its vegetation-index series (number of growth peaks, seasonal amplitude) and from short flooding episodes. These are rules, not a trained classifier: they show <b>how the land is used through the year</b>, not the crop species.</p>
+      <div class="result">
+        <canvas class="map" id="agMap" width="512" height="512"></canvas>
+        <div class="classes">${A.patterns.map((p) => `<div class="row"><i style="background:${p.color}"></i><div><b>${p.name}</b><span>${p.why}</span></div><div class="v">${p.km2.toFixed(0)} km²<br><span class="muted">${pct(p.pct)}</span></div></div>`).join('')}</div>
+      </div>
+      <h3 class="small muted" style="font-weight:500;margin-top:14px">Average vegetation index through the year, per pattern</h3>
+      <div class="chart"><canvas id="ptProf"></canvas></div>
+    </div>`;
+  agMap($('#agMap'), 'pattern');
+  chart('ptProf', {
+    type: 'line',
+    data: { datasets: A.patterns.filter((p) => p.km2 > 0).map((p) => ({ label: p.name, data: ts.map((x, i) => ({ x, y: p.profile[i] })), borderColor: p.color, backgroundColor: p.color, pointRadius: 2, tension: 0.25 })) },
+    options: { maintainAspectRatio: false, animation: false, parsing: false, scales: { x: timeAxis(), y: { title: { display: true, text: 'RVI (relative)' } } }, plugins: { legend: { labels: { boxWidth: 10 } } } },
+  });
+}
+
+function agFields(el) {
+  const A = S.agri, ts = times();
+  const segs = A.segments;
+  el.innerHTML = `
+    <div class="panel">
+      <p class="muted" style="max-width:860px">Neighbouring pixels with the same cropping pattern and harvest month are grouped into <b>segments</b>. Where fields are larger than a few hundred metres (Iowa, Mato Grosso, Ukraine) a segment is usually one field or a block of fields; where fields are small (Punjab, Nile, Mekong) it is a group of fields managed on the same calendar. Click a row or the map.</p>
+      <div class="result">
+        <canvas class="map" id="agMap" width="512" height="512" style="cursor:pointer"></canvas>
+        <div>
+          <div style="max-height:330px;overflow:auto"><table class="t" id="fTab"><tr><th>#</th><th>Pattern</th><th style="text-align:right">km²</th><th>Start</th><th>Peak</th><th>Harvest</th></tr>
+          ${segs.slice(0, 60).map((g, k) => `<tr data-id="${g.id}" style="cursor:pointer"><td class="num">${k + 1}</td><td><span class="tag" style="--c:${PATTERN_COLORS[g.cls]}"><i></i>${PATTERN_NAMES[g.cls]}</span></td><td class="num">${g.km2.toFixed(1)}</td><td>${dayLabel(g.sos)}</td><td>${dayLabel(g.peak)}</td><td>${dayLabel(g.harvest)}</td></tr>`).join('')}</table></div>
+          <h3 class="small muted" style="font-weight:500;margin-top:10px" id="fTitle">Select a segment</h3>
+          <div class="chart sm"><canvas id="fProf"></canvas></div>
+        </div>
+      </div>
+      <p class="note">${segs.length} segments of at least 6 pixels (≈ ${(6 * (S.stack.pixelKm2 || 0.04)).toFixed(2)} km²); the 60 largest are listed.</p>
+    </div>`;
+  const select = (id) => {
+    S.agSeg = id;
+    agMap($('#agMap'), 'segments', { seg: id });
+    $$('#fTab tr[data-id]').forEach((r) => r.style.background = +r.dataset.id === id ? 'var(--surface-3)' : '');
+    const g = segs.find((x) => x.id === id);
+    if (!g) return;
+    $('#fTitle').textContent = `Segment: ${PATTERN_NAMES[g.cls]}, ${g.km2.toFixed(1)} km² · peak ${dayLabel(g.peak)} · harvest ${dayLabel(g.harvest)}`;
+    chart('fProf', {
+      type: 'line', data: { datasets: [{ label: 'RVI', data: ts.map((x, i) => ({ x, y: g.profile[i] })), borderColor: '#e8b04a', backgroundColor: '#e8b04a', pointRadius: 2, tension: 0.25 }] },
+      options: { maintainAspectRatio: false, animation: false, parsing: false, scales: { x: timeAxis() }, plugins: { legend: { display: false } } },
+    });
+  };
+  $$('#fTab tr[data-id]').forEach((r) => r.addEventListener('click', () => select(+r.dataset.id)));
+  $('#agMap').addEventListener('click', async (e) => {
+    const r = e.target.getBoundingClientRect();
+    const x = Math.floor(((e.clientX - r.left) / r.width) * SIZE), y = Math.floor(((e.clientY - r.top) / r.height) * SIZE);
+    const { seg } = await call('segmentAt', { id: S.stack.id, x, y });
+    if (seg >= 0) select(seg);
+  });
+  select(S.agSeg >= 0 ? S.agSeg : (segs[0]?.id ?? -1));
+}
+
+const PATTERN_NAMES = ['Open water', 'Paddy rice', 'Double / multiple crop', 'Single crop', 'Perennial / trees', 'Bare / built / fallow'];
+const PATTERN_COLORS = ['#2563eb', '#22d3ee', '#f59e0b', '#facc15', '#16a34a', '#a8a29e'];
+
+async function agContext(el) {
+  el.innerHTML = '<div class="empty">Loading weather and NDVI…</div>';
+  let ctx = null;
+  try { const r = await fetch(`${app.base}data/context/${S.site.id}.json`); if (r.ok) ctx = await r.json(); } catch (e) { /* none */ }
+  if (S.tab !== 'agri' || S.agTool !== 'context') return;
+  if (!ctx) { el.innerHTML = '<div class="empty">No weather / NDVI context for this site yet (run pipeline/build_context.py).</div>'; return; }
+  const A = S.agri, ts = times();
+  const w = ctx.weather || { dates: [], precip_mm: [], t2m_c: [] }, nd = ctx.ndvi || { dates: [], mean: [] };
+  const tOfD = (d) => Date.parse(d + 'T12:00:00Z');
+  // weekly precipitation totals keep the chart readable
+  const weeks = {};
+  w.dates.forEach((d, i) => { const k = Math.floor((tOfD(d) - tOfD(w.dates[0])) / (7 * DAY)); weeks[k] = (weeks[k] || 0) + (w.precip_mm[i] || 0); });
+  const wk = Object.entries(weeks).map(([k, v]) => ({ x: tOfD(w.dates[0]) + (+k + 0.5) * 7 * DAY, y: v }));
+  el.innerHTML = `
+    <div class="panel">
+      <p class="muted" style="max-width:860px">The radar vegetation index of the cropland (NISAR) next to the optical NDVI of the same area (NASA MODIS, 16-day composites) and the weather (NASA POWER). When the two vegetation curves rise and fall together, the radar is seeing the crop cycle. Radar keeps working through the monsoon cloud, when optical composites become patchy.</p>
+      <div class="chart lg"><canvas id="cxVeg"></canvas></div>
+      <div class="chart sm" style="margin-top:12px"><canvas id="cxWx"></canvas></div>
+      <p class="note">Sources: ${esc(nd.source || '')} · ${esc(w.source || '')}. NDVI is the scene mean of valid (cloud-free) pixels in each composite.</p>
+    </div>`;
+  const xmin = Math.min(ts[0], ...(nd.dates.length ? [tOfD(nd.dates[0])] : [])), xmax = Math.max(ts[ts.length - 1], ...(nd.dates.length ? [tOfD(nd.dates[nd.dates.length - 1])] : []));
+  chart('cxVeg', {
+    type: 'line',
+    data: { datasets: [
+      { label: 'NISAR RVI (cropland mean)', data: ts.map((x, i) => ({ x, y: A.rviCrop[i] })), borderColor: '#e8b04a', backgroundColor: '#e8b04a', pointRadius: 3, tension: 0.25, yAxisID: 'y' },
+      { label: 'MODIS NDVI', data: nd.dates.map((d, i) => ({ x: tOfD(d), y: nd.mean[i] })), borderColor: '#44e07a', backgroundColor: '#44e07a', pointRadius: 2, tension: 0.25, yAxisID: 'y1' },
+    ] },
+    options: { maintainAspectRatio: false, animation: false, parsing: false, interaction: { mode: 'nearest', intersect: false },
+      scales: { x: { ...timeAxis(), min: xmin, max: xmax }, y: { title: { display: true, text: 'RVI (relative)' } }, y1: { position: 'right', min: 0, max: 1, grid: { display: false }, title: { display: true, text: 'NDVI' } } },
+      plugins: { legend: { labels: { boxWidth: 10 } } } },
+  });
+  chart('cxWx', {
+    data: { datasets: [
+      { type: 'bar', label: 'Rain, mm per week', data: wk, backgroundColor: 'rgba(63,184,255,0.55)', yAxisID: 'y' },
+      { type: 'line', label: 'Air temperature °C', data: w.dates.map((d, i) => ({ x: tOfD(d), y: w.t2m_c[i] })), borderColor: '#ff6a4d', pointRadius: 0, borderWidth: 1, yAxisID: 'y1' },
+    ] },
+    options: { maintainAspectRatio: false, animation: false, parsing: false,
+      scales: { x: { ...timeAxis(), min: xmin, max: xmax }, y: { beginAtZero: true, title: { display: true, text: 'mm / week' } }, y1: { position: 'right', grid: { display: false }, title: { display: true, text: '°C' } } },
+      plugins: { legend: { labels: { boxWidth: 10 } } } },
+  });
 }

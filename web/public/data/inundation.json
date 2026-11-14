@@ -1,0 +1,194 @@
+{
+ "konya": {
+  "img": "inundation/konya.png",
+  "pct": {
+   "low": 1.2,
+   "medium": 0.56,
+   "high": 0.36
+  },
+  "km2": {
+   "low": 28.8,
+   "medium": 13.4,
+   "high": 8.6
+  },
+  "period": "1999\u20132020",
+  "source": "Google Flood Forecasting inundation history (GLAD-derived), CC-BY-4.0",
+  "url": "https://console.cloud.google.com/storage/browser/flood-forecasting/inundation_history"
+ },
+ "sylhet": {
+  "img": "inundation/sylhet.png",
+  "pct": {
+   "low": 99.39,
+   "medium": 99.29,
+   "high": 97.47
+  },
+  "km2": {
+   "low": 2384.5,
+   "medium": 2382.1,
+   "high": 2338.4
+  },
+  "period": "1999\u20132020",
+  "source": "Google Flood Forecasting inundation history (GLAD-derived), CC-BY-4.0",
+  "url": "https://console.cloud.google.com/storage/browser/flood-forecasting/inundation_history"
+ },
+ "rondonia": {
+  "img": "inundation/rondonia.png",
+  "pct": {
+   "low": 1.78,
+   "medium": 1.1,
+   "high": 0.35
+  },
+  "km2": {
+   "low": 42.7,
+   "medium": 26.4,
+   "high": 8.4
+  },
+  "period": "1999\u20132020",
+  "source": "Google Flood Forecasting inundation history (GLAD-derived), CC-BY-4.0",
+  "url": "https://console.cloud.google.com/storage/browser/flood-forecasting/inundation_history"
+ },
+ "tulare": {
+  "img": "inundation/tulare.png",
+  "pct": {
+   "low": 31.79,
+   "medium": 24.63,
+   "high": 4.07
+  },
+  "km2": {
+   "low": 762.7,
+   "medium": 590.9,
+   "high": 97.6
+  },
+  "period": "1999\u20132020",
+  "source": "Google Flood Forecasting inundation history (GLAD-derived), CC-BY-4.0",
+  "url": "https://console.cloud.google.com/storage/browser/flood-forecasting/inundation_history"
+ },
+ "okavango": {
+  "img": "inundation/okavango.png",
+  "pct": {
+   "low": 1.95,
+   "medium": 1.5,
+   "high": 0.2
+  },
+  "km2": {
+   "low": 46.8,
+   "medium": 36.0,
+   "high": 4.8
+  },
+  "period": "1999\u20132020",
+  "source": "Google Flood Forecasting inundation history (GLAD-derived), CC-BY-4.0",
+  "url": "https://console.cloud.google.com/storage/browser/flood-forecasting/inundation_history"
+ },
+ "punjab": {
+  "img": "inundation/punjab.png",
+  "pct": {
+   "low": 97.71,
+   "medium": 88.94,
+   "high": 0.4
+  },
+  "km2": {
+   "low": 2344.2,
+   "medium": 2133.8,
+   "high": 9.6
+  },
+  "period": "1999\u20132020",
+  "source": "Google Flood Forecasting inundation history (GLAD-derived), CC-BY-4.0",
+  "url": "https://console.cloud.google.com/storage/browser/flood-forecasting/inundation_history"
+ },
+ "mississippi": {
+  "img": "inundation/mississippi.png",
+  "pct": {
+   "low": 4.17,
+   "medium": 1.58,
+   "high": 0.34
+  },
+  "km2": {
+   "low": 100.0,
+   "medium": 37.9,
+   "high": 8.2
+  },
+  "period": "1999\u20132020",
+  "source": "Google Flood Forecasting inundation history (GLAD-derived), CC-BY-4.0",
+  "url": "https://console.cloud.google.com/storage/browser/flood-forecasting/inundation_history"
+ },
+ "nile": {
+  "img": "inundation/nile.png",
+  "pct": {
+   "low": 75.98,
+   "medium": 37.86,
+   "high": 0.0
+  },
+  "km2": {
+   "low": 1822.9,
+   "medium": 908.3,
+   "high": 0.0
+  },
+  "period": "1999\u20132020",
+  "source": "Google Flood Forecasting inundation history (GLAD-derived), CC-BY-4.0",
+  "url": "https://console.cloud.google.com/storage/browser/flood-forecasting/inundation_history"
+ },
+ "iowa": {
+  "img": "inundation/iowa.png",
+  "pct": {
+   "low": 2.98,
+   "medium": 0.68,
+   "high": 0.51
+  },
+  "km2": {
+   "low": 71.5,
+   "medium": 16.3,
+   "high": 12.2
+  },
+  "period": "1999\u20132020",
+  "source": "Google Flood Forecasting inundation history (GLAD-derived), CC-BY-4.0",
+  "url": "https://console.cloud.google.com/storage/browser/flood-forecasting/inundation_history"
+ },
+ "matogrosso": {
+  "img": "inundation/matogrosso.png",
+  "pct": {
+   "low": 0.92,
+   "medium": 0.39,
+   "high": 0.0
+  },
+  "km2": {
+   "low": 22.1,
+   "medium": 9.4,
+   "high": 0.0
+  },
+  "period": "1999\u20132020",
+  "source": "Google Flood Forecasting inundation history (GLAD-derived), CC-BY-4.0",
+  "url": "https://console.cloud.google.com/storage/browser/flood-forecasting/inundation_history"
+ },
+ "mekong": {
+  "img": "inundation/mekong.png",
+  "pct": {
+   "low": 96.87,
+   "medium": 96.37,
+   "high": 89.17
+  },
+  "km2": {
+   "low": 2324.0,
+   "medium": 2312.0,
+   "high": 2139.3
+  },
+  "period": "1999\u20132020",
+  "source": "Google Flood Forecasting inundation history (GLAD-derived), CC-BY-4.0",
+  "url": "https://console.cloud.google.com/storage/browser/flood-forecasting/inundation_history"
+ },
+ "phuprao": {
+  "img": "inundation/phuprao.png",
+  "pct": {
+   "low": 47.88,
+   "medium": 33.13,
+   "high": 3.35
+  },
+  "km2": {
+   "low": 1148.7,
+   "medium": 794.8,
+   "high": 80.4
+  },
+  "period": "1999\u20132020",
+  "source": "Google Flood Forecasting inundation history (GLAD-derived), CC-BY-4.0",
+  "url": "https://console.cloud.google.com/storage/browser/flood-forecasting/inundation_history"
+ }
+}

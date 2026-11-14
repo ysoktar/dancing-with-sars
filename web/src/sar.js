@@ -211,6 +211,7 @@ const stops = {
   viridis: ['#440154', '#3b528b', '#21918c', '#5ec962', '#fde725'],
   diverge: ['#b2182b', '#ef8a62', '#fddbc7', '#f7f7f7', '#d1e5f0', '#67a9cf', '#2166ac'],
   ice: ['#020617', '#0c4a6e', '#0ea5e9', '#a5f3fc', '#ffffff'],
+  turbo: ['#30123b', '#4662d7', '#36aaf9', '#1ae4b6', '#72fe5e', '#c8ef34', '#faba39', '#f66b19', '#ca2a04', '#7a0403'],
   terrain: ['#1d4f60', '#3b7d5a', '#8fae6b', '#d8c98f', '#b48a63', '#8c6e5d', '#f2f2f2'],
 };
 const lutCache = {};
@@ -234,7 +235,7 @@ function stretch(a, mask, pLo = 0.02, pHi = 0.98) {
   return [v[Math.floor(v.length * pLo)] ?? 0, v[Math.floor(v.length * pHi)] ?? 255];
 }
 
-/** Render a frame into ImageData. mode: rgb | hh | hv | ratio | change | clusters | anomaly */
+/** Render a frame into ImageData. mode: rgb | hh | hv | ratio | tstd | change | confidence | clusters */
 export function render(stack, t, mode, extra = {}) {
   const img = new ImageData(SIZE, SIZE);
   const d = img.data;
@@ -257,6 +258,20 @@ export function render(stack, t, mode, extra = {}) {
     const A = mode === 'hh' ? H : V;
     const [lo, hi] = mode === 'hh' ? (stack._hhRange || stretch(stack.hh[0], valid)) : (stack._hvRange || stretch(stack.hv[0], valid));
     for (let i = 0; i < N; i++) { const g = 255 * Math.max(0, Math.min(1, (A[i] - lo) / (hi - lo))); put(i, g, g, g); }
+  } else if (mode === 'rvi') {
+    // radar vegetation index RVI = 4·HV/(HH+HV), stretched over the first date's range
+    const L = lut('viridis');
+    if (!stack._rviRange) {
+      const v = []; const A = stack.hhF[0], B = stack.hvF[0];
+      for (let i = 0; i < N; i += 7) if (valid[i]) v.push((4 * B[i]) / (A[i] + B[i] + 1));
+      v.sort((a, b) => a - b); stack._rviRange = [v[Math.floor(v.length * 0.02)], v[Math.floor(v.length * 0.98)]];
+    }
+    const [lo, hi] = stack._rviRange;
+    for (let i = 0; i < N; i++) {
+      const r = (4 * V[i]) / (H[i] + V[i] + 1);
+      const k = Math.round(255 * Math.max(0, Math.min(1, (r - lo) / (hi - lo))));
+      put(i, L[k * 3], L[k * 3 + 1], L[k * 3 + 2]);
+    }
   } else if (mode === 'ratio') {
     const L = lut('viridis');
     for (let i = 0; i < N; i++) {
@@ -278,13 +293,6 @@ export function render(stack, t, mode, extra = {}) {
   } else if (mode === 'clusters' && extra.labels) {
     const cols = CLUSTER_COLORS.map((h) => [1, 3, 5].map((k) => parseInt(h.slice(k, k + 2), 16)));
     for (let i = 0; i < N; i++) { const c = cols[extra.labels[i] % cols.length]; put(i, c[0], c[1], c[2]); }
-  } else if (mode === 'anomaly' && extra.anomaly) {
-    const L = lut('inferno');
-    const [lo, hi] = stretch(extra.anomaly, valid, 0.02, 0.995);
-    for (let i = 0; i < N; i++) {
-      const k = Math.round(255 * Math.max(0, Math.min(1, (extra.anomaly[i] - lo) / (hi - lo))));
-      put(i, L[k * 3], L[k * 3 + 1], L[k * 3 + 2]);
-    }
   } else if (mode === 'tstd') {
     const ts = stack._tstd || (stack._tstd = temporalStd(stack));
     const L = lut('inferno');

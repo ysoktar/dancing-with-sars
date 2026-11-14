@@ -462,6 +462,77 @@ const ops = {
       data: img.buffer, w: SIZE, h: SIZE, transfer: [img.buffer] };
   },
 
+  /**
+   * Structural fingerprint: every ~280 m block of the region gets the same season-light feature vector as the Brazil
+   * archetype library (pipeline/build_archetypes.py): mean HH / HV, temporal spread, HV range, RVI and HV trend.
+   * Primary output: the nearest structural class (annual cropland, semi-perennial crops, open grass / wetland, closed
+   * canopy), distance in within-class spread units, p = softmax(-d^2 / 2). Secondary: the nearest specific Brazilian
+   * archetype (weaker, see the library self-test). "Unlike the library": farther than maxD from every class.
+   * "Structural shift": WorldCover 2021 said >= 60 % bare / shrub / grass, NISAR now behaves like annual cropland.
+   */
+  fingerprint({ id, days, lib, blockM = 280, maxD = 2.5 }) {
+    const st = stacks.get(id), T = st.T;
+    if (T < 6) return { error: 'At least 6 passes are needed.' };
+    const pxM = Math.sqrt(st.pixelKm2) * 1000, B = Math.max(1, Math.round(blockM / pxM)), G = Math.floor(SIZE / B);
+    const Gs = lib.groups, K = Gs.length, A = lib.archetypes, KA = A.length, F = lib.features.length;
+    const nearest = (f, list, scale, d2) => {
+      let bk = 0;
+      for (let k = 0; k < list.length; k++) {
+        const m = list[k].median;
+        let d = 0;
+        for (let j = 0; j < F; j++) d += ((f[j] - m[j]) / scale[j]) ** 2;
+        d2[k] = d / F;
+        if (d2[k] < d2[bk]) bk = k;
+      }
+      let sum = 0;
+      for (let k = 0; k < list.length; k++) sum += Math.exp(-(d2[k] - d2[bk]) / 2);
+      return { k: bk, p: 1 / sum, d: Math.sqrt(d2[bk]) };
+    };
+    const tm = days.reduce((x, y) => x + y, 0) / T, tden = Math.max(days.reduce((x, d) => x + (d - tm) ** 2, 0), 1);
+    const best = new Int16Array(G * G).fill(-1), conf = new Float32Array(G * G), arch = new Int16Array(G * G).fill(-1), shift = new Uint8Array(G * G);
+    const area = new Float64Array(K + 1), confSum = new Float64Array(K + 1), archArea = new Float64Array(KA);
+    const hh = new Float64Array(T), hv = new Float64Array(T), f = new Float64Array(F), d2 = new Float64Array(Math.max(K, KA));
+    const blockKm2 = B * B * st.pixelKm2, annual = Gs.findIndex((g) => g.id === 'annual');
+    let shiftTotal = 0;
+    for (let gy = 0; gy < G; gy++) for (let gx = 0; gx < G; gx++) {
+      hh.fill(0); hv.fill(0);
+      let n = 0;
+      const wcCount = {};
+      for (let yy = gy * B; yy < (gy + 1) * B; yy++) for (let xx = gx * B; xx < (gx + 1) * B; xx++) {
+        const i = yy * SIZE + xx;
+        if (!st.valid[i]) continue;
+        n++;
+        for (let t = 0; t < T; t++) { hh[t] += st.hhF[t][i]; hv[t] += st.hvF[t][i]; }
+        if (st.wc) wcCount[st.wc[i]] = (wcCount[st.wc[i]] || 0) + 1;
+      }
+      if (n < (B * B) / 2) continue;
+      let mH = 0, mV = 0, rv = 0;
+      for (let t = 0; t < T; t++) { hh[t] /= n; hv[t] /= n; mH += hh[t]; mV += hv[t]; rv += (4 * hv[t]) / (hh[t] + hv[t] + 1); }
+      mH /= T; mV /= T; rv /= T;
+      if (mH < 25 && mV < 25) continue;                          // water
+      let sH = 0, sV = 0, tr = 0;
+      for (let t = 0; t < T; t++) { sH += (hh[t] - mH) ** 2; sV += (hv[t] - mV) ** 2; tr += (days[t] - tm) * (hv[t] - mV); }
+      const sorted = Array.from(hv).sort((x, y) => x - y);
+      f[0] = mH; f[1] = mV; f[2] = Math.sqrt(sH / T); f[3] = Math.sqrt(sV / T);
+      f[4] = sorted[Math.floor(0.9 * (T - 1))] - sorted[Math.floor(0.1 * (T - 1))]; f[5] = rv; f[6] = (tr / tden) * 100;
+      const g = gy * G + gx;
+      const ng = nearest(f, Gs, lib.groupScale, d2);
+      if (ng.d > maxD) { best[g] = K; area[K] += blockKm2; continue; }
+      best[g] = ng.k; conf[g] = ng.p; area[ng.k] += blockKm2; confSum[ng.k] += ng.p * blockKm2;
+      const na = nearest(f, A, lib.scale, d2);
+      arch[g] = na.k; archArea[na.k] += blockKm2;
+      if (st.wc && ng.k === annual && ng.p >= 0.4) {
+        const tot = Object.values(wcCount).reduce((x, y) => x + y, 0);
+        const open = ((wcCount[60] || 0) + (wcCount[20] || 0) + (wcCount[30] || 0)) / Math.max(tot, 1);
+        if (open >= 0.6) { shift[g] = 1; shiftTotal += blockKm2; }
+      }
+    }
+    return { G, B, blockM: B * pxM, best: best.buffer, conf: conf.buffer, arch: arch.buffer, shift: shift.buffer, worldcover: !!st.wc,
+      groups: Gs.map((x, k) => ({ id: x.id, km2: area[k], conf: area[k] ? confSum[k] / area[k] : 0 })),
+      archetypes: A.map((x, k) => ({ id: x.id, km2: archArea[k] })),
+      unlikeKm2: area[K], shiftKm2: shiftTotal, transfer: [best.buffer, conf.buffer, arch.buffer, shift.buffer] };
+  },
+
   pixel({ id, x, y }) {
     const st = stacks.get(id);
     const avg = (arr) => {

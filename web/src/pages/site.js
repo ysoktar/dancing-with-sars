@@ -509,6 +509,7 @@ function motion(el) {
 
 // ================================================================== ANALYSIS
 const TOOLS = [
+  ['fingerprint', 'Surface fingerprint', 'Match to the Brazil radar library'],
   ['change', 'Change between two dates', 'Log-ratio + automatic threshold'],
   ['classes', 'Surface types', 'Unsupervised k-means clustering'],
   ['landcover', 'Cropland vs forest', 'Seasonal swing vs canopy volume'],
@@ -533,7 +534,7 @@ function analysis(el) {
 
 function showTool() {
   destroyCharts();
-  ({ change: toolChange, classes: toolClasses, landcover: toolLandcover, floodhist: toolFloodHist, landslide: toolLandslide, spill: toolSpill }[S.tool] || toolChange)($('#tool'));
+  ({ change: toolChange, classes: toolClasses, landcover: toolLandcover, floodhist: toolFloodHist, landslide: toolLandslide, spill: toolSpill, fingerprint: toolFingerprint }[S.tool] || toolChange)($('#tool'));
 }
 
 // ---------------------------------------------------------------- cropland vs forest
@@ -1074,6 +1075,69 @@ async function agContext(el) {
       scales: { x: { ...timeAxis(), min: xmin, max: xmax }, y: { beginAtZero: true, title: { display: true, text: 'mm / week' } }, y1: { position: 'right', grid: { display: false }, title: { display: true, text: '°C' } } },
       plugins: { legend: { labels: { boxWidth: 10 } } } },
   });
+}
+
+// ---------------------------------------------------------------- structural fingerprint (Brazil archetype library)
+let archLib = null;
+async function toolFingerprint(el) {
+  el.innerHTML = '<div class="empty">Loading the Brazil radar archetype library…</div>';
+  archLib = archLib || (await (await fetch(`${app.base}data/archetypes.json`)).json());
+  const L = archLib, A = acqs(), ts = times();
+  if (S.tab !== 'analysis' || S.tool !== 'fingerprint') return;
+  const months = (a, b) => `${new Date(a + 'T12:00:00Z').toLocaleDateString('en-GB', { month: 'short', year: 'numeric' })} – ${new Date(b + 'T12:00:00Z').toLocaleDateString('en-GB', { month: 'short', year: 'numeric' })}`;
+  const north = S.site.lat >= 0, ST = L.selftest;
+  el.innerHTML = `
+    <div class="panel">
+      <p class="muted" style="max-width:900px"><b>Planetary surface fingerprint.</b> Every land use leaves a structural signature in L-band radar: how rough and wet the surface is (HH), how much plant volume stands on it (HV), and how both rise and fall. NISAR passes over well-known Brazilian landscapes form a <b>radar ground-truth library</b>; every ~280 m block of this area is matched to its nearest <b>structural class</b> (annual cropland, semi-perennial crops, open grass / wetland, closed canopy) and to the closest specific Brazilian example. Blocks that WorldCover 2021 called bare or grassland but that now behave like annual cropland are flagged as <b>structural shifts</b>: new fields or new irrigation.</p>
+      <div class="controls"><div class="seg" id="fpShow"><button data-s="best" class="on">Structural class</button><button data-s="conf">Confidence</button><button data-s="arch">Closest Brazilian example</button><button data-s="shift">Structural shifts</button></div></div>
+      <div class="result">
+        <canvas class="map" id="fpMap" width="512" height="512"></canvas>
+        <div id="fpOut"><div class="empty">Matching…</div></div>
+      </div>
+      <p class="note"><b>How reliable is the library?</b> Leave-one-area-out self-test in Brazil (each area matched against a library built without it): structural class right for <b>${Math.round(ST.groups.overall * 100)} %</b> of cells (chance ${Math.round(100 / L.groups.length)} %): ${L.groups.map((g) => `${g.name.split(' (')[0].toLowerCase()} ${Math.round((ST.groups.per[g.id]?.acc || 0) * 100)} %`).join(', ')}; the specific example only ${Math.round(ST.overall * 100)} % (chance ${Math.round(100 / L.archetypes.length)} %), so read it as a hint. Library: ${L.archetypes.reduce((a, x) => a + x.sites.length, 0)} Brazilian areas, only their cells whose ESA WorldCover class fits the land use, NISAR passes ${months(L.window[0], L.window[1])} (public NISAR data over Brazil begins in June 2026). This area: ${A.length} passes, ${months(A[0].date, A[A.length - 1].date)}${north ? ". Northern hemisphere: seasons run about six months apart from Brazil's, so crops can sit in a different phase; a full-year, phase-shifted curve match becomes possible once NISAR has a year over Brazil (mid-2027)" : ''}. Features per block: mean HH, mean HV, their temporal spread, HV range, RVI, HV trend. A match says "behaves like", not "is".</p>
+    </div>`;
+  const r = await call('fingerprint', { id: S.stack.id, days: ts.map((t) => (t - ts[0]) / DAY), lib: L });
+  if (!$('#fpMap')) return;
+  if (r.error) { $('#fpOut').innerHTML = `<div class="empty">${esc(r.error)}</div>`; return; }
+  const best = new Int16Array(r.best), conf = new Float32Array(r.conf), arch = new Int16Array(r.arch), shift = new Uint8Array(r.shift), G = r.G, K = L.groups.length;
+  const hex = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
+  const gcols = L.groups.map((a) => hex(a.color)), acols = L.archetypes.map((a) => hex(a.color));
+  let show = 'best';
+  const draw = () => {
+    const img = new ImageData(G, G);
+    for (let g = 0; g < G * G; g++) {
+      const k = best[g], o = g * 4;
+      img.data[o + 3] = 255;
+      if (k < 0) { img.data[o] = img.data[o + 1] = img.data[o + 2] = 12; continue; }
+      if (k === K) { img.data[o] = img.data[o + 1] = img.data[o + 2] = 70; continue; }
+      let c = gcols[k];
+      if (show === 'conf') c = c.map((x) => x * (0.25 + 0.75 * conf[g]));
+      if (show === 'arch') c = arch[g] >= 0 ? acols[arch[g]] : [70, 70, 70];
+      if (show === 'shift') c = shift[g] ? [255, 40, 160] : c.map((x) => x * 0.3);
+      img.data[o] = c[0]; img.data[o + 1] = c[1]; img.data[o + 2] = c[2];
+    }
+    const cv = $('#fpMap'), cx = cv.getContext('2d');
+    const tmp = new OffscreenCanvas(G, G); tmp.getContext('2d').putImageData(img, 0, 0);
+    cx.imageSmoothingEnabled = false; cx.drawImage(tmp, 0, 0, cv.width, cv.height);
+  };
+  draw();
+  $$('#fpShow button').forEach((bt) => bt.addEventListener('click', () => { show = bt.dataset.s; $$('#fpShow button').forEach((x) => x.classList.toggle('on', x === bt)); draw(); }));
+  const tot = r.groups.reduce((a, c) => a + c.km2, 0) + r.unlikeKm2;
+  const rows = r.groups.map((c, k) => ({ ...c, g: L.groups[k] })).filter((c) => c.km2 > 0).sort((p, q) => q.km2 - p.km2);
+  const arows = r.archetypes.map((c, k) => ({ ...c, a: L.archetypes[k] })).filter((c) => c.km2 > 0).sort((p, q) => q.km2 - p.km2);
+  $('#fpOut').innerHTML = `
+    <div class="stats" style="margin-bottom:10px">
+      <div class="stat"><b>${rows[0] ? esc(rows[0].g.name.split(' (')[0]) : '–'}</b><span>dominant structure (${rows[0] ? Math.round((rows[0].km2 / tot) * 100) : 0} % of area)</span></div>
+      <div class="stat"><b>${r.worldcover ? `${r.shiftKm2.toFixed(1)} km²` : '–'}</b><span>structural shift: bare / grass in 2021 → annual cropland now</span></div>
+    </div>
+    <table class="t"><tr><th>Structural class</th><th style="text-align:right">km²</th><th style="text-align:right">share</th><th style="text-align:right">confidence</th></tr>
+    ${rows.map((c) => `<tr><td><span class="tag" style="--c:${c.g.color}"><i></i>${esc(c.g.name)}</span></td><td class="num">${c.km2.toFixed(1)}</td><td class="num">${Math.round((c.km2 / tot) * 100)} %</td><td class="num">${Math.round(c.conf * 100)} %</td></tr>`).join('')}
+    ${r.unlikeKm2 ? `<tr><td><span class="tag" style="--c:#464646"><i></i>unlike the library</span></td><td class="num">${r.unlikeKm2.toFixed(1)}</td><td class="num">${Math.round((r.unlikeKm2 / tot) * 100)} %</td><td></td></tr>` : ''}</table>
+    <h3 class="small muted" style="font-weight:500;margin-top:12px">Closest specific Brazilian example (a hint)</h3>
+    <table class="t">${arows.slice(0, 6).map((c) => `<tr><td><span class="tag" style="--c:${c.a.color}"><i></i>${esc(c.a.name)}</span></td><td class="num">${Math.round((c.km2 / tot) * 100)} %</td><td class="num small muted">self-test ${Math.round((ST.per[c.a.id]?.acc || 0) * 100)} %</td></tr>`).join('')}</table>
+    <details style="margin-top:8px"><summary class="small muted">Where the archetypes come from</summary>
+    <table class="t">${L.archetypes.map((a) => `<tr><td><span class="tag" style="--c:${a.color}"><i></i>${esc(a.name)}</span></td><td class="small">${a.sites.map((x) => `${x.lat.toFixed(2)}, ${x.lon.toFixed(2)} (${x.passes} passes, ${x.cells} cells)`).join(' · ')}</td></tr>`).join('')}</table></details>
+    <p class="note">Blocks of ~${Math.round(r.blockM)} m (${r.B}×${r.B} radar pixels). Confidence = how clearly the closest class beats the others.${r.worldcover ? ' Structural shifts need ≥ 60 % bare / shrub / grass in ESA WorldCover 2021 and an annual-cropland match with ≥ 40 % confidence.' : ' WorldCover was not available here, so structural shifts are not computed.'}</p>`;
 }
 
 // ---------------------------------------------------------------- mine-tailings spill / mudflow extent

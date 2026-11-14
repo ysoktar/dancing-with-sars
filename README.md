@@ -1,12 +1,12 @@
 # ∿ Dancing with the SARs
 
-**A 3-D globe, timeline and in-browser analysis lab for real NISAR L-band radar data.**
+**A planetary surface fingerprint explorer for real NISAR L-band radar data: 3-D globe, timeline and in-browser analysis lab.**
 NASA Space Apps Challenge 2026 · challenge *“Dancing with the SARs”*.
 
 * **Live site:** <https://ysoktar.github.io/dancing-with-sars/>
 * **Code:** <https://github.com/ysoktar/dancing-with-sars>
 
-Earth's surface keeps changing. Monsoon floods spread and recede, forests are cleared, rice is flooded, grown and harvested, and glaciers melt and refreeze. The NASA–ISRO **NISAR** satellite images all of it every 12 days, day and night, through cloud. This project turns NISAR's public Level-2 products into a website anyone can explore. It is honest about what radar can and cannot tell you.
+Earth's surface keeps changing under human hands. Fields are ploughed, sown, irrigated and harvested; forests are cleared; rivers flood; slopes fail; mines spill. The NASA–ISRO **NISAR** satellite images all of it every 12 days, day and night, through cloud. L-band radar does not see colour: it records how rough and wet the ground is (HH) and how much plant volume stands on it (HV). The rise and fall of those two numbers through a season is a **structural fingerprint** of what is happening on the ground. This project turns NISAR's public Level-2 products into a website where anyone can read those fingerprints, anywhere on Earth, and it is honest about what radar can and cannot tell you.
 
 ---
 
@@ -14,7 +14,7 @@ Earth's surface keeps changing. Monsoon floods spread and recede, forests are cl
 
 1. [Space Apps submission: copy-paste fields](#1-space-apps-submission-copy-paste-fields)
 2. [What the website does](#2-what-the-website-does)
-3. [Study sites](#3-study-sites)
+3. [Regions](#3-regions)
 4. [Data sources](#4-data-sources)
 5. [Methodology](#5-methodology)
 6. [Machine learning](#6-machine-learning)
@@ -32,26 +32,26 @@ Each block below matches one field of the Space Apps project form.
 ### Project Name
 
 ```
-Dancing with the SARs: a NISAR change atlas
+Dancing with the SARs: a planetary surface fingerprint explorer
 ```
 
 ### Summary (under 1,500 characters)
 
 ```
-We built an interactive 3-D globe for farmland, crop and yield segmentation with real NISAR L-band radar data. Click any farming region on Earth: every NISAR pass over it is fetched live from NASA's ASF archive, aligned and analysed in the browser. The site segments crops (paddy rice, double, single, perennial), delineates fields with their own calendars, ranks fields by relative yield potential with management zones inside fields, and separates cropland from forest. A pretrained deep network (U-TAE, trained on the PASTIS benchmark) runs in the browser on Sentinel-2 time series to name crop types. A parcel report adds elevation, NASA POWER weather and crop calendars, and an archive tab lists every radar pass back to Seasat (1978). The globe shows worldwide NISAR mosaics for every 12-day cycle since October 2025, a global cropland/forest layer, full-resolution radar frames when zoomed in, relief shading and the live satellite. Radar sees through clouds and darkness, so crops can be followed through the monsoon, when optical satellites are blind. Every result states its confidence and what SAR can and cannot measure.
+How does Earth's surface physically transform under human land use, in different hemispheres? Our 3-D globe reads real NISAR L-band radar as a structural fingerprint: HH tracks roughness and soil moisture, HV tracks plant volume, and their rise and fall over the season reveals what is happening on the ground. Worldwide NISAR mosaics for every 12-day cycle since October 2025 cover the globe, shown in the L-band dual-pol convention and as multi-date composites in which colour means change. Draw any area: every NISAR pass is fetched live from NASA's ASF archive, aligned and analysed in the browser. A radar ground-truth library built from NISAR passes over known Brazilian landscapes (soybean, sugarcane, rice, centre pivots, pasture, rainforest, Pantanal…) decodes unlabelled areas elsewhere, e.g. in Turkey, and flags structural shifts such as bare land turning into irrigated fields. For farmland the site adds deep-learning crop maps (U-TAE), per-crop NISAR curves, crop suggestions from FAO GAEZ suitability, and soil moisture in four depths plus a NISAR surface-wetness index. For hazards it detects landslide scars and gives a rain-triggered landslide outlook, and maps the physical spread of mine-tailings spills and the farmland they reach. Every result states its confidence and what SAR can and cannot measure.
 ```
 
 ### Project Demonstration (slides ≤ 7 or video ≤ 30 s)
 
 Suggested 7-slide deck. Each line is one slide, using screenshots from the live site:
 
-1. **Title.** "Dancing with the SARs: a NISAR change atlas", with the globe and a mosaic.
-2. **The problem.** Clouds and darkness hide floods and harvests. NISAR L-band sees through both, every 12 days.
-3. **Globe and timeline.** World mosaics per cycle, the satellite orbit and swath, density and events layers.
-4. **Site page.** Radar images, interferograms, change detection with confidence (Sylhet flood, Rondônia clearing).
-5. **Agriculture lab.** Crop calendar, harvest and flooding, cropping patterns, cropland vs forest (Punjab, Mekong, Phu Prao).
-6. **Honesty layer.** What SAR can and cannot tell; forecasts with ranges and assumptions; Google flood history vs NISAR water.
-7. **Open and automatic.** No-login pipeline, weekly GitHub Actions refresh, open code and the ML notebooks.
+1. **Title.** "Dancing with the SARs: a planetary surface fingerprint explorer", the globe in HH · HV · HH/HV (forest green, fields blue).
+2. **The idea.** L-band radar = roughness, moisture and plant volume. Their rhythm over a season is a fingerprint of land use, visible through cloud and darkness.
+3. **Globe and timeline.** World mosaics per cycle, multi-date composite (colour = change), 48 years of radar missions on one timeline, live satellite and swath.
+4. **Brazil → Turkey.** The radar ground-truth library from known Brazilian landscapes, an unlabelled Turkish area matched to it, structural shifts (bare 2021 → irrigated now).
+5. **Farmland.** Crop map (U-TAE) with per-crop NISAR curves, crop suggestions (GAEZ vs crops grown), soil moisture in four depths + NISAR wetness.
+6. **Hazards.** Landslide scars and the rain-triggered outlook; mine-spill extent and the farmland it reached, without pretending to measure contamination.
+7. **Honest and open.** What SAR can and cannot tell; confidence on every map; open code, no-login pipeline, everything computed in the browser.
 
 Upload the deck (PDF) or a 30-second screen recording to a public host and paste the link.
 
@@ -67,37 +67,32 @@ Paste the text below. Headings are written so they survive the form's rich-text 
 
 ```
 WHAT IT DOES
-Dancing with the SARs is a website for farmland, crop and yield segmentation from the NASA–ISRO NISAR radar satellite, for any place on Earth.
+Dancing with the SARs is a planetary surface fingerprint explorer built on the NASA–ISRO NISAR L-band radar, for any place on Earth.
 
-• Pick any region. Click the globe, type a place name or coordinates, and choose a window (5–120 km). The browser searches NASA's ASF archive, downloads every NISAR pass on the best track, aligns the dates by phase correlation and builds the radar time series. Nothing is precomputed or installed.
+• The globe. Worldwide NISAR mosaics for every 12-day cycle since the first products (12 Oct 2025), shown as R = HH, G = HV, B = HH/HV (the L-band convention of the JAXA PALSAR mosaics: forest green, fields and bare soil blue, water black) or as a multi-date composite (three cycles in R, G, B: grey = stable, colour = change). Full-resolution NISAR frames stream from ASF when you zoom in. A modular legend explains every active layer. The timeline runs from Seasat (1978) to today.
 
-• Crops & yield, per pixel:
-  – crop segmentation: paddy rice, double crop, single crop, perennial, water, bare;
-  – fields: field-like segments, each with its own sowing, peak and harvest dates;
-  – yield segmentation: fields ranked by relative yield potential (accumulated radar canopy and its peak), with management zones inside each field;
-  – deep learning: the published U-TAE network (PASTIS benchmark, 63–65 % mIoU) runs in the browser on a Sentinel-2 time series of a 1.28 km window and names crop types;
-  – cropland vs forest, crop calendar, harvest and paddy flooding, NASA POWER weather and MODIS NDVI.
+• Any region, live. Draw a rectangle anywhere (3–200 km). The browser searches NASA's ASF archive, downloads every NISAR pass, mosaics frames, aligns the dates by phase correlation and filters speckle. Nothing is precomputed or installed.
 
-• Parcel report: geometry and elevation range, radar vegetation-index signatures of crop types vs forest (with the region's real NISAR curve), a monthly crop/forest calendar matrix, a year of NASA POWER weather, and references.
+• Surface fingerprint (Brazil → anywhere). NISAR passes over 30 well-known Brazilian areas (soybean, sugarcane, irrigated rice, coffee, centre pivots, pasture, rainforest, eucalyptus, Pantanal, cerrado) form a radar ground-truth library. Every ~280 m block of the chosen area is matched to the nearest archetype by its structural features (mean HH and HV, their temporal spread, HV range, RVI, HV trend), with a confidence. Blocks that ESA WorldCover 2021 called bare or grassland but that now behave like cultivated or irrigated land are flagged as structural shifts (new irrigation, desert to cropland).
 
-• Archive 1978→: every radar acquisition the ASF archive holds over the region (Seasat, ERS, JERS-1, RADARSAT-1, ALOS PALSAR, UAVSAR, Sentinel-1, NISAR), and an L-band "then vs now" view (ALOS PALSAR 2006–2011 vs NISAR).
+• Farmland. Crop types from a deep network in the browser (U-TAE on Sentinel-2, with the team's U-Mamba / SITSMamba when their weights are loaded), cleaned with ESA WorldCover and the SPAM crop mix, with a crop calendar and the NISAR L-band curve of each crop; cropland vs forest from NISAR; crop suggestions (FAO GAEZ v4 suitability of 50 crops, rain-fed and irrigated, against the crops grown now and the current root-zone moisture); soil moisture in four depths (ERA5-Land), NASA POWER soil wetness and a NISAR bare-soil wetness index.
 
-• Globe and timeline. Worldwide NISAR mosaics for every 12-day cycle since the first products (12 Oct 2025), a global cropland/forest layer, full-resolution NISAR frames streamed from ASF when zoomed in, relief shading from surface normals, polar caps closed, NISAR's live position and radar swath. The timeline runs from Seasat (1978) to today and marks each radar mission.
+• Hazards. Landslides: scars detected as a lasting HV drop on steep slopes, a rain-triggered hazard nowcast and 7-day outlook (terrain susceptibility × rainfall against the local 25-year record), and the NASA Global Landslide Catalog nearby. Mine spill / mudflow: the physical spread between two passes and the farmland it reached. Change detection, flood history, archive back to 1978 and a parcel report complete the lab.
 
 HOW IT WORKS
-Region analysis happens entirely in the browser: the ASF search API, NISAR browse images, NASA POWER, NASA GIBS, Sentinel-2 Cloud-Optimized GeoTIFFs and elevation tiles are all public and CORS-enabled, so a Web Worker downloads, co-registers (FFT phase correlation), filters (multi-temporal Quegan speckle filter) and segments the radar series, and a second worker runs the U-TAE network with ONNX Runtime (WebAssembly). A Python pipeline without login builds the world mosaics (about 16,000 frames per 12-day cycle, feathered blending, per-frame gain matching, temporal gap filling, polar caps), the cropland/forest layer and the relief normal map; GitHub Actions publishes the site.
+Region analysis happens entirely in the browser: the ASF search API, NISAR browse images, NASA POWER, NASA GIBS, Sentinel-2 Cloud-Optimized GeoTIFFs, ESA WorldCover, ERA5-Land (Open-Meteo) and elevation tiles are all public and CORS-enabled, so Web Workers download, co-register, filter and analyse the radar series and run the deep network with ONNX Runtime (WebAssembly). A Python pipeline without login builds the world mosaics (about 16,000 frames per 12-day cycle, raw browse values, feathered blending, temporal gap filling, polar caps), the archetype library, the GAEZ suitability tiles, the crop-mix prior and the landslide catalog; GitHub Actions publishes the site.
 
 BENEFITS AND IMPACT
-Radar works through cloud and at night, exactly when monsoon crops grow. Anyone can open their own district and see which fields were sown, flooded and harvested when, which fields lag behind their neighbours, and where cropland meets forest, without installing anything. Every result states its confidence and whether SAR measures it directly, estimates it with other data, or cannot see it.
+Radar works through cloud and at night. Scientists get a way to read unlabelled surface change against known land uses; farmers and agencies can see which crops a district grows, which it could grow, how wet its soil is, and which slopes are primed by rain; responders can map a spill's spread and the fields it reached. Every result states its confidence and whether SAR measures it directly, estimates it with other data, or cannot see it.
 
 TOOLS
 JavaScript (Vite, globe.gl / three.js, Chart.js, satellite.js, geotiff.js, ONNX Runtime Web, Web Workers), Python (numpy, Pillow, scipy, PyTorch for the ONNX export), GitHub Actions and Pages, Google Colab and PyTorch for the deep-learning notebooks (U-Mamba, SITSMamba, U-TAE; Google's Flood Hub LSTM).
 
 WHAT MAKES IT CREATIVE
-Any region on Earth, analysed live from the public archive in the browser, with radar and a pretrained deep network side by side. One timeline spans 48 years of spaceborne radar. Every page carries an explicit honesty layer: confidence scores, domain-shift warnings for the deep model, and the limits of what radar can see.
+Radar as a fingerprint, not a picture: a library of known Brazilian landscapes decodes surface change on another continent. Any region on Earth, analysed live from the public archive in the browser. One timeline spans 48 years of spaceborne radar. Every page carries an explicit honesty layer: confidence, look-alikes, and the limits of what radar can see.
 
 WHAT WE CONSIDERED
-Data volume: the full NISAR archive is petabytes, so we use browse products and document the route to calibrated data. Products are labelled beta or provisional, and we say so. Browse brightness is relative, not calibrated backscatter. Rule-based crop products are labelled as such; the yield index is relative, not t/ha; the deep model was trained in France and says so outside that domain; models are never evaluated on their own training period. Performance on phones matters, hence Web Workers, level-of-detail tiles and pausing the globe when it is hidden.
+Data volume: the full NISAR archive is petabytes, so we use browse products (8-bit, ~165 m) and document the route to calibrated data. Values are never altered for looks: the mosaics are raw browse values, display stretches are fixed and the same everywhere. Public NISAR data over Brazil starts in June 2026, so the library covers June–November; a full-year, phase-shifted (six months between hemispheres) curve match becomes possible in 2027. Radar does not measure crop species, yield or soil chemistry directly: crop types come from a trained optical network, suitability from FAO GAEZ, and the spill tool maps physical spread, not contamination. The deep model was trained in France and says so elsewhere.
 ```
 
 ### Use of Super Intelligence (SI)
@@ -113,58 +108,64 @@ SI tools were used to help write code and documentation. An AI coding assistant 
 | Link Text | Link URL |
 |---|---|
 | NISAR mission (NASA/JPL) | https://nisar.jpl.nasa.gov/ |
-| NISAR L2 GCOV, GUNW, GOFF products via ASF DAAC Vertex | https://search.asf.alaska.edu/ |
-| NISAR product documentation (ASF) | https://nisar-docs.asf.alaska.edu/ |
+| NISAR L2 GCOV, GUNW, GOFF products via ASF Data Search Vertex | https://search.asf.alaska.edu/ |
+| NISAR Data User Guide (ASF) | https://nisar-docs.asf.alaska.edu/ |
 | ASF DAAC Search API | https://docs.asf.alaska.edu/api/basics/ |
-| NASA Common Metadata Repository (CMR) | https://cmr.earthdata.nasa.gov/search |
 | NASA Earthdata Search | https://search.earthdata.nasa.gov/search |
-| NASA EONET natural events | https://eonet.gsfc.nasa.gov/ |
+| NASA Common Metadata Repository (CMR) | https://cmr.earthdata.nasa.gov/search |
+| NASA POWER: daily rain, temperature, soil wetness (GWETTOP / GWETROOT / GWETPROF) | https://power.larc.nasa.gov/ |
+| NASA Global Landslide Catalog | https://data.nasa.gov/ |
+| NASA LHASA landslide model (method followed by the hazard outlook) | https://landslides.nasa.gov/ |
 | NASA GIBS (MODIS Terra NDVI 16-day, true colour) | https://www.earthdata.nasa.gov/engage/open-data-services-software/earthdata-developer-portal/gibs-api |
-| NASA POWER daily weather (precipitation, temperature) | https://power.larc.nasa.gov/ |
+| NASA EONET natural events | https://eonet.gsfc.nasa.gov/ |
 | NASA Blue Marble base map (GIBS shaded relief + bathymetry tiles) | https://visibleearth.nasa.gov/collection/1484/blue-marble |
 | Seasat SAR (1978, NASA/JPL) via ASF | https://asf.alaska.edu/data-sets/sar-data-sets/seasat/ |
-| UAVSAR airborne L-band (NASA/JPL) via ASF | https://uavsar.jpl.nasa.gov/ |
+| UAVSAR airborne L-band (NASA/JPL) and UAVSAR Postcards | https://uavsar.jpl.nasa.gov/education/postcards.html |
+| NASA IMERG precipitation (behind NASA POWER rain; flood model input) | https://gpm.nasa.gov/data/imerg |
+| Intro to Remote Sensing (NASA Earthdata) | https://www.earthdata.nasa.gov/learn/earth-observation-data-basics/remote-sensing |
+| Intro to SAR (NASA Earthdata) | https://www.earthdata.nasa.gov/learn/earth-observation-data-basics/sar |
+| NASA ARSET trainings | https://appliedsciences.nasa.gov/get-involved/training |
+| NISAR StoryMaps | https://nisar.jpl.nasa.gov/applications/arcgis-storymaps/ |
+| NISAR Applications White Papers | https://nisar.jpl.nasa.gov/applications/societal-benefit/ |
 | NASA Earthdata Login (optional calibrated HDF5 route) | https://urs.earthdata.nasa.gov/ |
-| NASA IMERG precipitation (input of the flood model, notebook 05) | https://gpm.nasa.gov/data/imerg |
-| NASA Earthdata: SAR basics | https://www.earthdata.nasa.gov/learn/earth-observation-data-basics/sar |
-| NISAR societal benefit applications | https://nisar.jpl.nasa.gov/applications/societal-benefit/ |
-| UAVSAR education resources | https://uavsar.jpl.nasa.gov/education/postcards.html |
-| NASA Applied Sciences (ARSET) training | https://appliedsciences.nasa.gov/get-involved/training |
 
 ### Space Agency Partner & Other Data (Link Text → Link URL)
 
 | Link Text | Link URL |
 |---|---|
 | ISRO: NISAR partner agency | https://www.isro.gov.in/ |
+| CSA RADARSAT Constellation Mission (data) | https://donnees-data.asc-csa.gc.ca/en/dataset/rcm |
+| CSA RADARSAT-1 (data) | https://donnees-data.asc-csa.gc.ca/en/dataset/radarsat1 |
+| CSA Synthetic Aperture Radar Python tutorial | https://github.com/asc-csa/Synthetic_Aperture_Radar_Tutorial |
+| CONAE SAOCOM catalogue (L-band, a future second library source) | https://catalogos.conae.gov.ar/catalogo/catalogoSatSaocomInfo.html |
+| ESA WorldCover 10 m 2021 (via Microsoft Planetary Computer) | https://esa-worldcover.org/ |
 | Copernicus DEM GLO-30 (ESA / Airbus), AWS Open Data | https://registry.opendata.aws/copernicus-dem/ |
-| CSA RADARSAT Constellation Mission (data page) | https://donnees-data.asc-csa.gc.ca/en/dataset/rcm |
-| CSA RADARSAT-1 (data page) | https://donnees-data.asc-csa.gc.ca/en/dataset/radarsat1 |
-| CSA SAR tutorial | https://github.com/asc-csa/Synthetic_Aperture_Radar_Tutorial |
-| CONAE SAOCOM catalogue | https://catalogos.conae.gov.ar/catalogo/catalogoSatSaocomInfo.html |
+| Sentinel-2 L2A Cloud-Optimized GeoTIFFs (ESA Copernicus) via Element 84 Earth Search | https://earth-search.aws.element84.com/v1 |
+| ERA5-Land soil moisture (ECMWF / Copernicus C3S) via Open-Meteo | https://open-meteo.com/en/docs/historical-weather-api |
+| Open-Meteo precipitation forecast | https://open-meteo.com/ |
+| FAO / IIASA GAEZ v4 crop suitability | https://gaez.fao.org/ |
+| SPAM 2010 crop production (IFPRI, MapSPAM) | https://doi.org/10.7910/DVN/PRFF8V |
+| Sentinel-1, ERS-1/2 (ESA), JERS-1, ALOS PALSAR (JAXA), RADARSAT-1 (CSA) archives via ASF | https://search.asf.alaska.edu/ |
 | Google Flood Forecasting (Flood Hub) | https://sites.research.google/gr/floodforecasting/ |
 | Google inundation history 1999–2020 (CC-BY-4.0) | https://console.cloud.google.com/storage/browser/flood-forecasting/inundation_history |
 | Google OpenHydroNet code and pretrained weights (Apache-2.0) | https://github.com/google-research/flood-forecasting |
 | Caravan hydrology dataset (Zenodo) | https://doi.org/10.5281/zenodo.6522634 |
-| MultiMet Caravan extension (HRES, GraphCast, IMERG, CPC) | https://console.cloud.google.com/storage/browser/caravan-multimet |
 | USGS earthquake catalogue API | https://earthquake.usgs.gov/fdsnws/event/1/ |
 | GDELT news API | https://www.gdeltproject.org/ |
 | CelesTrak orbital elements (NISAR, NORAD 65053) | https://celestrak.org/ |
-| Sentinel-2 L2A Cloud-Optimized GeoTIFFs (ESA Copernicus) via Element 84 Earth Search | https://earth-search.aws.element84.com/v1 |
 | Sentinel-2 cloudless 2024 base map by EOX (CC BY-NC-SA 4.0) | https://s2maps.eu/ |
-| Sentinel-1, ERS-1/2 (ESA), JERS-1, ALOS PALSAR (JAXA), RADARSAT-1 (CSA) archives via ASF | https://search.asf.alaska.edu/ |
 | Terrarium elevation tiles (Mapzen / Tilezen, AWS Open Data) | https://registry.opendata.aws/terrain-tiles/ |
 | OpenStreetMap Nominatim (place search) | https://nominatim.org/ |
 | U-TAE pretrained PASTIS weights (Zenodo 5172293) | https://zenodo.org/records/5172293 |
 | PASTIS normalisation statistics (Zenodo 5012942) | https://zenodo.org/records/5012942 |
-| ONNX Runtime Web | https://onnxruntime.ai/ |
-| geotiff.js | https://geotiffjs.github.io/ |
-| Natural Earth land polygons | https://www.naturalearthdata.com/ |
 | PASTIS-R crop benchmark | https://github.com/VSainteuf/pastis-benchmark |
-| YieldSAT dataset | https://yieldsat.github.io/ |
-| U-TAE pretrained weights (utae-paps) | https://github.com/VSainteuf/utae-paps |
+| U-TAE code (utae-paps) | https://github.com/VSainteuf/utae-paps |
 | Mamba selective-scan kernels (state-spaces/mamba) | https://github.com/state-spaces/mamba |
 | U-Mamba paper | https://arxiv.org/abs/2604.00940 |
 | SITSMamba paper | https://arxiv.org/abs/2409.09673 |
+| ONNX Runtime Web | https://onnxruntime.ai/ |
+| geotiff.js | https://geotiffjs.github.io/ |
+| Natural Earth land polygons | https://www.naturalearthdata.com/ |
 | globe.gl | https://github.com/vasturiano/globe.gl |
 | three.js | https://threejs.org/ |
 | Chart.js | https://www.chartjs.org/ |
@@ -178,21 +179,22 @@ SI tools were used to help write code and documentation. An AI coding assistant 
 
 | Part | What you get |
 |---|---|
-| **Globe** | World NISAR mosaics per 12-day cycle (8k texture; 1 km tiles; **full-resolution NISAR frames streamed live from ASF** below ~3,000 km view altitude, colour-matched to the mosaic). Relief shading from a global normal map. Polar caps beyond NISAR's reach (> ~78° N, < ~87.5° S) closed by a smooth fill, flagged in the data. Base map: NASA GIBS Blue Marble relief + bathymetry, Sentinel-2 cloudless when zoomed in. Layers: global **cropland & forest** (from the mosaics), monthly acquisition density, NASA EONET events, night lights, NISAR's live position, track and swath. |
-| **Timeline** | One line from Seasat (1978) to today. The archive years take the first quarter (L-band missions light blue, C-band grey), NISAR's era the rest (amber = world mosaic cycles, white = the open region's passes). Launch (30 Jul 2025) and first products (12 Oct 2025) are marked. |
-| **Select region** | Pick a point on the globe, search a place or type "lat, lon", set the window (22 / 49 / 89 km or any 5–120 km). Recent regions are remembered in the browser. |
-| **Region page** | *Summary · Crops & yield · Parcel report · Archive 1978→ · Radar images · Change & ML · Forecast*. |
-| **Crops & yield** | Crop segmentation · Fields · Yield segmentation · Deep learning (U-TAE) · Cropland vs forest · Crop calendar · Harvest & flooding · Weather & NDVI. |
+| **Globe** | World NISAR mosaics per 12-day cycle (8k texture; 1 km tiles; full-resolution NISAR frames streamed live from ASF when zoomed in). Display: **R = HH, G = HV, B = HH/HV** with fixed per-channel ranges (as the JAXA PALSAR mosaics), or the **multi-date composite** (HH of three cycles in R, G, B). Raw browse values everywhere, never gain- or colour-matched. Polar caps beyond NISAR's reach closed by a smooth fill, flagged in the data. Base map: NASA GIBS Blue Marble relief + bathymetry, Sentinel-2 cloudless when zoomed in, relief shading from a global normal map. Layers: cropland & forest, acquisition density, NASA EONET events, night lights, NISAR's live position, track and swath. A **legend** (bottom right) shows a colour ramp for every active layer. |
+| **Timeline** | One line from Seasat (1978) to today. The archive years take the first quarter (L-band missions light blue, C-band grey), NISAR's era the rest (amber = world mosaic cycles, white = the open region's passes). |
+| **Select region** | Drag a rectangle on the globe (3–200 km), or search a place first. Recent areas are remembered; every view has a shareable link (`#/region/<w>/<s>/<e>/<n>/<tab>`). |
+| **Region page** | *Summary · Crops · Parcel report · Archive 1978→ · Radar images · Change & ML · Forecast*. |
+| **Crops** | Crop types & calendar (U-TAE, or the team's U-Mamba / SITSMamba) with per-crop NISAR curves · **What could grow here** (GAEZ suitability vs crops grown) · **Soil moisture** (ERA5-Land 4 layers, NASA POWER, NISAR wetness) · Cropland vs forest · Weather & NDVI. |
+| **Change & ML** | **Surface fingerprint** (Brazil archetype library, structural shifts) · Change between two dates · Surface types (k-means) · Cropland vs forest · **Landslides** (detection + hazard outlook) · **Mine spill / mudflow** (spread + farmland reached). |
 | **Parcel report** | The team's parcel analyzer on the web: geometry and elevation, RVI signatures (reference crops vs the region's real NISAR curve), monthly calendar matrix, a year of NASA POWER weather, references. |
-| **Archive 1978→** | Every radar acquisition ASF holds over the point, per mission and year, browse samples, and ALOS PALSAR (L-band, 2006–11) next to NISAR. |
+| **Archive 1978→** | Every radar acquisition ASF holds over the area, per mission and year, browse samples, and ALOS PALSAR (L-band, 2006–11) next to NISAR. |
 | **What radar can tell** | What L-band SAR measures directly, what it estimates with other data, what it cannot see. |
 | **Data & methods** | Sources, challenge resources, partner missions, the route to the full archive. |
 
-Every view has a shareable link (`#/region/<lon>/<lat>/<half-width°>/<tab>`). Heavy work runs in Web Workers; the globe pauses while a page covers it.
+Heavy work runs in Web Workers; the globe pauses while a page covers it.
 
 ## 3. Regions
 
-There are no predefined places: any point covered by NISAR can be analysed. The pipeline still contains 17 benchmark regions (`pipeline/sites.json`: Punjab, Nile Delta, Iowa, Mato Grosso, Poltava, Mekong, Phu Prao/Sirindhorn, Konya, Tulare, Sylhet, Rondônia, …) used to develop and test the methods; their precomputed data (crops, DEM, weather, flood history) remain in `web/public/data/` and are used by the README figures and the cross-checks below.
+There are no predefined places: any area covered by NISAR can be analysed. The fingerprint library uses 30 fixed Brazilian areas (§5.10). The pipeline still contains 17 benchmark regions (`pipeline/sites.json`: Punjab, Nile Delta, Iowa, Mato Grosso, Poltava, Mekong, Phu Prao/Sirindhorn, Konya, Tulare, Sylhet, Rondônia, …) used to develop and test the methods; their precomputed data (crops, DEM, weather, flood history) remain in `web/public/data/` and are used by the README figures and the cross-checks below.
 
 ## 4. Data sources
 
@@ -212,6 +214,14 @@ There are no predefined places: any point covered by NISAR can be analysed. The 
 | Land polygons | Natural Earth 1:50m | mosaic land mask | public |
 | Flood Hub LSTM weights, Caravan, MultiMet | Google Research, Caravan | notebook 05 | public |
 | PASTIS-R | academic dataset | notebooks 01–04 | public download |
+| ESA WorldCover 10 m 2021 | ESA, Microsoft Planetary Computer | crop-map clean-up, structural shifts, spill land cover | public COG (SAS token) |
+| SPAM 2010 v2r0 crop areas | IFPRI (CC BY 4.0) | crops grown here, crop-map prior | public download |
+| GAEZ v4 crop suitability | FAO & IIASA (CC BY-NC-SA 3.0 IGO) | crop suggestions | public image service |
+| ERA5-Land soil moisture, 4 layers | ECMWF / Copernicus C3S via Open-Meteo | soil moisture, crop suggestions | public API |
+| NASA POWER soil wetness | NASA | soil moisture | public API |
+| Global Landslide Catalog | NASA Goddard (public domain) | landslide history | public download |
+| Daily precipitation forecast | Open-Meteo (ECMWF / GFS / ICON) | 7-day landslide outlook | public API |
+| Sentinel-2 L2A COGs | ESA Copernicus, Element 84 Earth Search | crop types (U-TAE) | public STAC / COG |
 
 **Data history.**
 
@@ -253,10 +263,11 @@ GUNW and GOFF granules on the site's track are cropped the same way and paired b
 ### 5.3 World mosaics (`build_mosaic.py`)
 1. **Frames.** All GCOV browse frames of a period are listed from CMR and downloaded in parallel. Beta browse images (`<granule>.png`, map-projected) are accepted, except where |lat| > 60°, where their projection is unreliable. Longitudes are unwrapped across the antimeridian.
 2. **Blending.** Each frame gets a feathered weight: distance to its own edge (Euclidean distance transform), raised to 1.5. Dual-pol frames get weight 1.0, single-pol ones 0.03, so they only fill gaps.
-3. **Radiometric balancing.** A two-pass gain/offset match of every frame to the consensus of its neighbours (20/50/80 % percentiles, gain clipped to 0.6–1.6) removes the patchwork of different passes.
+3. **Raw values.** Frames are blended with their browse values unchanged: no gain, offset or colour matching (`--match` exists but is off). The swath rim gets a near-zero weight and seams of ≤ 6 px are filled from the nearest good pixel.
 4. **Mask.** Land and ice shelves (Natural Earth 1:50m), plus everything poleward of 55°, where sea ice is real NISAR signal. Open ocean nearer the equator is masked.
 5. **Gap filling.** Pixels without data in a period are filled from the period nearest in time (`--fill-gaps`). The filled share is recorded per period.
-6. **Outputs.** 8k and 4k equirectangular WebP per period. The globe shows 4k while moving and 8k at rest. For the latest full cycle, 10° × 10° tiles at 0.01° (~1 km) are loaded when zoomed in.
+6. **Display.** On the globe: R = HH, G = HV, B = HH/HV (the difference of the dB-like browse values) with fixed per-channel ranges, HH 140–255 (γ 1.5), HV 60–230, HH−HV −20…+60, the same everywhere; or the multi-date composite (HH of three cycles, stretch 90–240, γ 1.4, date differences × 2). The data are not changed.
+7. **Outputs.** 8k and 4k equirectangular WebP per period. The globe shows 4k while moving and 8k at rest. For the latest full cycle, 10° × 10° tiles at 0.01° (~1 km) are loaded when zoomed in.
 
 ### 5.4 Change detection
 * Lee speckle filter (5 × 5).
@@ -264,36 +275,11 @@ GUNW and GOFF granules on the site's track are cropped the same way and paired b
 * Per-pixel confidence = distance beyond the threshold relative to the spread of unchanged pixels.
 * Areas are given in km².
 
-### 5.5 Agriculture (`web/src/agri.js`, runs in the Web Worker)
+### 5.5 Cropland vs forest (`web/src/agri.js`, in the Web Worker)
 * **RVI** = 4·HV / (HH + HV), from browse brightness, so it is *relative*.
-* **Phenology.** On the 1-2-1 smoothed RVI series:
-  * peak = maximum;
-  * start of season = 50 % of the rise before the peak;
-  * end of season = 50 % of the fall after it.
-* **Harvest** = the sharpest drop from an above-average RVI level, accepted if it exceeds max(0.06, 35 % of the seasonal amplitude).
-* **Paddy flooding** = a pass on which HH is below the water threshold, followed within 70 days by HH above 1.15 × the threshold.
-* **Water threshold.** Scene Otsu on HH, capped at 90 (browse scale). Where a scene has little water, Otsu splits forest from pasture rather than land from water.
-* **Cropping patterns.** Cropland = seasonal amplitude above max(0.05, 0.6 × the 75th percentile). Then, in order:
-  * water: dark on ≥ 60 % of passes;
-  * paddy: cropland with a flooding event;
-  * double crop: cropland with ≥ 2 prominent peaks;
-  * single crop: other cropland;
-  * perennial: high mean RVI;
-  * bare / built: the rest.
-* **Fields.** 3 × 3 majority filter, then connected components keyed by pattern and harvest month (≥ 6 pixels, largest 120 listed).
-* **Cropland vs forest.** Two physical axes:
-  * x = seasonal swing of RVI (crops are sown and harvested);
-  * y = mean HV (woody canopies depolarise L-band all year).
-
-  Thresholds:
-  * mean HV: Otsu on non-water pixels;
-  * swing: the upper-quartile rule;
-  * water: HH < 50 on ≥ 60 % of passes. This is stricter here because dry, smooth pasture is almost as dark as water.
-
-  Classes: forest, cropland, tree crops / mixed, water, grass / bare / built. Each pixel gets a confidence = distance to the nearest threshold, scaled by the axis spread. The forest–cropland edge length is reported as a proxy for the clearing frontier.
-* **Context.**
-  * NASA POWER daily precipitation and temperature.
-  * MODIS NDVI 16-day composites (GIBS WMS PNG, converted back to NDVI with the official colour map; scene mean of cloud-free pixels).
+* Two physical axes: x = seasonal swing of RVI (crops are sown and harvested), y = mean HV (woody canopies depolarise L-band all year). Thresholds: mean HV by Otsu on non-water pixels, swing by the upper-quartile rule, water = HH < 50 on ≥ 60 % of passes.
+* Classes: forest, cropland, tree crops / mixed, water, grass / bare / built, each with a confidence. ESA WorldCover hard classes (bare, built, water, snow) override the radar where they apply, so dark desert sand is not called water.
+* Crop *types* are not derived from rules: they come from the trained networks (§5.11). The earlier rule-based crop patterns and the relative yield index were removed (no harvest data to validate them).
 
 ### 5.6 Flood history (`build_inundation.py`)
 * Google's inundation-history polygons (wet ≥ 0.5 %, ≥ 1 % and ≥ 5 % of the time, 1999–2020, permanent water removed) are rasterised onto each site's 256 × 256 grid.
@@ -324,37 +310,58 @@ GUNW and GOFF granules on the site's track are cropped the same way and paired b
 6. **Crop and mask.** 256 × 256 crop; valid = inside the footprint (shrunk ~1.5 km) and not border-connected no-data.
 7. **Speckle.** Multi-temporal Quegan–Yu filter, J_t = E_t · (1/T) Σ_k I_k / E_k with 5 × 5 local means, then a light 3 × 3 Lee pass (Lee 5 × 5 when fewer than 4 dates).
 
-### 5.10 Yield segmentation (`computeYield` in `agri.js`)
-* For each cropland pixel: area under the smoothed RVI curve above its own minimum, between its start and end of season (accumulated canopy × duration), and the seasonal peak.
-* Both are converted to percentile ranks within the window and combined (0.6 · area + 0.4 · peak) into an index from 0 (weakest crop in the window) to 1 (strongest), shown in five classes.
-* Per field: mean index and spread over each field segment; fields are ranked.
-* Management zones: pixels more than 0.2 below / above their own field's mean.
-* It is **relative**: it ranks fields against their neighbours under the same season and similar crops, and does not give tonnes per hectare. Converting it needs harvest records, which are not available; the region's typical yields (SPAM 2010) are shown for scale.
+### 5.10 Surface fingerprint and the Brazil archetype library (`pipeline/build_archetypes.py`, op `fingerprint` in `sarWorker.js`)
+* **Library.** Ten land uses, three well-known Brazilian areas each (soybean belt of Mato Grosso and Goiás, sugarcane around Ribeirão Preto, irrigated rice of Rio Grande do Sul, coffee of Minas Gerais, centre pivots of Cristalina / Paracatu, pasture, intact Amazon forest, eucalyptus of Três Lagoas, Pantanal wetland, cerrado savanna). For each ~9 km box, every public NISAR GCOV pass of the track that covers it most often is sampled at 32 × 32 cells (~280 m) and lightly smoothed (3 × 3), like the browser's speckle filter.
+* **Features per cell.** Mean HH and HV (roughness + moisture / plant volume), their temporal standard deviation (how much the surface changes pass to pass), HV range p90 − p10 (growth / harvest amplitude), mean RVI = 4·HV / (HH + HV), and the HV trend per 100 days (growing or being cleared). The archetype is the median over its cells; the library-wide inter-quartile range of each feature is the distance scale.
+* **Matching.** In the browser, the region's filtered series is averaged into ~280 m blocks (the library's cell size) and the same features are computed. Distance = RMS of the feature differences in library IQR units; confidence = softmax(−d²/2) over the archetypes; blocks farther than 2.5 from every archetype are "unlike the library".
+* **Structural shifts.** A block that ESA WorldCover 2021 called ≥ 60 % bare, shrub or grass and that now matches a cultivated or irrigated archetype (soybean, sugarcane, rice, coffee, pivot) with ≥ 40 % confidence: new irrigation, desert or rangeland turned into fields since 2021.
+* **Season.** Public NISAR GCOV over Brazil starts on 21 June 2026, so the library covers June–November (Brazil's dry season and the start of soybean sowing). The features avoid calendar-specific curve shapes; a full-year curve match with the six-month hemisphere shift becomes possible once NISAR has a year over Brazil (mid-2027).
 
-### 5.11 Deep learning in the browser (`web/src/dlWorker.js`, `ml/export_utae_onnx.py`)
-* **Model.** U-TAE (Garnot & Landrieu, ICCV 2021): a U-Net whose skip connections are aggregated over time by a lightweight temporal attention encoder (L-TAE). Published PASTIS weights, fold 2 (test mIoU 65.0 %, OA 84.1 %).
-* **Export.** A compact re-implementation with identical parameter names loads all 158 tensors strictly (`torch.load(weights_only=True)`), is exported to ONNX (opset 17, dynamic number of dates, 4.5 MB) and checked against PyTorch (max |Δ| 4e-5 for 7 and 20 dates).
-* **Input.** For the chosen 1.28 × 1.28 km window, Sentinel-2 L2A scenes with < 30 % cloud are found through the Earth Search STAC API for one season (1 Sept → 31 Oct, as in PASTIS); up to 24 dates spread over the season. Ten bands (B2–B8A, B11, B12) are read straight from the Cloud-Optimized GeoTIFFs with HTTP range requests (geotiff.js), resampled to 10 m, the L2A offset removed where needed, and normalised with the PASTIS statistics (read from the PASTIS archive's `NORM_S2_patch.json`). Positions are days since 1 September.
-* **Output.** Argmax over the 19 real classes (void excluded), softmax confidence per pixel, area and mean confidence per class.
-* **Check.** In France (in-domain) the exported model returns 40 % soft winter wheat, 21 % rapeseed, 11 % winter barley in the Beauce, with crisp field boundaries, and "background" over woodland.
-* **Domain shift.** Outside Western Europe the classes are the nearest French equivalent; the page warns, and the results are presented as field delineation plus a crop-group hint.
+### 5.11 Deep learning in the browser (`web/src/dlWorker.js`, `ml/export_utae_onnx.py`, `ml/export_mamba_onnx.py`)
+* **Model.** U-TAE (Garnot & Landrieu, ICCV 2021): a U-Net whose skip connections are aggregated over time by a lightweight temporal attention encoder (L-TAE). Published PASTIS weights, fold 2 (test mIoU 65.0 %, OA 84.1 %). The team's U-Mamba and SITSMamba (notebooks 01, 02) are exported with `ml/export_mamba_onnx.py` and appear in the model list when their weights are added.
+* **Export.** A compact re-implementation with identical parameter names loads all 158 tensors strictly, is exported to ONNX (opset 17, dynamic number of dates, 4.5 MB) and checked against PyTorch (max |Δ| 4e-5).
+* **Input.** Sentinel-2 L2A scenes (< 30 % cloud) for one season through the Earth Search STAC API; ten bands read straight from the Cloud-Optimized GeoTIFFs with HTTP range requests, normalised with the PASTIS statistics.
+* **Post-processing.** (1) SPAM 2010 crop-mix prior around the window: classes of crops grown here weigh 1, marginal 0.3, not grown 0.02; (2) ESA WorldCover 10 m: bare, built, snow, water and moss pixels become background, and tree / shrub / grass pixels need an NDVI swing > 0.3 to stay a crop; NDVI max < 0.3 → background; (3) 3 × 3 mode filter, minimum mapping unit of 30 pixels, one crop per field by soft vote; (4) a "cropland, crop not recognised" class instead of forcing a French class.
+* **Crop calendar.** For each predicted crop, its mean Sentinel-2 NDVI curve gives green-up, peak, senescence and harvest dates.
+* **NISAR per crop.** The crop map is laid over the region's NISAR grid; radar pixels that are ≥ 60 % one crop give that crop's L-band RVI through the season, its radar peak, harvest (sharpest RVI drop) and paddy flooding dates. Radar does not need clear skies, so these dates fill the cloudy months.
+* **Domain shift.** Outside Western Europe the classes are the nearest French equivalent (and crop groups are offered); the page says so.
 
-### 5.12 Parcel report (`web/src/pages/report.js`)
+### 5.12 Crop suggestions (`pipeline/build_suitability.py`, `web/src/suitability.js`)
+* **Suitability.** FAO / IIASA GAEZ v4, theme 4: suitability index (0–10,000) on current cropland, 1981–2010 climate (CRU TS 3.2), high input level, 5′ grid, for 50 crops; rain-fed and irrigated (the best of gravity, sprinkler, drip and generic irrigation). The 172 layers are exported once from the GAEZ image service, averaged to 0.25° and packed as 533 PNG tiles (6 MB, value = index / 100).
+* **Grown now.** SPAM 2010 share of each crop in the area's crop land (crops sharing a SPAM class, e.g. carrot / cabbage / onion / tomato → vegetables, are one row).
+* **Output.** *Options*: rated medium or better (≥ 40) but not grown here; *grown here* with their rating; "needs irrigation" when irrigated beats rain-fed by ≥ 20 points; the current topsoil and root-zone moisture against normal (ERA5-Land) and a warning for rain-fed options when the root zone is > 15 % drier than normal. Energy grasses are left out.
+
+### 5.13 Soil moisture (`web/src/soil.js`, op `wetness`)
+* **ERA5-Land** (ECMWF / Copernicus, ~9 km) daily volumetric soil water in 0–7, 7–28, 28–100 and 100–255 cm, 2019–now, via the Open-Meteo archive API; normal = mean of the same days of the year (± 7 days); anomaly over the last 3 weeks.
+* **NASA POWER** monthly soil wetness: surface (GWETTOP), root zone (GWETROOT), profile (GWETPROF).
+* **NISAR relative surface wetness.** Change detection (Wagner et al. 1999) on HH: per pixel, 0 = its driest pass, 1 = its wettest, using only the passes on which the pixel is bare (HV below the 30th percentile of all pixels and passes), where L-band HH mostly follows the top few centimetres of soil. Its correlation with ERA5-Land 0–7 cm on the pass dates is reported.
+
+### 5.14 Landslides (`web/src/landslide.js`, op `landslide`, `pipeline/build_landslides.py`)
+* **Detection.** Between the passes before and from the chosen date, pixels on slopes ≥ 15° (Terrarium elevation, resampled to the radar grid) whose HV dropped more than 2.5 × the robust spread of the same change on flat ground (slope < 5°, where no landslide can happen) and stayed low on later passes; a simultaneous HH change marks new bare surface or debris. Water and radar shadow are excluded; connected patches ≥ 3 pixels are listed with area, slope and location.
+* **Hazard (LHASA-style).** Terrain susceptibility from the slope distribution (p90 slope classes, raised one class when ≥ 3 catalogued landslides lie nearby) × a 7-day antecedent rainfall index (weights 1/(k+1)²) compared with its own 90th / 95th / 99th percentiles over 2001–now (NASA POWER daily rain). Rain above those percentiles gives moderate / high / very high on high-susceptibility terrain, one level lower on moderate terrain. The Open-Meteo forecast extends the index seven days ahead.
+* **History.** NASA Global Landslide Catalog (11,033 events, 1988–2017) within the area.
+
+### 5.15 Mine spill / mudflow (op `spill`)
+* Mud burying the ground changes both channels: HV drops (vegetation buried or stripped) and HH changes (new smooth wet surface, or dark ponded water). A pixel counts when (1) the change between the mean of up to three passes before and the pass after exceeds k σ, σ being the larger of the window's robust spread and the pixel's own pass-to-pass variability before the event; (2) HV and HH change together, or HH turns water-dark; (3) the change persists on the next pass. Patches ≥ 6 pixels with mean change ≥ k + 0.5 σ. Each pixel is counted against its ESA WorldCover class (hectares of cropland reached). The page reports what each filter removed and states that contamination needs samples and laboratory analysis.
+* **Test.** A mining district in Minas Gerais with no event: 0 km² flagged (before the per-pixel and persistence tests: 3.94 km², mostly forest). A clearing front in Pará: one persistent 0.49 km² patch.
+
+### 5.16 Parcel report (`web/src/pages/report.js`)
 A port of the team's desktop analyzer (`Nasa.py`):
 * **Elevation.** Terrarium tiles over the whole window (thousands of samples, 1st–99th percentile) instead of 9 points.
 * **Weather.** NASA POWER daily T2M_MIN, T2M_MAX and PRECTOTCORR for the last 12 months; frost days and annual rain.
 * **Reference curves.** Winter grain, summer crop, double crop, rice, orchard and forest RVI curves adapted to the local climate (warmest period, frost, altitude).
-* **Real data.** The region's NISAR cropland RVI, rescaled to the reference range, is plotted on top and used for row 1 of the calendar matrix. Both NISAR's dominant crop pattern and the climate-based expectation are stated.
+* **Real data.** The region's NISAR RVI (whole window), rescaled to the reference range, is plotted on top and used for row 1 of the calendar matrix.
 
-### 5.13 Archive 1978→ (`web/src/archive.js`)
+### 5.17 Archive 1978→ (`web/src/archive.js`)
 * ASF search over the point for Seasat, ERS-1/2, JERS-1, RADARSAT-1, ALOS PALSAR, UAVSAR, Sentinel-1 and NISAR.
 * Sentinel-1 and NISAR are counted per year with `output=count`; the others are listed per acquisition date.
 * The ALOS PALSAR radiometrically terrain-corrected browse closest to July is shown next to NISAR's latest HH.
 * Archive browse images are displayed, not analysed: the browse server sends no CORS header.
 
-### 5.14 Globe rendering
-* **Relief.** A tangent-space normal map is computed from global elevation (`build_normalmap.py`: Terrarium z5 → 8192 × 4096 equirectangular, true ground spacing, 12× vertical exaggeration). It lights the base globe, the mosaics and their tiles (Phong shading, sun fixed to the camera).
-* **Native frames.** Below ~3,000 km altitude, the 12 NISAR frames of the current cycle nearest the view centre are fetched from ASF. Each is matched (gain/offset per channel) to the 4k mosaic underneath, its dim swath rim is dropped, and it is feathered into the mosaic.
+### 5.18 Globe rendering
+* **Relief.** A tangent-space normal map is computed from global elevation (`build_normalmap.py`: Terrarium z5 → 8192 × 4096 equirectangular, true ground spacing, 12× vertical exaggeration). It lights the base globe only; the radar layers are drawn unlit, so their values are not shaded.
+* **Native frames.** When zoomed in, the 12 NISAR frames of the current cycle nearest the view centre are fetched from ASF, their dim swath rim is dropped and they are feathered over the mosaic, without any colour matching.
+* **Legend.** One section per active layer, with colour ramps (not classes) for the radar layers and the fixed display ranges written out.
 * **Cropland & forest.** `build_landcover.py` applies the two-axis rule (seasonal RVI swing vs mean HV) to the eight full cycles since 15 June 2026.
 * **Polar caps.** NISAR never images beyond ~78° N or ~87.5° S, so the cap past the last imaged latitude is filled from the mean of the last ~3° of data along each meridian. The fill is blended toward the cap mean at the pole and recorded as `polarFill` in each cycle's JSON.
 
@@ -364,7 +371,7 @@ A port of the team's desktop analyzer (`Nasa.py`):
 * k-means++ on six standardized per-pixel features: HH and HV on the date, their contrast, temporal means, and variability.
 * Confidence = 1 − d₁/d₂ (distance to the nearest centre over distance to the second nearest).
 * A rule-based physical reading of each cluster.
-* Change detection and the agriculture products above.
+* Change detection, the structural fingerprint, landslide and spill detection above.
 
 **Notebooks (`ml/`, Google Colab, Drive-cached, resumable).**
 
@@ -387,7 +394,8 @@ Details: [ml/README.md](ml/README.md).
 
 * **Browse images.** Brightness values come from 8-bit browse images (≈ 100–150 m effective pixels), not calibrated γ⁰ at 10–20 m. Indices are relative. `pipeline/fetch_hdf5.py` shows the calibrated route (NASA Earthdata login).
 * **Product maturity.** Products are labelled *beta* (before Jan 2026) or *provisional* (until 25 Oct 2026) by the NISAR project and may be reprocessed.
-* **Rule-based products.** Crop products and land cover are rules relative to each scene, not trained classifiers. They show timing and behaviour, not species or yield.
+* **What radar does not measure.** Crop species, yield and soil chemistry are not read from radar here: crop types come from a trained optical network, suitability from FAO GAEZ, and the spill tool maps physical spread, not contamination.
+* **Fingerprint library.** 30 Brazilian areas, June–November 2026 only, ~9 km box means (other land uses inside a box blur its archetype). A match means "behaves like", not "is"; northern-hemisphere areas sit in a different season phase.
 * **Short series.** With fewer than ~10 passes, or less than a full year, some seasons are invisible.
 * **Wet-season-only series.** At Sylhet and the Mekong, wet-season flooding can look permanent.
 * **Look-alikes.**
@@ -398,7 +406,8 @@ Details: [ml/README.md](ml/README.md).
 * **Google flood history.** It ends in 2020, and irrigated paddies count as "wet".
 * **Flood LSTM.** Its input data ends in late 2024, so it does not overlap NISAR yet.
 * **Live regions.** Quality depends on the track: a window near a swath edge may have few full passes. ASF or Earth Search outages show as an error message, not as wrong data.
-* **Yield index.** Relative within the window; different crops or sowing dates in one window rank differently for that reason alone.
+* **Suitability and soil moisture.** GAEZ is 1981–2010 climate at 0.25° (area, not parcel) and knows nothing of a field's own soil, water rights or markets. ERA5-Land is a ~9 km reanalysis and does not see one field's irrigation. The NISAR wetness index is relative and only works on bare or low vegetation.
+* **Landslide outlook.** A LHASA-style indicator from slope and rainfall percentiles, not an official warning; detection candidates also come from logging, fire or terrace harvest, and steep slopes facing away from the radar can be in shadow.
 * **U-TAE.** Trained on French farmland; outside that domain, read it as field delineation plus a crop-group hint.
 * **Polar caps.** The filled caps beyond NISAR's reach are a smooth extrapolation, not observations.
 * **News.** Headlines are matched by keywords and can be unrelated.
@@ -456,6 +465,22 @@ python3 pipeline/build_normalmap.py                  # relief normal map from Te
 ```
 
 ```bash
+python3 pipeline/build_crop_prior.py                 # SPAM 2010 crop mix tiles (download the SPAM zips first)
+```
+
+```bash
+python3 pipeline/build_suitability.py                # FAO GAEZ v4 suitability tiles (172 layers, ~10 min)
+```
+
+```bash
+python3 pipeline/build_archetypes.py                 # Brazil radar archetype library from NISAR passes (~30 min)
+```
+
+```bash
+python3 pipeline/build_landslides.py                 # NASA Global Landslide Catalog -> landslides.json
+```
+
+```bash
 python ml/export_utae_onnx.py UTAE_SemanticSeg_weights.zip NORM_S2_patch.json 2   # U-TAE -> web/public/models/
 ```
 
@@ -480,18 +505,24 @@ pipeline/            data pipeline (Python, no login)
 web/                 website (Vite)
   src/main.js        boot, router, timeline
   src/globe.js       globe, mosaics, LOD tiles, satellite + swath
-  src/sarWorker.js   Web Worker: all pixel work (live regions, filters, crops, yield)
+  src/sarWorker.js   Web Worker: all pixel work (live regions, filters, fingerprint, landslides, spills, wetness)
   src/regionFetch.js live NISAR series for any point (ASF search, browse, FFT co-registration)
   src/dlWorker.js    U-TAE in the browser (Sentinel-2 COGs + ONNX Runtime)
   src/liveContext.js NASA POWER + MODIS NDVI for any region
   src/archive.js     radar archive 1978 -> today over a point
+  src/legend.js      map legend, one section per active layer
+  src/cropPrior.js   SPAM crop mix of an area
+  src/suitability.js GAEZ crop suitability of an area
+  src/soil.js        ERA5-Land + NASA POWER soil moisture
+  src/landslide.js   terrain, landslide catalog, rainfall trigger, hazard
+  src/worldcover.js  ESA WorldCover on the radar grid
   src/pages/report.js parcel report (team analyzer)
   public/models/     utae_pastis.onnx + metadata
   src/sar.js         speckle filter, render modes, change detection
-  src/agri.js        crop products, cropland vs forest
+  src/agri.js        cropland vs forest
   src/ml.js          k-means, cluster interpretation
   src/pages/         site page, static pages
-  public/data/       generated data (catalog, mosaics, crops, context, inundation)
+  public/data/       generated data (mosaics, archetypes, suitability, cropprior, landslides, …)
 ml/                  Colab notebooks (U-Mamba, SITSMamba, U-TAE, Flood Hub LSTM)
 docs/GLOBAL_DATA.md  archive sizes and download routes
 ```
@@ -508,8 +539,11 @@ docs/GLOBAL_DATA.md  archive sizes and download routes
 * **Google Flood Forecasting:**
   * inundation history (CC-BY-4.0);
   * OpenHydroNet code and weights (Apache-2.0).
+* **Land and crops:** ESA WorldCover 2021 (CC BY 4.0); SPAM 2010 (IFPRI, CC BY 4.0); GAEZ v4 (FAO & IIASA, CC BY-NC-SA 3.0 IGO, used non-commercially).
+* **Soil moisture and rain:** ERA5-Land (Copernicus C3S, via Open-Meteo, CC BY 4.0); NASA POWER.
+* **Landslides:** NASA Global Landslide Catalog (public domain).
 * **Other open data:** Caravan; USGS; GDELT; CelesTrak; Natural Earth (public domain).
-* **Datasets and model code used by the notebooks:** PASTIS-R, YieldSAT, utae-paps, state-spaces/mamba, each under its own licence.
+* **Datasets and model code used by the notebooks:** PASTIS-R, utae-paps, state-spaces/mamba, each under its own licence.
 * **Code of this project:** MIT licence.
 * **SI disclosure:** the code and documentation were written with help from an AI coding assistant; see §1.
 
@@ -517,21 +551,13 @@ docs/GLOBAL_DATA.md  archive sizes and download routes
 
 ### 🇹🇷 Kısaca
 
-Bu proje NISAR uydusunun **gerçek** L-band radar verisiyle tarım arazisi, ürün ve verim segmentasyonu yapan bir 3B küre sitesidir. Dünyanın herhangi bir bölgesi seçilebilir. Seçilen bölgenin bütün NISAR geçişleri ASF arşivinden tarayıcıda canlı çekilir, hizalanır ve analiz edilir:
+Bu proje NISAR uydusunun **gerçek** L-band radar verisini bir "gezegen yüzeyi parmak izi" olarak okuyan bir 3B küre sitesidir. HH yüzeyin pürüzlülüğünü ve nemini, HV bitki hacmini gösterir; ikisinin sezon boyunca inip çıkışı arazide ne olduğunun parmak izidir. Dünyanın herhangi bir yerinde bir dikdörtgen çizilir, bütün NISAR geçişleri ASF arşivinden tarayıcıda canlı çekilir ve analiz edilir:
 
-* ürün segmentasyonu ve parseller;
-* göreli verim potansiyeli ve parsel içi yönetim bölgeleri;
-* tarım–orman ayrımı;
-* PASTIS ile eğitilmiş U-TAE derin ağının Sentinel-2 ile ürün türü tahmini;
-* parsel raporu ve 1978'e uzanan radar arşivi.
+* **Yüzey parmak izi:** Brezilya'daki bilinen arazilerden (soya, şeker kamışı, çeltik, kahve, pivot sulama, mera, yağmur ormanı, okaliptüs, Pantanal, cerrado) kurulan radar kütüphanesiyle eşleştirme; 2021'de çıplak/mera olup şimdi sulu tarım gibi davranan alanlar ("yapısal değişim");
+* **Tarım:** U-TAE (ve takımın U-Mamba / SITSMamba modelleri) ile ürün türü haritası, ürün başına NISAR eğrisi, FAO GAEZ'e göre ürün önerileri, 4 derinlikte toprak nemi ve NISAR yüzey ıslaklığı;
+* **Afetler:** heyelan izi tespiti ve yağışa bağlı heyelan tehlikesi (7 günlük tahmin), maden atığı / çamur yayılımı ve ulaştığı tarım alanı (kirlilik değil, fiziksel yayılım);
+* değişim tespiti, sel geçmişi, parsel raporu ve 1978'e uzanan radar arşivi.
 
-Kürede şunlar var:
-
-* 12 Ekim 2025'ten beri her döngünün dünya mozaiği;
-* küresel tarım/orman katmanı;
-* yakınlaşınca tam çözünürlüklü NISAR çerçeveleri;
-* normal vektörlerden rölyef gölgelemesi;
-* kapatılmış kutuplar;
-* uydunun canlı konumu.
+Kürede 12 Ekim 2025'ten beri her döngünün dünya mozaiği (HH · HV · HH/HV ya da çok tarihli kompozit), yakınlaşınca tam çözünürlüklü NISAR çerçeveleri, katman başına renk rampalı lejant ve uydunun canlı konumu var. Değerler görsellik için değiştirilmez.
 
 Form alanlarının doldurulmuş hali için §1'e bakın.

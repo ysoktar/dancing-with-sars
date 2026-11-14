@@ -103,12 +103,7 @@
    "betaFrames": 0,
    "img8k": "mosaic/20260615_20260627_8k.webp",
    "img4k": "mosaic/20260615_20260627_4k.webp",
-   "generated": "2026-11-14T14:17:13Z",
-   "gapFilledPct": 16.9,
-   "polarFill": {
-    "north": 89.98,
-    "south": -89.98
-   }
+   "generated": "2026-11-14T16:19:05Z"
   },
   {
    "id": "20260627_20260709",
@@ -129,12 +124,7 @@
    "betaFrames": 0,
    "img8k": "mosaic/20260627_20260709_8k.webp",
    "img4k": "mosaic/20260627_20260709_4k.webp",
-   "generated": "2026-11-14T14:24:38Z",
-   "gapFilledPct": 15.5,
-   "polarFill": {
-    "north": 89.98,
-    "south": -89.98
-   }
+   "generated": "2026-11-14T16:23:22Z"
   },
   {
    "id": "20260709_20260721",
@@ -155,7 +145,7 @@
    "betaFrames": 0,
    "img8k": "mosaic/20260709_20260721_8k.webp",
    "img4k": "mosaic/20260709_20260721_4k.webp",
-   "generated": "2026-11-14T14:32:04Z"
+   "generated": "2026-11-14T16:27:37Z"
   },
   {
    "id": "20260721_20260814",

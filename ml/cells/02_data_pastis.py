@@ -34,12 +34,13 @@ def get_pastis_root():
     local_zip = P['local'] / 'PASTIS-R.zip'
     src = drive_zip if drive_zip.exists() and drive_zip.stat().st_size > 5e10 else None
     if src is None:
-        sh(f'wget -c -q --show-progress -O "{local_zip}" "{PASTIS_URL}"', timeout=6 * 3600)
+        sh(f'wget -c --progress=dot:giga -O "{local_zip}" "{PASTIS_URL}"', timeout=6 * 3600)
         src = local_zip
         if KEEP_RAW_ZIP_ON_DRIVE:
             sh(f'cp "{local_zip}" "{drive_zip}.part" && mv "{drive_zip}.part" "{drive_zip}"', check=False)
     print('extracting', src)
-    sh(f'unzip -q -o "{src}" -d "{P["local"]}"', timeout=3 * 3600)
+    ulog = P['local'] / 'unzip.log'     # ~12,000 file names: written to a log, last lines shown (keeps unzip's exit code)
+    sh(f'unzip -o "{src}" -d "{P["local"]}" > "{ulog}" && wc -l < "{ulog}" && tail -n 3 "{ulog}"', timeout=3 * 3600)
     if local_zip.exists():
         local_zip.unlink()          # free local disk; the Drive copy (if kept) is the cache
     cand = [p.parent for p in P['local'].rglob('metadata.geojson')]

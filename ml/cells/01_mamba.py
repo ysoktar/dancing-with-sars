@@ -1,20 +1,56 @@
 # %% [md]
 # ## 1 · Mamba layer
-# Uses the official CUDA kernels (`mamba_ssm`) when they are installed. Otherwise a pure-PyTorch implementation with the **same parameter names** is used, so checkpoints work with either. The fallback uses a log-space parallel scan: correct, but slower and more memory-hungry. Install the kernels on GPU runtimes; it takes 2–30 minutes depending on whether a prebuilt wheel matches Colab's PyTorch.
+# Uses the official CUDA kernels (`mamba_ssm`) when they are installed. Otherwise a pure-PyTorch implementation with the **same parameter names** is used, so checkpoints work with either. The fallback uses a log-space parallel scan: correct, but slower and more memory-hungry. On GPU runtimes the kernels are built from the GitHub main branch (which supports CUDA 13 and Blackwell) with uv, and the wheel is saved to `weights/wheels/` on Drive: the 10–40 min build happens once per PyTorch/CUDA/Python combination, later sessions just install the saved wheel. The full build log goes to `weights/build_logs/`.
 
 # %%
 INSTALL_MAMBA_KERNELS = not SMOKE and DEVICE == 'cuda'   # set False to force the PyTorch fallback
 MambaCUDA = None
+
+
+def build_wheel(pkg, repo, force_env, wheel_dir, log):
+    """Build `pkg` from its GitHub main branch into a wheel stored on Drive (built once per torch/CUDA/Python)."""
+    src = P['local'] / 'src' / pkg
+    if not (src / 'setup.py').exists():
+        sh(f'rm -rf "{src}" && git clone --depth 1 https://github.com/{repo} "{src}"', check=False, log=log)
+    jobs = max(1, (os.cpu_count() or 2) - 1)
+    env = f'{force_env}=TRUE MAX_JOBS={jobs} NVCC_THREADS=2'
+    return sh(f'cd "{src}" && {env} uv build --wheel --no-build-isolation -o "{wheel_dir}"', check=False, timeout=5400, log=log) == 0
+
+
+def install_mamba_kernels():
+    tag = f"torch{torch.__version__.split('+')[0]}_cu{torch.version.cuda}_py{sys.version_info.major}{sys.version_info.minor}"
+    wheel_dir = P['weights'] / 'wheels' / tag
+    log_dir = P['weights'] / 'build_logs'
+    wheel_dir.mkdir(parents=True, exist_ok=True); log_dir.mkdir(parents=True, exist_ok=True)
+    print(f'wheel cache: {wheel_dir}')
+    pip_install('ninja packaging setuptools wheel')
+    for pkg, repo, force_env in (('causal_conv1d', 'Dao-AILab/causal-conv1d', 'CAUSAL_CONV1D_FORCE_BUILD'),
+                                 ('mamba_ssm', 'state-spaces/mamba', 'MAMBA_FORCE_BUILD')):
+        log = log_dir / f'{pkg}_{tag}.log'
+        cached = sorted(wheel_dir.glob(f'{pkg}-*.whl'))
+        if not cached:
+            print(f'\n=== building {pkg} from github.com/{repo} (main) — 10–40 min, once; full log: {log}')
+            if not build_wheel(pkg, repo, force_env, wheel_dir, log):
+                errs = [l.rstrip() for l in open(log, errors='replace') if re.search(r'(error|fatal)\b', l, re.I) and 'warning' not in l.lower()]
+                print(f'\n=== {pkg} build failed. Compiler errors ({len(errs)} lines, first 40):')
+                print('\n'.join(errs[:40]))
+                return False
+            cached = sorted(wheel_dir.glob(f'{pkg}-*.whl'))
+        if pip_install(f'"{cached[-1]}"') != 0:
+            return False
+    return True
+
+
 try:
     from mamba_ssm import Mamba as MambaCUDA
 except Exception:
     if INSTALL_MAMBA_KERNELS:
         try:
-            pip_install('"causal-conv1d>=1.4.0"', '--no-build-isolation', timeout=2400)
-            pip_install('mamba-ssm', '--no-build-isolation', timeout=2400)
-            from mamba_ssm import Mamba as MambaCUDA
+            if install_mamba_kernels():
+                import importlib; importlib.invalidate_caches()
+                from mamba_ssm import Mamba as MambaCUDA
         except Exception as e:
-            print('mamba_ssm unavailable, using the PyTorch fallback:', str(e)[:200])
+            print('mamba_ssm unavailable, using the PyTorch fallback:', str(e)[:300])
 print('Mamba backend:', 'mamba_ssm CUDA kernels' if MambaCUDA else 'PyTorch fallback')
 
 

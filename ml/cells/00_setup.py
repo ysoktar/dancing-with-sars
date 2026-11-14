@@ -36,22 +36,33 @@ for p in P.values():
 print('Drive root :', DRIVE_ROOT)
 print('Local root :', LOCAL_ROOT)
 
-def sh(cmd, check=True, timeout=None):
-    print('$', cmd)
-    r = subprocess.run(cmd, shell=True, text=True, capture_output=True, timeout=timeout)
-    if r.stdout.strip(): print(r.stdout[-3000:])
-    if r.returncode:
-        print(f'[exit code {r.returncode}] stderr (last 4000 chars):\n{r.stderr[-4000:]}')
-        if check: raise RuntimeError(r.stderr[-3000:])
-    return r
+def sh(cmd, check=True, timeout=None, log=None):
+    """Run a shell command, streaming its full output live (and to `log` if given)."""
+    print('$', cmd, flush=True)
+    t0 = time.time()
+    lf = open(log, 'a') if log else None
+    p = subprocess.Popen(cmd, shell=True, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, bufsize=1)
+    tail = []
+    for line in p.stdout:
+        print(line, end='', flush=True)
+        if lf: lf.write(line)
+        tail = (tail + [line])[-300:]
+        if timeout and time.time() - t0 > timeout:
+            p.kill(); print(f'[timeout after {timeout}s]'); break
+    rc = p.wait()
+    if lf: lf.close()
+    if rc:
+        print(f'[exit code {rc}]', flush=True)
+        if check: raise RuntimeError(''.join(tail[-40:]))
+    return rc
 
-def pip_install(spec, extra='', timeout=None):
-    """Install with uv (much faster than pip); falls back to pip if uv cannot be set up."""
+
+def pip_install(spec, extra='', timeout=None, log=None):
+    """Install with uv; falls back to pip only if uv cannot be set up."""
     if shutil.which('uv') is None:
-        sh('pip install -q uv', check=False)
-    if shutil.which('uv'):
-        return sh(f'uv pip install --system -q {spec} {extra}', check=False, timeout=timeout)
-    return sh(f'pip install -q {spec} {extra}', check=False, timeout=timeout)
+        sh('pip install uv', check=False)
+    tool = 'uv pip install --system' if shutil.which('uv') else 'pip install'
+    return sh(f'{tool} {spec} {extra}', check=False, timeout=timeout, log=log)
 
 if not SMOKE:
     pip_install('xarray netCDF4 h5netcdf scikit-image einops pandas matplotlib')

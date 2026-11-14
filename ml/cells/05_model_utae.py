@@ -18,7 +18,7 @@ MODEL_NAME = 'utae_pretrained'
 MambaCUDA = None
 UTAE_REPO = P['local'] / 'utae-paps'
 if not (UTAE_REPO / 'src').exists():
-    sh(f'git clone -q https://github.com/VSainteuf/utae-paps "{UTAE_REPO}"')
+    sh(f'git clone https://github.com/VSainteuf/utae-paps "{UTAE_REPO}"')
 sys.path.insert(0, str(UTAE_REPO))
 from src.backbones.utae import UTAE  # noqa: E402
 
@@ -29,7 +29,7 @@ def utae_pretrained_dir():
     d = P['weights'] / 'pretrained' / 'utae'
     if not list(d.rglob('conf.json')):
         d.mkdir(parents=True, exist_ok=True)
-        sh(f'wget -q -O "{d}/w.zip" "{UTAE_WEIGHTS_URL}" && unzip -q -o "{d}/w.zip" -d "{d}" && rm "{d}/w.zip"')
+        sh(f'wget --progress=dot:mega -O "{d}/w.zip" "{UTAE_WEIGHTS_URL}" && unzip -o "{d}/w.zip" -d "{d}" && rm "{d}/w.zip"')
     return next(d.rglob('conf.json')).parent
 
 

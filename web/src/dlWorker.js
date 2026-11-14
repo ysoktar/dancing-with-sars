@@ -4,6 +4,7 @@
 // Cloud-Optimized GeoTIFFs on AWS (Element 84 Earth Search STAC, CORS-enabled) with HTTP range requests.
 import * as ort from 'onnxruntime-web';
 import { fromUrl } from 'geotiff';
+import { readWorldCover } from './worldcover.js';
 
 ort.env.wasm.wasmPaths = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/';
 ort.env.wasm.numThreads = 1;
@@ -69,6 +70,7 @@ async function run({ lon, lat, season, maxDates = 16, base }, progress) {
   if (items.length < 4) throw new Error(`Only ${items.length} Sentinel-2 scenes with < 30 % cloud in this season.`);
   const P = M.tile, B = M.bands.length;
   const X = [], pos = [], used = [], rgb = [];
+  const ndviMax = new Float32Array(M.tile * M.tile).fill(-1), ndviMin = new Float32Array(M.tile * M.tile).fill(2);
   const t0 = Date.UTC(season, 8, 1);
   let done = 0;
   for (const it of items) {
@@ -85,6 +87,8 @@ async function run({ lon, lat, season, maxDates = 16, base }, progress) {
       bands.forEach((arr, b) => { for (let i = 0; i < P * P; i++) { const v = arr[i] + off; if (b === 0 && arr[i] === 0) zero++; frame[b * P * P + i] = (v - M.mean[b]) / M.std[b]; } });
       if (zero / (P * P) > 0.1) continue;             // outside the tile footprint
       X.push(frame); pos.push((Date.parse(it.properties.datetime) - t0) / 86400000); used.push(it.properties.datetime.slice(0, 10));
+      // greenest NDVI over the season (B08 = index 6, B04 = index 2): land that never greens up is not a field
+      for (let i = 0; i < P * P; i++) { const r = bands[2][i] + off, nir = bands[6][i] + off; const v = (nir - r) / (nir + r + 1e-6); if (v > ndviMax[i]) ndviMax[i] = v; if (v < ndviMin[i]) ndviMin[i] = v; }
       rgb.push([bands[2], bands[1], bands[0]].map((a) => Float32Array.from(a, (v) => v + off)));
     } catch (e) { /* skip a scene that cannot be read */ }
     progress('Reading Sentinel-2 bands (10 m, 1.28 km window)', ++done, items.length);
@@ -95,17 +99,89 @@ async function run({ lon, lat, season, maxDates = 16, base }, progress) {
   X.forEach((f, t) => x.set(f, t * B * P * P));
   const out = await session.run({ x: new ort.Tensor('float32', x, [1, T, B, P, P]), pos: new ort.Tensor('float32', Float32Array.from(pos), [1, T]) });
   const lg = out.logits.data, K = M.classes.length, N = P * P;
-  const cls = new Uint8Array(N), conf = new Float32Array(N), counts = new Array(K).fill(0), confSum = new Array(K).fill(0);
+  // softmax probabilities (void class excluded)
+  const prob = new Float32Array((K - 1) * N);
   for (let i = 0; i < N; i++) {
-    let best = 0, bv = -Infinity, sum = 0;
-    for (let k = 0; k < K - 1; k++) { const v = lg[k * N + i]; if (v > bv) { bv = v; best = k; } }   // never predict "void"
-    for (let k = 0; k < K - 1; k++) sum += Math.exp(lg[k * N + i] - bv);
-    cls[i] = best; conf[i] = 1 / sum; counts[best]++; confSum[best] += conf[i];
+    let mx = -Infinity; for (let k = 0; k < K - 1; k++) mx = Math.max(mx, lg[k * N + i]);
+    let sum = 0; for (let k = 0; k < K - 1; k++) { const e = Math.exp(lg[k * N + i] - mx); prob[k * N + i] = e; sum += e; }
+    for (let k = 0; k < K - 1; k++) prob[k * N + i] /= sum;
   }
+  const raw = new Uint8Array(N);
+  for (let i = 0; i < N; i++) { let b = 0, bv = -1; for (let k = 0; k < K - 1; k++) if (prob[k * N + i] > bv) { bv = prob[k * N + i]; b = k; } raw[i] = b; }
+
+  // ---- post-processing (the network only knows French farmland) ----
+  progress('Post-processing: land-cover prior, greenness, minimum field size', 0, 1);
+  const d = (P * M.gsd_m) / 2 / 111320, dl = d / Math.cos((lat * Math.PI) / 180);
+  let wc = null;
+  try { wc = await readWorldCover([lon - dl, lat - d, lon + dl, lat + d], P, P); if (!wc.some((v) => v)) wc = null; } catch (e) { wc = null; }
+  const cls = raw.slice();
+  let maskedWc = 0, maskedGreen = 0;
+  const UNREC = K - 1;          // index 19: reused for "cropland, crop type not recognised"
+  let unrec = 0;
+  for (let i = 0; i < N; i++) {
+    const w = wc ? wc[i] : 40;
+    if (cls[i] === 0) {
+      // the network says background, but WorldCover maps cropland (or the season is clearly crop-like) and it greens up:
+      // keep it as a field whose crop the network did not recognise, instead of losing it
+      const hardBg = w === 60 || w === 50 || w === 70 || w === 80 || w === 100;
+      if (!hardBg && ndviMax[i] >= 0.3 && (w === 40 || ndviMax[i] - ndviMin[i] > 0.35)) { cls[i] = UNREC; unrec++; }
+      continue;
+    }
+    // never fields: bare / desert, built-up, snow, water (WorldCover). Tree / shrub / grass cover can hold fields
+    // (field mosaics with tree rows are often mapped as trees), so there a crop-like season is required:
+    // NDVI must swing by > 0.3 (sown, grown, harvested), except for orchards / vineyards and meadows.
+    const hard = w === 60 || w === 50 || w === 70 || w === 80 || w === 100;
+    const perennialOk = (cls[i] === 8 || cls[i] === 16) && w === 10, meadowOk = (cls[i] === 1 || cls[i] === 14) && (w === 30 || w === 90);
+    const seasonal = ndviMax[i] - ndviMin[i] > 0.3;
+    if (hard || (w && w !== 40 && !perennialOk && !meadowOk && !seasonal)) { cls[i] = 0; maskedWc++; continue; }
+    if (ndviMax[i] < 0.3) { cls[i] = 0; maskedGreen++; }                              // never green this season
+  }
+  // 3x3 mode filter, then patches below the minimum field size (0.3 ha = 30 px) join their main neighbour
+  const sm = cls.slice();
+  for (let y = 1; y < P - 1; y++) for (let x = 1; x < P - 1; x++) {
+    const i = y * P + x, cnt = new Uint16Array(K);
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) cnt[cls[i + dy * P + dx]]++;
+    let b = cls[i]; for (let k = 0; k < K; k++) if (cnt[k] > cnt[b]) b = k;
+    sm[i] = b;
+  }
+  cls.set(sm);
+  const MMU = 30, seen = new Uint8Array(N), stack = new Int32Array(N);
+  let merged = 0;
+  for (let s0 = 0; s0 < N; s0++) {
+    if (seen[s0] || cls[s0] === 0) continue;
+    const c = cls[s0], px = [], nb = new Uint32Array(K);
+    let top = 0; stack[top++] = s0; seen[s0] = 1;
+    while (top) {
+      const i = stack[--top]; px.push(i);
+      const x = i % P, y = (i / P) | 0;
+      for (const j of [x > 0 ? i - 1 : -1, x < P - 1 ? i + 1 : -1, y > 0 ? i - P : -1, y < P - 1 ? i + P : -1]) {
+        if (j < 0) continue;
+        if (cls[j] === c) { if (!seen[j]) { seen[j] = 1; stack[top++] = j; } } else nb[cls[j]]++;
+      }
+    }
+    if (px.length >= MMU) {
+      // one crop per field: soft vote of the class probabilities over the patch
+      const vote = new Float64Array(K - 1);
+      for (const i of px) for (let k = 0; k < K - 1; k++) vote[k] += prob[k * N + i];
+      if (c !== UNREC) {
+        let b = c, bv = -1; for (let k = 1; k < K - 1; k++) if (vote[k] > bv) { bv = vote[k]; b = k; }
+        for (const i of px) cls[i] = b;
+      }
+      continue;
+    }
+    let b = 0, bn = 0; for (let k = 0; k < K; k++) if (nb[k] > bn) { bn = nb[k]; b = k; }
+    for (const i of px) cls[i] = b;
+    merged += px.length;
+  }
+  const conf = new Float32Array(N), counts = new Array(K).fill(0), confSum = new Array(K).fill(0);
+  for (let i = 0; i < N; i++) { const c = cls[i]; conf[i] = c < K - 1 ? prob[c * N + i] : 1 - prob[i]; counts[c]++; confSum[c] += conf[i]; }
+  const inDomain = lat >= 36 && lat <= 60 && lon >= -10 && lon <= 25;      // Western / Central Europe, like PASTIS
+  const post = { unrecognisedPx: unrec, worldcover: !!wc, maskedWcPx: maskedWc, maskedGreenPx: maskedGreen, mergedPx: merged, mmuHa: MMU * 0.01, inDomain };
   // true-colour image of the median date, for context
   const mid = rgb[Math.floor(rgb.length / 2)], img = new Uint8ClampedArray(N * 4);
   for (let i = 0; i < N; i++) { for (let c = 0; c < 3; c++) img[i * 4 + c] = Math.min(255, (mid[c][i] / 2800) * 255); img[i * 4 + 3] = 255; }
-  return { cls, conf, counts, meanConf: confSum.map((s, k) => (counts[k] ? s / counts[k] : 0)), dates: used, rgb: img, size: P, classes: M.classes, model: M,
+  const classes = M.classes.slice(); classes[UNREC] = 'Cropland, crop not recognised';
+  return { cls, conf, counts, meanConf: confSum.map((s2, k) => (counts[k] ? s2 / counts[k] : 0)), dates: used, rgb: img, size: P, classes, model: M, post,
     transfer: [cls.buffer, conf.buffer, img.buffer] };
 }
 

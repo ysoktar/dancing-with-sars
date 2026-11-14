@@ -855,7 +855,7 @@ const AG_THEMES = new Set(['agriculture', 'groundwater', 'flood']);
 export function isAgSite(site) { if (site.region) return true; return AG_THEMES.has((STORIES[site.id] || {}).theme || site.theme); }
 
 const AG_TOOLS = [
-  ['patterns', 'Crop segmentation', 'Paddy, double, single, perennial'],
+  ['patterns', 'Cropping intensity (radar)', 'Growing seasons per year, not crop type'],
   ['fields', 'Fields', 'Segments with their own calendar'],
   ['yield', 'Yield segmentation', 'Fields ranked by yield potential'],
   ['deep', 'Deep learning (U-TAE)', 'Crop types from Sentinel-2, pretrained'],
@@ -965,7 +965,7 @@ function agPatterns(el) {
   const A = S.agri, ts = times();
   el.innerHTML = `
     <div class="panel">
-      <p class="muted" style="max-width:860px">Each pixel is assigned a cropping pattern from the shape of its vegetation-index series (number of growth peaks, seasonal amplitude) and from short flooding episodes. These are rules, not a trained classifier: they show <b>how the land is used through the year</b>, not the crop species.</p>
+      <p class="muted" style="max-width:860px"><b>Cropping intensity, not crop type.</b> From the radar vegetation-index series of each pixel: how many growing seasons it had (growth peaks followed by a harvest drop), whether it was flooded before the canopy grew, or whether its vegetation stayed steady. These are rules on the NISAR time series: they say <b>how often and how the land was cropped</b>, not which crop it was. Crop types come from the deep-learning models (Crops &amp; yield → Deep learning). ${A.prior?.used ? `Crop patterns are only allowed where <b>ESA WorldCover 10 m</b> maps cropland (${pct(A.prior.wcCropPct, 0)} of this area); ${pct(A.prior.removedPct, 0)} of the radar-seasonal pixels were outside it (grassland, desert, towns) and were reassigned.` : 'ESA WorldCover could not be read, so no land-cover prior was applied.'} Patches under 4 radar pixels (~0.15 km²) are merged into their neighbours.</p>
       <div class="result">
         <canvas class="map" id="agMap" width="512" height="512"></canvas>
         <div class="classes">${A.patterns.map((p) => `<div class="row"><i style="background:${p.color}"></i><div><b>${p.name}</b><span>${p.why}</span></div><div class="v">${p.km2.toFixed(0)} km²<br><span class="muted">${pct(p.pct)}</span></div></div>`).join('')}</div>
@@ -1020,7 +1020,7 @@ function agFields(el) {
   select(S.agSeg >= 0 ? S.agSeg : (segs[0]?.id ?? -1));
 }
 
-const PATTERN_NAMES = ['Open water', 'Paddy rice', 'Double / multiple crop', 'Single crop', 'Perennial / trees', 'Bare / built / fallow'];
+const PATTERN_NAMES = ['Open water', 'Flooded, then grown', 'Two or more seasons', 'One season', 'Steady vegetation', 'Bare / built / fallow'];
 const PATTERN_COLORS = ['#2563eb', '#22d3ee', '#f59e0b', '#facc15', '#16a34a', '#a8a29e'];
 
 async function agContext(el) {
@@ -1149,7 +1149,8 @@ function regionOverview(el) {
         <div class="stat"><b id="rsPeak">…</b><span>main peak month</span></div>
       </div>
       <div class="panel"><h3>Start here</h3><ul class="plain">
-        <li><a href="${hrefOf(R)}/agri" data-agtool="patterns">Crop segmentation</a>: which land is paddy, double crop, single crop, perennial.</li>
+        <li><a href="${hrefOf(R)}/agri" data-agtool="patterns">Cropping intensity</a>: how many growing seasons each field had, flooded fields, steady vegetation.</li>
+        <li><a href="${hrefOf(R)}/agri" data-agtool="deep">Crop types (deep learning)</a>: crop type per field from a trained network.</li>
         <li><a href="${hrefOf(R)}/agri" data-agtool="fields">Fields</a>: field-like segments, each with its own calendar.</li>
         <li><a href="${hrefOf(R)}/agri" data-agtool="yield">Yield segmentation</a>: fields ranked by relative yield potential, zones inside fields.</li>
         <li><a href="${hrefOf(R)}/agri" data-agtool="landcover">Cropland vs forest</a>.</li></ul></div>
@@ -1190,7 +1191,7 @@ function regionOverview(el) {
 
 // ---------------------------------------------------------------- deep learning: U-TAE crop types (Sentinel-2)
 const PASTIS_COLORS = ['#1f1f1f', '#5b9c2d', '#e6c44a', '#f48120', '#b8860b', '#ffe600', '#d2b48c', '#ffa500', '#800080', '#c71585',
-  '#cd853f', '#a0522d', '#ff69b4', '#8b4513', '#32cd32', '#9acd32', '#006400', '#deb887', '#b22222', '#808080'];
+  '#cd853f', '#a0522d', '#ff69b4', '#8b4513', '#32cd32', '#9acd32', '#006400', '#deb887', '#b22222', '#9ca3af'];
 let dlWorker = null, dlRid = 0;
 const dlPending = new Map();
 function dlCall(args, onProgress) {
@@ -1263,15 +1264,37 @@ async function agDeep(el) {
   });
 }
 
+// PASTIS classes -> crop groups that exist almost everywhere (shown outside the training domain)
+const CROP_GROUPS = [
+  { name: 'Background / not cropland', color: '#1f1f1f', of: [0] },
+  { name: 'Grassland & fodder', color: '#5b9c2d', of: [1, 14] },
+  { name: 'Cereals (wheat, barley, triticale)', color: '#e6c44a', of: [2, 4, 6, 10, 11, 17] },
+  { name: 'Maize & sorghum', color: '#f48120', of: [3, 18] },
+  { name: 'Oilseeds & legumes (rapeseed, sunflower, soy)', color: '#ffe600', of: [5, 7, 15] },
+  { name: 'Root crops (beet, potato)', color: '#c71585', of: [9, 13] },
+  { name: 'Vineyards & orchards', color: '#006400', of: [8, 16] },
+  { name: 'Vegetables & flowers', color: '#ff69b4', of: [12] },
+  { name: 'Cropland, crop not recognised', color: '#9ca3af', of: [19] },
+];
+const GROUP_OF = (() => { const g = new Uint8Array(20); CROP_GROUPS.forEach((G, k) => G.of.forEach((c) => (g[c] = k))); return g; })();
+
 function showDeep(r) {
   const P = r.size, N = P * P, total = r.counts.reduce((a, c) => a + c, 0);
-  const order = r.counts.map((c, k) => [c, k]).filter(([c]) => c > 0).sort((a, b2) => b2[0] - a[0]);
+  const useGroups = S.dlGroups ?? !r.post?.inDomain;
+  const gCounts = new Array(CROP_GROUPS.length).fill(0), gConf = new Array(CROP_GROUPS.length).fill(0);
+  r.counts.forEach((c, k) => { gCounts[GROUP_OF[k]] += c; gConf[GROUP_OF[k]] += r.meanConf[k] * c; });
+  const order = useGroups
+    ? gCounts.map((c, k) => [c, k]).filter(([c]) => c > 0).sort((a, b2) => b2[0] - a[0])
+    : r.counts.map((c, k) => [c, k]).filter(([c]) => c > 0).sort((a, b2) => b2[0] - a[0]);
+  const nameOf = (k) => (useGroups ? CROP_GROUPS[k].name : r.classes[k]), colOf = (k) => (useGroups ? CROP_GROUPS[k].color : PASTIS_COLORS[k]);
+  const confOf = (k) => (useGroups ? (gCounts[k] ? gConf[k] / gCounts[k] : 0) : r.meanConf[k]);
   $('#dlOut').innerHTML = `
     <div class="grid g-2" style="gap:8px">
       <figure style="margin:0"><canvas id="dlRgb" width="${P}" height="${P}" style="width:100%;aspect-ratio:1;border-radius:6px;image-rendering:pixelated"></canvas><figcaption class="small muted">Sentinel-2 true colour, ${r.dates[Math.floor(r.dates.length / 2)]}</figcaption></figure>
-      <figure style="margin:0"><canvas id="dlCls" width="${P}" height="${P}" style="width:100%;aspect-ratio:1;border-radius:6px;image-rendering:pixelated"></canvas><figcaption class="small muted">U-TAE crop types · <label><input type="checkbox" id="dlConf"> shade by confidence</label></figcaption></figure>
+      <figure style="margin:0"><canvas id="dlCls" width="${P}" height="${P}" style="width:100%;aspect-ratio:1;border-radius:6px;image-rendering:pixelated"></canvas><figcaption class="small muted">U-TAE crops, post-processed · <label><input type="checkbox" id="dlConf"> shade by confidence</label> · <label><input type="checkbox" id="dlGroups" ${useGroups ? 'checked' : ''}> crop groups</label></figcaption></figure>
     </div>
-    <div class="classes" style="margin-top:10px">${order.map(([c, k]) => `<div class="row"><i style="background:${PASTIS_COLORS[k]}"></i><div><b>${r.classes[k]}</b><div class="bar-conf" title="mean confidence"><i style="width:${(r.meanConf[k] * 100).toFixed(0)}%"></i></div></div><div class="v">${(c * 0.01).toFixed(1)} ha<br><span class="muted">${pct(c / total)} · conf ${pct(r.meanConf[k], 0)}</span></div></div>`).join('')}</div>
+    <div class="classes" style="margin-top:10px">${order.map(([c, k]) => `<div class="row"><i style="background:${colOf(k)}"></i><div><b>${esc(nameOf(k))}</b><div class="bar-conf" title="mean confidence"><i style="width:${(confOf(k) * 100).toFixed(0)}%"></i></div></div><div class="v">${(c * 0.01).toFixed(1)} ha<br><span class="muted">${pct(c / total)} · conf ${pct(confOf(k), 0)}</span></div></div>`).join('')}</div>
+    <p class="note"><b>Post-processing</b> (the network only knows French farmland): ${r.post?.worldcover ? `${(r.post.maskedWcPx * 0.01).toFixed(1)} ha set to background because ESA WorldCover does not map cropland there` : 'ESA WorldCover could not be read'}; ${(r.post?.maskedGreenPx * 0.01 || 0).toFixed(1)} ha never green this season (max NDVI &lt; 0.3, e.g. desert, rock, towns); patches under ${r.post?.mmuHa ?? 0.3} ha merged into their neighbours (${(r.post?.mergedPx * 0.01 || 0).toFixed(1)} ha); one crop per field by soft vote of the class probabilities; ${(r.post?.unrecognisedPx * 0.01 || 0).toFixed(1)} ha that the network called background but WorldCover maps as cropland (or that has a crop-like greening season) are kept as <i>cropland, crop not recognised</i>.${r.post && !r.post.inDomain ? ' <b>Outside the training domain (Western Europe): crop groups are shown instead of French crop names.</b>' : ''}</p>
     <p class="note">${r.dates.length} Sentinel-2 dates (${r.dates[0]} → ${r.dates[r.dates.length - 1]}), 10 m pixels, 1 pixel = 0.01 ha. Confidence = softmax probability of the chosen class. Weights: U-TAE fold ${r.model.fold} (Zenodo 5172293)${r.model.testMetrics?.test_IoU ? `, PASTIS test mIoU ${(+r.model.testMetrics.test_IoU).toFixed(1)} %, OA ${(+r.model.testMetrics.test_accuracy).toFixed(1)} %` : ''}.</p>`;
   const put = (id, fn) => { const c = $('#' + id), x = c.getContext('2d'), im = x.createImageData(P, P); for (let i = 0; i < N; i++) { const v = fn(i); im.data.set(v, i * 4); } x.putImageData(im, 0, 0); };
   put('dlRgb', (i) => r.rgb.subarray(i * 4, i * 4 + 4));
@@ -1279,10 +1302,12 @@ function showDeep(r) {
   const cols = PASTIS_COLORS.map(hex);
   const drawCls = () => {
     const shade = $('#dlConf')?.checked;
-    put('dlCls', (i) => { const c = cols[r.cls[i]], a = shade ? 0.25 + 0.75 * r.conf[i] : 1; return [c[0] * a, c[1] * a, c[2] * a, 255]; });
+    const gcols = CROP_GROUPS.map((G) => hex(G.color));
+    put('dlCls', (i) => { const c = useGroups ? gcols[GROUP_OF[r.cls[i]]] : cols[r.cls[i]], a = shade ? 0.25 + 0.75 * r.conf[i] : 1; return [c[0] * a, c[1] * a, c[2] * a, 255]; });
   };
   drawCls();
   $('#dlConf').addEventListener('change', drawCls);
+  $('#dlGroups').addEventListener('change', (e) => { S.dlGroups = e.target.checked; showDeep(r); });
 }
 
 // ---------------------------------------------------------------- parcel report (team analyzer, live)

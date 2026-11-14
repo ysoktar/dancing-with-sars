@@ -10,10 +10,10 @@ const N = SIZE * SIZE;
 export const WATER_MAX = 90;
 export const PATTERNS = [
   { name: 'Open water', color: '#2563eb', why: 'Dark in HH on most passes (calm water reflects the pulse away).' },
-  { name: 'Paddy rice', color: '#22d3ee', why: 'Flooded (dark HH) for a short period, then the canopy grows: the transplanting signature.' },
-  { name: 'Double / multiple crop', color: '#f59e0b', why: 'Two or more clear growth peaks in the radar vegetation index within the series.' },
-  { name: 'Single crop', color: '#facc15', why: 'One clear growth peak followed by a drop (harvest).' },
-  { name: 'Perennial / trees', color: '#16a34a', why: 'High and steady vegetation index: orchards, plantations, forest, permanent grassland.' },
+  { name: 'Flooded, then grown (paddy-like)', color: '#22d3ee', why: 'Dark in HH (standing water) for a short period, then the canopy grows: the signature of fields flooded before planting, typically rice.' },
+  { name: 'Two or more growing seasons', color: '#f59e0b', why: 'Two or more clear growth peaks of the radar vegetation index in the series: the field was cropped more than once.' },
+  { name: 'One growing season', color: '#facc15', why: 'One clear growth peak followed by a drop (harvest).' },
+  { name: 'Steady vegetation', color: '#16a34a', why: 'High vegetation index with little seasonal change: orchards, plantations, forest, permanent grassland.' },
   { name: 'Bare / built / fallow', color: '#a8a29e', why: 'Low vegetation index with little seasonal change: towns, roads, bare or fallow land.' },
 ];
 
@@ -111,6 +111,8 @@ export function computeAgri(st, days, t0 = 0) {
     else cls[i] = 5;
   }
   const isCrop = (c) => c >= 1 && c <= 3;
+  const prior = applyPrior(st, cls, amp, ampThr);
+  minimumMappingUnit(cls, valid, isCrop, 4);
 
   // per-pass curves
   const nValid = valid.reduce((a, b) => a + b, 0);
@@ -148,11 +150,76 @@ export function computeAgri(st, days, t0 = 0) {
   return {
     arrays: { sos, pos, eos, harvest, flood, cls, label: seg.label, rvi },
     summary: {
-      days, thr, croplandPct: nCrop / nValid, croplandKm2: nCrop * st.pixelKm2,
+      prior, days, thr, croplandPct: nCrop / nValid, croplandKm2: nCrop * st.pixelKm2,
       floodKm2, harvestCum, rviCrop, patterns, segments: seg.list, peakMonthHist, hist,
       rviRange: [pct(rvi[0], valid, 0.02), pct(rvi[Math.floor(T / 2)], valid, 0.98)],
     },
   };
+}
+
+/**
+ * Land-cover prior from ESA WorldCover 10 m (st.wc, resampled to the grid). Radar seasonality alone
+ * mistakes noise in deserts and grass for fields, so:
+ *   crop patterns only where WorldCover maps cropland (or grassland with a very strong seasonal cycle, e.g. irrigated hay);
+ *   bare / sparse, snow, built-up -> bare / built; permanent water -> water; tree cover -> perennial / trees.
+ * Returns a summary of what the prior changed.
+ */
+function applyPrior(st, cls, amp, ampThr) {
+  const wc = st.wc;
+  if (!wc) return { used: false };
+  let removed = 0, kept = 0, n = 0;
+  for (let i = 0; i < N; i++) {
+    if (cls[i] === 255 || !wc[i]) continue;
+    n++;
+    const c = cls[i], w = wc[i], crop = c >= 1 && c <= 3;
+    if (crop) {
+      // never fields: bare / desert, built-up, snow, water. Tree, shrub and grass cover can hold fields
+      // (WorldCover often labels farmland with tree rows as trees), so there a clear seasonal cycle is required.
+      const hard = w === 60 || w === 50 || w === 70 || w === 80 || w === 100;
+      const ok = w === 40 || w === 90 || (!hard && amp[i] > 1.5 * ampThr);
+      if (!ok) { removed++; cls[i] = w === 10 ? 4 : w === 80 ? 0 : 5; } else kept++;
+    } else if (c === 0 && (w === 60 || w === 50 || w === 20 || w === 30)) cls[i] = 5;   // dry sand / smooth ground looks like water in L-band HH
+    else if (w === 80 && c !== 0) cls[i] = 0;
+    else if ((w === 60 || w === 50 || w === 70) && c === 4) cls[i] = 5;
+    else if (w === 10 && c === 5) cls[i] = 4;
+  }
+  let wcCrop = 0; for (let i = 0; i < N; i++) if (wc[i] === 40) wcCrop++;
+  return { used: true, removedPx: removed, keptPx: kept, wcCropPct: n ? wcCrop / n : 0, removedPct: (removed + kept) ? removed / (removed + kept) : 0 };
+}
+
+/**
+ * Minimum mapping unit: a 3x3 majority filter smooths speckle, then crop patches smaller than `minPx`
+ * pixels are merged into their most common neighbouring class.
+ */
+function minimumMappingUnit(cls, valid, isCrop, minPx) {
+  const sm = cls.slice();
+  for (let y = 1; y < SIZE - 1; y++) for (let x = 1; x < SIZE - 1; x++) {
+    const i = y * SIZE + x;
+    if (cls[i] === 255) continue;
+    const cnt = new Uint8Array(6);
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) { const c = cls[i + dy * SIZE + dx]; if (c < 6) cnt[c]++; }
+    let b = cls[i]; for (let c = 0; c < 6; c++) if (cnt[c] > cnt[b]) b = c;
+    sm[i] = b;
+  }
+  cls.set(sm);
+  const seen = new Uint8Array(N), stack = new Int32Array(N);
+  for (let s0 = 0; s0 < N; s0++) {
+    if (seen[s0] || !isCrop(cls[s0])) continue;
+    const c = cls[s0], px = [];
+    let top = 0; stack[top++] = s0; seen[s0] = 1;
+    const nb = new Uint32Array(7);
+    while (top) {
+      const i = stack[--top]; px.push(i);
+      const x = i % SIZE, y = (i / SIZE) | 0;
+      for (const j of [x > 0 ? i - 1 : -1, x < SIZE - 1 ? i + 1 : -1, y > 0 ? i - SIZE : -1, y < SIZE - 1 ? i + SIZE : -1]) {
+        if (j < 0) continue;
+        if (cls[j] === c) { if (!seen[j]) { seen[j] = 1; stack[top++] = j; } } else if (cls[j] < 6) nb[cls[j]]++;
+      }
+    }
+    if (px.length >= minPx) continue;
+    let b = -1, bn = 0; for (let k = 0; k < 6; k++) if (nb[k] > bn) { bn = nb[k]; b = k; }
+    if (b >= 0) for (const i of px) cls[i] = b;
+  }
 }
 
 /** Field-like segments: connected regions with the same cropping pattern and harvest month. */
@@ -285,6 +352,16 @@ export function computeLandCover(st) {
     else if (amp[i] > ampThr && (hv[i] < hvThr || amp[i] > ampHi)) { cls[i] = 1; conf[i] = clamp(2.5 * Math.max(Math.min(da, -dh), (amp[i] - ampHi) / sAmp)); }
     else if (hv[i] >= hvThr) { cls[i] = 2; conf[i] = clamp(2.5 * Math.min(dh, da, (ampHi - amp[i]) / sAmp)); }
     else { cls[i] = 4; conf[i] = clamp(2.5 * Math.min(-dh, -da)); }
+    // WorldCover prior: cropland only where WorldCover maps cropland; deserts, towns and grassland are not fields
+    const w = st.wc ? st.wc[i] : 0;
+    if (w) {
+      const hard = w === 60 || w === 50 || w === 70 || w === 80 || w === 100;
+      if (cls[i] === 1 && w !== 40 && (hard || amp[i] <= ampHi)) cls[i] = w === 10 ? 2 : 4;
+      else if (cls[i] === 3 && w !== 80 && w !== 90 && w !== 40) cls[i] = 4;     // dark sand / smooth ground, not water
+      else if (cls[i] === 0 && w === 40) cls[i] = 2;                       // steady canopy inside mapped cropland: tree crops
+      else if (w === 80) cls[i] = 3;
+      else if ((w === 60 || w === 50 || w === 70) && cls[i] !== 3) cls[i] = 4;
+    }
   }
   // forest-cropland edges (4-neighbour) -> a proxy for the clearing frontier
   let edge = 0;

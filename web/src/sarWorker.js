@@ -4,6 +4,7 @@
 import { SIZE, leeFilter, render, logRatio, maskedMean, darkSeries, otsu } from './sar.js';
 import { pixelFeatures, kmeans } from './ml.js';
 import { buildRegion } from './regionFetch.js';
+import { readWorldCover } from './worldcover.js';
 import { computeAgri, renderAgri, rviStack, computeLandCover, renderLandCover, WATER_MAX, computeYield, renderYield } from './agri.js';
 
 const N = SIZE * SIZE;
@@ -102,6 +103,10 @@ async function region({ id, box, maxDates }, progress) {
     const kmW = (box[2] - box[0]) * 111.32 * Math.cos((lat * Math.PI) / 180), kmH = (box[3] - box[1]) * 111.32;
     const st = makeStack(id, r.hh, r.hv, r.valid, (box[3] - box[1]) / 2, [kmW, kmH]);
     st.meta = { acquisitions: r.acquisitions, track: r.track, box: r.box, fullCover: r.fullCover };
+    // land-cover prior (ESA WorldCover 10 m) on the same grid; the analyses run without it if it cannot be read
+    progress('Reading ESA WorldCover (land-cover prior)', 0, 1);
+    try { st.wc = await readWorldCover(box, SIZE, SIZE); if (!st.wc.some((v) => v)) st.wc = null; } catch (e) { st.wc = null; }
+    st.meta.worldcover = !!st.wc;
   }
   const st = stacks.get(id);
   return { ...summary(st), ...st.meta };

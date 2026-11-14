@@ -1,0 +1,173 @@
+{
+ "variability": {
+  "max": 17.0,
+  "cycles": 12,
+  "from": "2025-12-29",
+  "to": "2026-11-17",
+  "stops": [
+   [
+    0,
+    [
+     20,
+     30,
+     70
+    ]
+   ],
+   [
+    0.35,
+    [
+     30,
+     120,
+     160
+    ]
+   ],
+   [
+    0.65,
+    [
+     120,
+     200,
+     90
+    ]
+   ],
+   [
+    1,
+    [
+     250,
+     220,
+     60
+    ]
+   ]
+  ]
+ },
+ "melt": {
+  "min": 20,
+  "max": 100,
+  "stops": [
+   [
+    0,
+    [
+     150,
+     210,
+     255
+    ]
+   ],
+   [
+    0.5,
+    [
+     40,
+     130,
+     255
+    ]
+   ],
+   [
+    1,
+    [
+     90,
+     20,
+     200
+    ]
+   ]
+  ],
+  "deepestDropPeriod": {
+   "2025-10": 40000,
+   "2025-11": 17517,
+   "2025-12": 17635,
+   "2026-01": 9055,
+   "2026-06": 39887,
+   "2026-07": 74413,
+   "2026-08": 38899,
+   "2026-09": 52024,
+   "2026-10": 224012
+  }
+ },
+ "maincrop": {
+  "source": "SPAM 2010 v2r0 (IFPRI, MapSPAM), physical area and yield, CC BY 4.0, doi:10.7910/DVN/PRFF8V",
+  "legend": [
+   [
+    "WHEA",
+    "Wheat",
+    "#e6be46"
+   ],
+   [
+    "MAIZ",
+    "Maize",
+    "#fa7828"
+   ],
+   [
+    "RICE",
+    "Rice",
+    "#28c8dc"
+   ],
+   [
+    "SOYB",
+    "Soybean",
+    "#b45ac8"
+   ],
+   [
+    "SORG",
+    "Sorghum",
+    "#c85050"
+   ],
+   [
+    "CASS",
+    "Cassava",
+    "#6e4628"
+   ],
+   [
+    "VEGE",
+    "Vegetables",
+    "#3ca05a"
+   ],
+   [
+    "BARL",
+    "Barley",
+    "#c8a06e"
+   ],
+   [
+    "PMIL",
+    "Pearl millet",
+    "#966e3c"
+   ],
+   [
+    "TEMF",
+    "Temperate fruit",
+    "#e65aa0"
+   ],
+   [
+    "TROF",
+    "Tropical fruit",
+    "#ff8c78"
+   ],
+   [
+    "SUGC",
+    "Sugar cane",
+    "#82dc3c"
+   ],
+   [
+    "COTT",
+    "Cotton",
+    "#f0f0f0"
+   ],
+   [
+    "OILP",
+    "Oil palm",
+    "#147832"
+   ],
+   [
+    "RAPE",
+    "Rapeseed",
+    "#faf03c"
+   ],
+   [
+    "BEAN",
+    "Bean",
+    "#a03c78"
+   ]
+  ]
+ },
+ "landslides": {
+  "events": 11033,
+  "from": "1988-11-07",
+  "to": "2017-09-28"
+ }
+}

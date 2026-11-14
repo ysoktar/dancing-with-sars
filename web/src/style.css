@@ -320,3 +320,4 @@ body.sheet-open .map-legend { display: none; }
 .ls-days { display: grid; grid-template-columns: repeat(auto-fit, minmax(96px, 1fr)); gap: 6px; margin: 8px 0; }
 .ls-days > div { border: 1px solid var(--line, rgba(138,148,163,0.2)); border-top: 4px solid var(--c); border-radius: 8px; padding: 6px 8px; display: grid; gap: 2px; }
 .ls-days b { font-size: 12px; } .ls-days span { font-weight: 600; color: var(--c); } .ls-days small { color: var(--muted); font-size: 11px; }
+.layer-group { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 10px 0 4px; }

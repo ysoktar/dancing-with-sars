@@ -8,6 +8,9 @@ import { call, renderImage } from '../sarClient.js';
 import { Terrain3D } from '../terrain3d.js';
 import { describeCluster } from '../ml.js';
 import { forecast, FORECASTABILITY, MIN_POINTS } from '../forecast.js';
+import { liveContext } from '../liveContext.js';
+import { renderReport } from './report.js';
+import { fetchArchive, ARCHIVE_PLATFORMS } from '../archive.js';
 
 const TABS = [
   ['overview', 'Overview'],
@@ -20,6 +23,8 @@ const TABS = [
 ];
 
 const stacks = new Map();
+export const hrefOf = (site) => (site.region ? `#/region/${site.lon.toFixed(4)}/${site.lat.toFixed(4)}/${site.half_deg}` : `#/site/${site.id}`);
+const REGION_TABS = [['overview', 'Summary'], ['agri', 'Crops & yield'], ['report', 'Parcel report'], ['archive', 'Archive 1978→'], ['images', 'Radar images'], ['analysis', 'Change & ML'], ['forecast', 'Forecast']];
 const dems = new Map();
 function getDem() {
   const id = S.site.id;
@@ -49,6 +54,7 @@ const nowLine = {
 /** Radar stacks live in a Web Worker (sarWorker.js): every filter / date / tool change is computed off the main thread. */
 function getStack() {
   const site = S.site, id = site.id;
+  if (!stacks.has(id) && site.region) stacks.set(id, call('load', { id }).then((info) => ({ id, ...info })));
   if (!stacks.has(id)) {
     const urls = site.acquisitions.map((a) => new URL(app.base + 'data/' + a.crop, location.href).href);
     stacks.set(id, call('load', { id, urls, half_deg: site.half_deg }).then((info) => ({ id, ...info })));
@@ -81,20 +87,20 @@ export function openSitePage(sheet, site, tab) {
   const fresh = S.site !== site;
   if (fresh) {
     destroyCharts();
-    Object.assign(S, { site, cmpT: 0, pixel: null, ml: {}, swipe: false, stack: null, agri: null, agTool: 'calendar', agSeg: -1 });
+    Object.assign(S, { site, cmpT: 0, pixel: null, ml: {}, swipe: false, stack: null, agri: null, agTool: S.agToolNext || 'patterns', agSeg: -1 });
     S.t = nearestIndex(app.tl.start + app.tl.day * DAY);
-    app.selected = site.id;
+    app.selectedSite = site;
     drawTimeline();
     app.listeners.add(onTimeline);
-    const th = themeOf(site);
+    const th = site.region ? { color: '#e8b04a', label: 'Selected region' } : themeOf(site);
     const a0 = site.acquisitions[0], a1 = site.acquisitions[site.acquisitions.length - 1];
     const mo = app.motion.sites?.[site.id] || {};
     const nMotion = (mo.GUNW?.length || 0) + (mo.GOFF?.length || 0);
     const nEv = siteEvents().length;
     sheet.innerHTML = sheetHead(
-      `${esc(site.name)} <span class="muted" style="font-weight:400">· ${esc(site.country)}</span>`,
+      `${esc(site.name)}${site.country ? ` <span class="muted" style="font-weight:400">· ${esc(site.country)}</span>` : ''}`,
       `<span class="tag" style="--c:${th.color}"><i></i>${th.label}</span>&nbsp; NISAR track ${site.track.path} · frame ${site.track.frame} · ${site.track.dir.toLowerCase()} &nbsp;·&nbsp; ${site.acquisitions.length} passes, ${fmtDate(tOf(a0.date))} – ${fmtDate(tOf(a1.date))}`,
-    ) + `<nav class="tabs">${TABS.filter(([k]) => k !== 'agri' || isAgSite(site)).map(([k, l]) => `<a href="#/site/${site.id}/${k}" data-tab="${k}">${l}${k === 'motion' && nMotion ? `<span class="count">${nMotion}</span>` : ''}${k === 'events' && nEv ? `<span class="count">${nEv}</span>` : ''}</a>`).join('')}</nav>
+    ) + `<nav class="tabs">${(site.region ? REGION_TABS : TABS.filter(([k]) => k !== 'agri' || isAgSite(site))).map(([k, l]) => `<a href="${hrefOf(site)}/${k}" data-tab="${k}">${l}${k === 'motion' && nMotion ? `<span class="count">${nMotion}</span>` : ''}${k === 'events' && nEv ? `<span class="count">${nEv}</span>` : ''}</a>`).join('')}</nav>
       <div class="sheet-body"><div class="page" id="tabBody"></div></div>`;
   }
   if (fresh || S.tab !== tab) {
@@ -103,7 +109,7 @@ export function openSitePage(sheet, site, tab) {
     $$('.tabs a', sheet).forEach((a) => a.classList.toggle('on', a.dataset.tab === tab));
     const body = $('#tabBody', sheet);
     body.scrollTop = 0;
-    ({ overview, images, motion, analysis, agri: agriTab, forecast: forecastTab, events }[tab] || overview)(body);
+    ({ overview: site.region ? regionOverview : overview, images, motion, analysis, agri: agriTab, report: reportTab, archive: archiveTab, forecast: forecastTab, events }[tab] || overview)(body);
   }
 }
 
@@ -112,7 +118,7 @@ export function closeSitePage() {
   destroyCharts();
   app.listeners.delete(onTimeline);
   S.site = null; S.tab = null;
-  app.selected = null;
+  app.selectedSite = null;
   drawTimeline();
 }
 
@@ -178,7 +184,7 @@ function overview(el) {
         ${app.dem?.[S.site.id] ? `<div class="stat"><b>${Math.round(app.dem[S.site.id].min)}–${Math.round(app.dem[S.site.id].max)}<small style="font-size:12px"> m</small></b><span>elevation range</span></div>` : ''}
       </div>
       <div class="panel">
-        <div class="panel-head"><h3>First vs. latest pass</h3><a href="#/site/${S.site.id}/images">Open radar images →</a></div>
+        <div class="panel-head"><h3>First vs. latest pass</h3><a href="${hrefOf(S.site)}/images">Open radar images →</a></div>
         <div class="grid g-2" style="gap:8px">
           <figure style="margin:0"><img src="${app.base}data/${first.crop}" alt="" class="rgbthumb" data-i="0" style="width:100%;aspect-ratio:1;border-radius:6px;background:#07090b"><figcaption class="small muted mono">${first.date}</figcaption></figure>
           <figure style="margin:0"><img src="${app.base}data/${last.crop}" alt="" class="rgbthumb" data-i="${a.length - 1}" style="width:100%;aspect-ratio:1;border-radius:6px;background:#07090b"><figcaption class="small muted mono">${last.date}</figcaption></figure>
@@ -502,7 +508,7 @@ const TOOLS = [
 function analysis(el) {
   el.innerHTML = `
   <div class="grid g-side">
-    <div class="subnav" id="tools">${TOOLS.map(([k, t, d]) => `<button data-k="${k}" class="${S.tool === k ? 'on' : ''}"><b>${t}</b><span>${d}</span></button>`).join('')}</div>
+    <div class="subnav" id="tools">${TOOLS.filter(([k]) => !(S.site.region && k === 'floodhist')).map(([k, t, d]) => `<button data-k="${k}" class="${S.tool === k ? 'on' : ''}"><b>${t}</b><span>${d}</span></button>`).join('')}</div>
     <div id="tool"><div class="empty">Loading radar images…</div></div>
   </div>`;
   $$('#tools button').forEach((b) => b.addEventListener('click', () => {
@@ -806,7 +812,7 @@ function events(el) {
       const np = nearestPass(e.date);
       const kind = e.kind === 'quake' ? `Earthquake${e.mag ? ' M' + e.mag.toFixed(1) : ''}` : e.kind === 'news' ? `News · ${esc(e.source || '')}` : esc(e.category || 'Event');
       return `<div class="ev-row"><span class="d">${e.date}</span><span class="k">${kind}</span><a href="${esc(e.url)}" target="_blank" rel="noopener">${esc(e.title)}</a>
-        <span class="near">${e.distKm != null ? e.distKm + ' km · ' : ''}${np ? `<a href="#/site/${S.site.id}/images" data-i="${np.i}" class="jump">pass ${np.dd === 0 ? 'same day' : (np.dd > 0 ? '+' : '') + Math.round(np.dd) + ' d'}</a>` : ''}</span></div>`;
+        <span class="near">${e.distKm != null ? e.distKm + ' km · ' : ''}${np ? `<a href="${hrefOf(S.site)}/images" data-i="${np.i}" class="jump">pass ${np.dd === 0 ? 'same day' : (np.dd > 0 ? '+' : '') + Math.round(np.dd) + ' d'}</a>` : ''}</span></div>`;
     }).join('') : '<div class="empty">Nothing recorded for this filter.</div>';
     $$('#evList .jump').forEach((a) => a.addEventListener('click', () => { S.t = +a.dataset.i; setDate(ts[S.t]); }));
   };
@@ -841,15 +847,17 @@ function eventColorLocal(cat = '') {
 
 // ================================================================== AGRICULTURE
 const AG_THEMES = new Set(['agriculture', 'groundwater', 'flood']);
-export function isAgSite(site) { return AG_THEMES.has((STORIES[site.id] || {}).theme || site.theme); }
+export function isAgSite(site) { if (site.region) return true; return AG_THEMES.has((STORIES[site.id] || {}).theme || site.theme); }
 
 const AG_TOOLS = [
+  ['patterns', 'Crop segmentation', 'Paddy, double, single, perennial'],
+  ['fields', 'Fields', 'Segments with their own calendar'],
+  ['yield', 'Yield segmentation', 'Fields ranked by yield potential'],
+  ['deep', 'Deep learning (U-TAE)', 'Crop types from Sentinel-2, pretrained'],
+  ['landcover', 'Cropland vs forest', 'Where fields end and forest begins'],
   ['calendar', 'Crop calendar', 'Start, peak and end of season'],
   ['harvest', 'Harvest & flooding', 'When fields were harvested or flooded'],
-  ['patterns', 'Cropping patterns', 'Rice, double, single, perennial'],
-  ['fields', 'Fields', 'Segments with their own calendar'],
   ['context', 'Weather & NDVI', 'Rain, temperature, optical greenness'],
-  ['landcover', 'Cropland vs forest', 'Where fields end and forest begins'],
 ];
 const MODE_LABEL = { sos: 'Start of season', pos: 'Peak of season', eos: 'End of season', harvest: 'Harvest date', flood: 'Flooding date' };
 
@@ -877,7 +885,7 @@ function agriTab(el) {
 
 function showAgTool() {
   destroyCharts();
-  ({ calendar: agCalendar, harvest: agHarvest, patterns: agPatterns, fields: agFields, context: agContext, landcover: toolLandcover }[S.agTool])($('#agTool'));
+  ({ calendar: agCalendar, harvest: agHarvest, patterns: agPatterns, fields: agFields, context: agContext, landcover: toolLandcover, yield: agYield, deep: agDeep }[S.agTool] || agPatterns)($('#agTool'));
 }
 
 async function agMap(canvas, mode, opts = {}) {
@@ -1013,7 +1021,13 @@ const PATTERN_COLORS = ['#2563eb', '#22d3ee', '#f59e0b', '#facc15', '#16a34a', '
 async function agContext(el) {
   el.innerHTML = '<div class="empty">Loading weather and NDVI…</div>';
   let ctx = null;
-  try { const r = await fetch(`${app.base}data/context/${S.site.id}.json`); if (r.ok) ctx = await r.json(); } catch (e) { /* none */ }
+  if (S.site.region) {
+    el.innerHTML = '<div class="empty">Fetching NASA POWER weather and MODIS NDVI for this window…</div>';
+    const b = aoiBounds();
+    ctx = await liveContext(S.site.id, S.site.lon, S.site.lat, [b.W, b.S, b.E, b.N]);
+  } else {
+    try { const r = await fetch(`${app.base}data/context/${S.site.id}.json`); if (r.ok) ctx = await r.json(); } catch (e) { /* none */ }
+  }
   if (S.tab !== 'agri' || S.agTool !== 'context') return;
   if (!ctx) { el.innerHTML = '<div class="empty">No weather / NDVI context for this site yet (run pipeline/build_context.py).</div>'; return; }
   const A = S.agri, ts = times();
@@ -1050,4 +1064,272 @@ async function agContext(el) {
       scales: { x: { ...timeAxis(), min: xmin, max: xmax }, y: { beginAtZero: true, title: { display: true, text: 'mm / week' } }, y1: { position: 'right', grid: { display: false }, title: { display: true, text: '°C' } } },
       plugins: { legend: { labels: { boxWidth: 10 } } } },
   });
+}
+
+// ---------------------------------------------------------------- yield segmentation
+const YIELD_COLORS = ['#b91c1c', '#f97316', '#facc15', '#84cc16', '#15803d'];
+async function agYield(el) {
+  el.innerHTML = '<div class="empty">Ranking the crop signal of every field…</div>';
+  const Y = await call('yield', { id: S.stack.id });
+  if (S.tab !== 'agri' || S.agTool !== 'yield' || !el.isConnected) return;
+  const ts = times(), F = Y.fields;
+  el.innerHTML = `
+    <div class="panel">
+      <p class="muted" style="max-width:880px">For every cropland pixel the radar vegetation index is accumulated between its own start and end of season (the area under the curve above its baseline: how much canopy the crop built and for how long) and combined with its peak. Pixels are then ranked within this window into five classes. This is a <b>relative yield potential</b>: it ranks fields against their neighbours, it does not give tonnes per hectare. Turning it into t/ha needs harvest records; the YieldSAT models in the project notebooks do that step.</p>
+      <div class="controls"><div class="seg" id="ySeg"><button data-m="pixel" class="on">Per pixel</button><button data-m="field">Per field</button><button data-m="zones">Zones inside fields</button></div></div>
+      <div class="result">
+        <div><canvas class="map" id="yMap" width="512" height="512" style="cursor:pointer"></canvas>
+          <div style="height:10px;border-radius:4px;margin-top:6px;background:linear-gradient(90deg,${YIELD_COLORS.join(',')})"></div>
+          <div class="legend" style="justify-content:space-between;margin-top:4px"><span>weakest crop here</span><span>strongest</span></div>
+          <div class="legend" id="yZoneLegend" style="display:none;margin-top:6px"><span><i style="background:#dc2626"></i>well below its field's mean</span><span><i style="background:#787878"></i>near the mean</span><span><i style="background:#22c55e"></i>well above</span></div>
+        </div>
+        <div>
+          <div class="classes">${Y.classes.map((c, k) => `<div class="row"><i style="background:${YIELD_COLORS[k]}"></i><div><b>${c.name}</b></div><div class="v">${c.km2.toFixed(0)} km²</div></div>`).join('')}</div>
+          <div class="stats" style="grid-template-columns:1fr 1fr;margin-top:10px">
+            <div class="stat"><b>${Y.nFields}</b><span>fields / field blocks ranked</span></div>
+            <div class="stat"><b>${pct(Y.zones.below + Y.zones.above, 0)}</b><span>of field area deviates strongly from its field's mean (management zones)</span></div>
+          </div>
+          <h3 class="small muted" style="font-weight:500;margin-top:12px">Why weak and strong fields differ: mean vegetation index through the season</h3>
+          <div class="chart sm"><canvas id="yProf"></canvas></div>
+        </div>
+      </div>
+      <h3 class="small muted" style="font-weight:500;margin-top:14px">Fields ranked by yield potential (click to highlight)</h3>
+      <div style="max-height:260px;overflow:auto"><table class="t" id="yTab"><tr><th>Rank</th><th>Class</th><th style="text-align:right">km²</th><th style="text-align:right">Index</th><th style="text-align:right">Spread inside</th></tr>
+      ${F.slice(0, 80).map((f, k) => `<tr data-id="${f.id}" style="cursor:pointer"><td class="num">${k + 1}</td><td><span class="tag" style="--c:${YIELD_COLORS[f.cls]}"><i></i>${Y.classes[f.cls].name}</span></td><td class="num">${f.km2.toFixed(1)}</td><td class="num">${f.index.toFixed(2)}</td><td class="num">±${f.spread.toFixed(2)}</td></tr>`).join('')}</table></div>
+      <p class="note">Assumes the same crop and the same season across the window; a field sown later or with a different crop ranks differently for that reason alone. Flooded paddies early in the season lower the index of rice fields until the canopy closes.</p>
+    </div>`;
+  let mode = 'pixel', sel = -1;
+  const draw = async () => {
+    $$('#ySeg button').forEach((b) => b.classList.toggle('on', b.dataset.m === mode));
+    $('#yZoneLegend').style.display = mode === 'zones' ? '' : 'none';
+    const r = await call('yieldRender', { id: S.stack.id, mode, t: S.t, seg: sel });
+    if ($('#yMap')) drawTo($('#yMap'), new ImageData(new Uint8ClampedArray(r.data), r.w, r.h));
+  };
+  $$('#ySeg button').forEach((b) => b.addEventListener('click', () => { mode = b.dataset.m; draw(); }));
+  const select = (id) => { sel = id; mode = 'field'; $$('#yTab tr[data-id]').forEach((r) => (r.style.background = +r.dataset.id === id ? 'var(--surface-3)' : '')); draw(); };
+  $$('#yTab tr[data-id]').forEach((r) => r.addEventListener('click', () => select(+r.dataset.id)));
+  $('#yMap').addEventListener('click', async (e) => {
+    const b = e.target.getBoundingClientRect();
+    const x = Math.floor(((e.clientX - b.left) / b.width) * SIZE), y = Math.floor(((e.clientY - b.top) / b.height) * SIZE);
+    const { seg } = await call('segmentAt', { id: S.stack.id, x, y });
+    if (seg >= 0) select(seg);
+  });
+  draw();
+  chart('yProf', {
+    type: 'line',
+    data: { datasets: [
+      { label: 'Very high class', data: ts.map((x, i) => ({ x, y: Y.profiles.high[i] })), borderColor: YIELD_COLORS[4], backgroundColor: YIELD_COLORS[4], pointRadius: 2, tension: 0.25 },
+      { label: 'Very low class', data: ts.map((x, i) => ({ x, y: Y.profiles.low[i] })), borderColor: YIELD_COLORS[0], backgroundColor: YIELD_COLORS[0], pointRadius: 2, tension: 0.25 },
+    ] },
+    options: { maintainAspectRatio: false, animation: false, parsing: false, scales: { x: timeAxis(), y: { title: { display: true, text: 'RVI (relative)' } } }, plugins: { legend: { labels: { boxWidth: 10 } } } },
+  });
+}
+
+// ---------------------------------------------------------------- region summary (live regions)
+function regionOverview(el) {
+  const a = acqs(), first = a[0], last = a[a.length - 1], R = S.site;
+  el.innerHTML = `
+  <div class="grid g-2">
+    <div class="stack">
+      <div class="panel">
+        <h3>This window</h3>
+        <p class="muted" style="margin:0">${(R.half_deg * 2 * 111.32).toFixed(0)} × ${(R.half_deg * 2 * 111.32).toFixed(0)} km around ${R.lat.toFixed(3)}°, ${R.lon.toFixed(3)}°. Every NISAR GCOV pass on track ${R.track.path} / frame ${R.track.frame} (${R.track.dir.toLowerCase()}) was fetched live from the ASF archive, aligned by phase correlation and cropped in your browser.</p>
+      </div>
+      <div class="stats">
+        <div class="stat"><b>${a.length}</b><span>NISAR passes</span></div>
+        <div class="stat"><b>${Math.round((tOf(last.date) - tOf(first.date)) / DAY)}</b><span>days covered</span></div>
+        <div class="stat"><b id="rsCrop">…</b><span>cropland</span></div>
+        <div class="stat"><b id="rsForest">…</b><span>forest / tree cover</span></div>
+        <div class="stat"><b id="rsFields">…</b><span>field segments</span></div>
+        <div class="stat"><b id="rsPeak">…</b><span>main peak month</span></div>
+      </div>
+      <div class="panel"><h3>Start here</h3><ul class="plain">
+        <li><a href="${hrefOf(R)}/agri" data-agtool="patterns">Crop segmentation</a>: which land is paddy, double crop, single crop, perennial.</li>
+        <li><a href="${hrefOf(R)}/agri" data-agtool="fields">Fields</a>: field-like segments, each with its own calendar.</li>
+        <li><a href="${hrefOf(R)}/agri" data-agtool="yield">Yield segmentation</a>: fields ranked by relative yield potential, zones inside fields.</li>
+        <li><a href="${hrefOf(R)}/agri" data-agtool="landcover">Cropland vs forest</a>.</li></ul></div>
+      <div class="panel"><h3>Passes</h3><div style="max-height:220px;overflow:auto"><table class="t"><tr><th>Date</th><th>Product</th><th style="text-align:right">valid</th><th style="text-align:right">shift km</th></tr>
+        ${a.map((x) => `<tr><td class="mono">${x.date}</td><td class="small">${/PROVISIONAL/.test(x.collection || '') ? 'provisional' : 'validated / beta'}</td><td class="num">${pct(x.valid, 0)}</td><td class="num">${x.kml ? 'KML' : x.coregShiftKm.join(', ')}</td></tr>`).join('')}</table></div></div>
+    </div>
+    <div class="stack">
+      <div class="panel">
+        <div class="panel-head"><h3>First vs. latest pass</h3><a href="${hrefOf(R)}/images">Open radar images →</a></div>
+        <div class="grid g-2" style="gap:8px">
+          <figure style="margin:0"><canvas class="rthumb" data-i="0" width="256" height="256" style="width:100%;aspect-ratio:1;border-radius:6px;background:#07090b"></canvas><figcaption class="small muted mono">${first.date}</figcaption></figure>
+          <figure style="margin:0"><canvas class="rthumb" data-i="${a.length - 1}" width="256" height="256" style="width:100%;aspect-ratio:1;border-radius:6px;background:#07090b"></canvas><figcaption class="small muted mono">${last.date}</figcaption></figure>
+        </div>
+        <p class="note">Magenta = strong HH (bare or flooded fields, double bounce), green = strong HV (crop and tree canopies), dark = smooth surfaces such as calm water.</p>
+      </div>
+      <div class="panel"><h3>What radar can tell us here</h3>
+        <div class="grid g-3" style="gap:12px">
+          <div><div class="small" style="color:var(--ok);margin-bottom:4px">Measured directly</div><ul class="plain small">${CAPS.agriculture[0].map((x) => `<li>${x}</li>`).join('')}</ul></div>
+          <div><div class="small" style="color:var(--warn);margin-bottom:4px">With other data</div><ul class="plain small">${CAPS.agriculture[1].map((x) => `<li>${x}</li>`).join('')}</ul></div>
+          <div><div class="small" style="color:var(--no);margin-bottom:4px">Not from radar</div><ul class="plain small">${CAPS.agriculture[2].map((x) => `<li>${x}</li>`).join('')}</ul></div>
+        </div></div>
+    </div>
+  </div>`;
+  $$('a[data-agtool]', el).forEach((l) => l.addEventListener('click', () => { S.agTool = l.dataset.agtool; }));
+  getStack().then(async (stack) => {
+    S.stack = stack;
+    $$('.rthumb', el).forEach((cv) => renderImage(stack.id, +cv.dataset.i, 'rgb', { filtered: true }).then((im) => drawTo(cv, im)));
+    const A = await agEnsure();
+    const L = await call('landcover', { id: stack.id });
+    if (S.tab !== 'overview' || !$('#rsCrop')) return;
+    $('#rsCrop').textContent = `${Math.round(A.croplandKm2)} km²`;
+    $('#rsForest').textContent = `${Math.round(L.classes[0].km2)} km²`;
+    $('#rsFields').textContent = A.segments.length;
+    const pk = Object.entries(A.peakMonthHist || {}).sort((p, q) => q[1] - p[1])[0];
+    $('#rsPeak').textContent = pk ? new Date(pk[0] + '-15').toLocaleDateString('en-GB', { month: 'short', year: 'numeric' }) : '–';
+  });
+}
+
+// ---------------------------------------------------------------- deep learning: U-TAE crop types (Sentinel-2)
+const PASTIS_COLORS = ['#1f1f1f', '#5b9c2d', '#e6c44a', '#f48120', '#b8860b', '#ffe600', '#d2b48c', '#ffa500', '#800080', '#c71585',
+  '#cd853f', '#a0522d', '#ff69b4', '#8b4513', '#32cd32', '#9acd32', '#006400', '#deb887', '#b22222', '#808080'];
+let dlWorker = null, dlRid = 0;
+const dlPending = new Map();
+function dlCall(args, onProgress) {
+  if (!dlWorker) {
+    dlWorker = new Worker(new URL('../dlWorker.js', import.meta.url), { type: 'module' });
+    dlWorker.onmessage = (e) => {
+      const p = dlPending.get(e.data.rid);
+      if (!p) return;
+      if (e.data.progress) { p.onProgress?.(e.data.progress); return; }
+      dlPending.delete(e.data.rid);
+      e.data.ok ? p.res(e.data.out) : p.rej(new Error(e.data.error));
+    };
+  }
+  return new Promise((res, rej) => { const id = ++dlRid; dlPending.set(id, { res, rej, onProgress }); dlWorker.postMessage({ rid: id, args }); });
+}
+
+async function agDeep(el) {
+  const R = S.site, b = aoiBounds();
+  S.dl = S.dl || { lon: R.lon, lat: R.lat, season: 2025 };
+  el.innerHTML = `
+    <div class="panel">
+      <p class="muted" style="max-width:900px"><b>U-TAE</b> (Garnot &amp; Landrieu, ICCV 2021) is a deep network for satellite image time series: a convolutional U-Net whose skip connections are combined over time by lightweight temporal attention. We run the <b>published weights trained on PASTIS</b> (2,433 patches of French farmland, 18 crop types; test mIoU 63–65 %) directly in your browser (ONNX Runtime, WebAssembly). Its input is a <b>Sentinel-2</b> time series, which is read for a 1.28 × 1.28 km window straight from the public Cloud-Optimized GeoTIFFs on AWS. Click the radar map to move the window, then run.</p>
+      <div class="controls">
+        <label>Season <select id="dlSeason">${[2025, 2024, 2023, 2022, 2018].map((y) => `<option value="${y}">Sep ${y} – Oct ${y + 1}${y === 2018 ? ' (PASTIS season)' : ''}</option>`).join('')}</select></label>
+        <label>Dates <select id="dlDates"><option>12</option><option selected>16</option><option>24</option></select></label>
+        <button class="btn primary" id="dlRun">Run U-TAE here</button>
+        <span class="small muted mono" id="dlWhere"></span>
+      </div>
+      <div class="result">
+        <div><canvas class="map" id="dlPick" width="512" height="512" style="cursor:crosshair"></canvas>
+          <p class="note">NISAR colour composite of the region; the square is the 1.28 km window sent to the network.</p></div>
+        <div id="dlOut"><div class="empty">Choose a window and press “Run U-TAE here”. The first run downloads the model (4.5 MB) and about 10 MB of Sentinel-2 data per date.</div></div>
+      </div>
+      <p class="note"><b>Domain shift:</b> the network learned French crops and the French calendar (winter cereals sown in autumn, maize and sunflower in spring). Outside that setting, classes are the nearest French equivalent: rice paddies, cotton or sugar cane have no class of their own. Treat results outside Western Europe as field delineation plus a crop-group hint, not as a crop census. ${R.lat < 35 || R.lat > 60 || R.lon < -10 || R.lon > 30 ? '<b>This region is outside the training domain.</b>' : ''}</p>
+    </div>`;
+  $('#dlSeason').value = S.dl.season;
+  const pick = $('#dlPick');
+  const base = await renderImage(S.stack.id, S.t, 'rgb', { filtered: true });
+  const drawPick = () => {
+    drawTo(pick, base);
+    const ctx = pick.getContext('2d'), W = pick.width;
+    const x = ((S.dl.lon - b.W) / (b.E - b.W)) * W, y = ((b.N - S.dl.lat) / (b.N - b.S)) * W;
+    const s = Math.max(6, (1.28 / (R.half_deg * 2 * 111.32)) * W);
+    ctx.strokeStyle = '#e8b04a'; ctx.lineWidth = 2; ctx.strokeRect(x - s / 2, y - s / 2, s, s);
+    $('#dlWhere').textContent = `${S.dl.lat.toFixed(4)}°, ${S.dl.lon.toFixed(4)}°`;
+  };
+  drawPick();
+  pick.addEventListener('click', (e) => {
+    const r = pick.getBoundingClientRect();
+    S.dl.lon = b.W + ((e.clientX - r.left) / r.width) * (b.E - b.W);
+    S.dl.lat = b.N - ((e.clientY - r.top) / r.height) * (b.N - b.S);
+    drawPick();
+  });
+  if (S.dl.result && S.dl.result.key === `${S.dl.lon},${S.dl.lat},${S.dl.season}`) showDeep(S.dl.result);
+  $('#dlRun').addEventListener('click', async () => {
+    S.dl.season = +$('#dlSeason').value;
+    const out = $('#dlOut');
+    out.innerHTML = '<div class="loading-region"><div class="small muted" id="dlStage">Starting…</div><div class="bar"><i id="dlBar"></i></div></div>';
+    try {
+      const r = await dlCall({ lon: S.dl.lon, lat: S.dl.lat, season: S.dl.season, maxDates: +$('#dlDates').value, base: new URL(app.base, location.href).href }, (p) => {
+        if ($('#dlStage')) $('#dlStage').textContent = `${p.stage}${p.total > 1 ? ` · ${p.done} / ${p.total}` : ''}`;
+        if ($('#dlBar')) $('#dlBar').style.width = `${p.total ? (100 * p.done) / p.total : 8}%`;
+      });
+      r.key = `${S.dl.lon},${S.dl.lat},${S.dl.season}`;
+      S.dl.result = r;
+      if ($('#dlOut')) showDeep(r);
+    } catch (e) {
+      if ($('#dlOut')) $('#dlOut').innerHTML = `<div class="empty">${esc(e.message)}</div>`;
+    }
+  });
+}
+
+function showDeep(r) {
+  const P = r.size, N = P * P, total = r.counts.reduce((a, c) => a + c, 0);
+  const order = r.counts.map((c, k) => [c, k]).filter(([c]) => c > 0).sort((a, b2) => b2[0] - a[0]);
+  $('#dlOut').innerHTML = `
+    <div class="grid g-2" style="gap:8px">
+      <figure style="margin:0"><canvas id="dlRgb" width="${P}" height="${P}" style="width:100%;aspect-ratio:1;border-radius:6px;image-rendering:pixelated"></canvas><figcaption class="small muted">Sentinel-2 true colour, ${r.dates[Math.floor(r.dates.length / 2)]}</figcaption></figure>
+      <figure style="margin:0"><canvas id="dlCls" width="${P}" height="${P}" style="width:100%;aspect-ratio:1;border-radius:6px;image-rendering:pixelated"></canvas><figcaption class="small muted">U-TAE crop types · <label><input type="checkbox" id="dlConf"> shade by confidence</label></figcaption></figure>
+    </div>
+    <div class="classes" style="margin-top:10px">${order.map(([c, k]) => `<div class="row"><i style="background:${PASTIS_COLORS[k]}"></i><div><b>${r.classes[k]}</b><div class="bar-conf" title="mean confidence"><i style="width:${(r.meanConf[k] * 100).toFixed(0)}%"></i></div></div><div class="v">${(c * 0.01).toFixed(1)} ha<br><span class="muted">${pct(c / total)} · conf ${pct(r.meanConf[k], 0)}</span></div></div>`).join('')}</div>
+    <p class="note">${r.dates.length} Sentinel-2 dates (${r.dates[0]} → ${r.dates[r.dates.length - 1]}), 10 m pixels, 1 pixel = 0.01 ha. Confidence = softmax probability of the chosen class. Weights: U-TAE fold ${r.model.fold} (Zenodo 5172293)${r.model.testMetrics?.test_IoU ? `, PASTIS test mIoU ${(+r.model.testMetrics.test_IoU).toFixed(1)} %, OA ${(+r.model.testMetrics.test_accuracy).toFixed(1)} %` : ''}.</p>`;
+  const put = (id, fn) => { const c = $('#' + id), x = c.getContext('2d'), im = x.createImageData(P, P); for (let i = 0; i < N; i++) { const v = fn(i); im.data.set(v, i * 4); } x.putImageData(im, 0, 0); };
+  put('dlRgb', (i) => r.rgb.subarray(i * 4, i * 4 + 4));
+  const hex = (h) => [1, 3, 5].map((k) => parseInt(h.slice(k, k + 2), 16));
+  const cols = PASTIS_COLORS.map(hex);
+  const drawCls = () => {
+    const shade = $('#dlConf')?.checked;
+    put('dlCls', (i) => { const c = cols[r.cls[i]], a = shade ? 0.25 + 0.75 * r.conf[i] : 1; return [c[0] * a, c[1] * a, c[2] * a, 255]; });
+  };
+  drawCls();
+  $('#dlConf').addEventListener('change', drawCls);
+}
+
+// ---------------------------------------------------------------- parcel report (team analyzer, live)
+async function reportTab(el) {
+  el.innerHTML = '<div class="empty">Computing crop products…</div>';
+  await agEnsure();
+  if (S.tab !== 'report') return;
+  const b = aoiBounds();
+  renderReport(el, { site: S.site, box: [b.W, b.S, b.E, b.N], times: times(), agri: S.agri, charts: S.charts });
+}
+
+// ---------------------------------------------------------------- archive: every radar pass over the window since 1978
+const BAND_COL = { L: '#7dd3fc', C: '#94a3b8' };
+async function archiveTab(el) {
+  el.innerHTML = '<div class="empty">Searching the ASF archive for every radar mission over this window (Seasat 1978 → NISAR)…</div>';
+  const A = await fetchArchive(S.site.lon, S.site.lat);
+  if (S.tab !== 'archive' || !el.isConnected) return;
+  const total = A.reduce((n, p) => n + p.count, 0);
+  const lb = A.filter((p) => p.band === 'L').reduce((n, p) => n + p.count, 0);
+  const years = [];
+  const y0 = Math.min(...A.flatMap((p) => Object.keys(p.years).map(Number)), 2025), y1 = new Date().getUTCFullYear();
+  for (let y = y0; y <= y1; y++) years.push(y);
+  const alos = A.find((p) => p.id === 'ALOS');
+  const rtc = alos?.rtc || [];
+  const then = rtc.filter((g) => /HH/.test(g.pol || 'HH')).sort((a, b) => Math.abs(+a.date.slice(5, 7) - 7) - Math.abs(+b.date.slice(5, 7) - 7))[0];
+  el.innerHTML = `
+    <div class="stack">
+      <div class="stats">
+        <div class="stat"><b>${total.toLocaleString()}</b><span>radar acquisitions in the ASF archive over this point</span></div>
+        <div class="stat"><b>${lb.toLocaleString()}</b><span>of them L-band (Seasat, JERS-1, ALOS, UAVSAR, NISAR)</span></div>
+        <div class="stat"><b>${y0}</b><span>first year with data here</span></div>
+        <div class="stat"><b>${A.filter((p) => p.count).length}</b><span>missions</span></div>
+      </div>
+      <div class="panel"><h3>Passes per year and mission</h3><div class="chart"><canvas id="arYears"></canvas></div>
+        <p class="note">Source: ASF DAAC search API (all platforms it distributes). Older missions were recorded only within reach of receiving stations, so many regions have no data before 2006. Sentinel-1 and NISAR counts are exact per year; the others are counted per acquisition date.</p></div>
+      ${then ? `<div class="panel"><h3>L-band then and now: ALOS PALSAR ${then.date.slice(0, 4)} vs NISAR ${acqs()[acqs().length - 1].date.slice(0, 4)}</h3>
+        <div class="grid g-2" style="gap:10px">
+          <figure style="margin:0"><img src="${then.browse}" alt="ALOS PALSAR browse" loading="lazy" style="width:100%;border-radius:6px;background:#07090b"><figcaption class="small muted">ALOS PALSAR ${esc(then.pol || '')} ${then.date}, radiometrically terrain-corrected browse (ASF), whole scene ~70 km</figcaption></figure>
+          <figure style="margin:0"><canvas id="arNow" width="256" height="256" style="width:100%;aspect-ratio:1;border-radius:6px;background:#07090b"></canvas><figcaption class="small muted">NISAR ${acqs()[acqs().length - 1].date}, this ${(S.site.half_deg * 222.6).toFixed(0)} km window, HH</figcaption></figure>
+        </div>
+        <p class="note">Both are L-band (23–24 cm): the same physics, 15+ years apart, so cleared forest, new reservoirs, towns and irrigation schemes stand out. The ALOS image is the archive's browse of the whole scene (not cropped to the window; north is up after terrain correction).</p></div>` : ''}
+      <div class="panel"><h3>Missions</h3>
+        <table class="t"><tr><th>Mission</th><th>Band</th><th>Years</th><th style="text-align:right">Acquisitions here</th><th>Browse samples</th></tr>
+        ${A.map((p) => `<tr><td>${esc(p.label)}</td><td><span class="tag" style="--c:${BAND_COL[p.band]}"><i></i>${p.band}</span></td><td>${p.years}</td><td class="num">${p.count ? p.count.toLocaleString() : (p.error ? 'n/a' : '0')}</td>
+          <td>${p.items.length ? `<div class="thumbs">${p.items.filter((_, i, arr) => i % Math.max(1, Math.floor(arr.length / 6)) === 0).slice(0, 6).map((it) => `<a href="${it.browse}" target="_blank" rel="noopener" title="${esc(it.product)}"><img src="${it.browse}" loading="lazy" alt=""><span>${it.date}</span></a>`).join('')}</div>` : '<span class="muted small">–</span>'}</td></tr>`).join('')}
+        </table>
+        <p class="note">Browse images from older missions are in radar geometry (not map-aligned) and show the whole scene. Open one to see it full size.</p></div>
+    </div>`;
+  chart('arYears', {
+    type: 'bar',
+    data: { labels: years, datasets: A.filter((p) => p.count).map((p) => ({ label: p.label, data: years.map((y) => p.years[y] || 0), backgroundColor: p.id === 'NISAR' ? '#e8b04a' : p.band === 'L' ? `hsl(${195 + 25 * ARCHIVE_PLATFORMS.indexOf(p) % 60} 85% 70%)` : `hsl(215 ${10 + 8 * (ARCHIVE_PLATFORMS.indexOf(p) % 4)}% ${48 + 6 * (ARCHIVE_PLATFORMS.indexOf(p) % 3)}%)` })) },
+    options: { maintainAspectRatio: false, animation: false, scales: { x: { stacked: true }, y: { stacked: true, title: { display: true, text: 'acquisitions' } } }, plugins: { legend: { labels: { boxWidth: 10 } } } },
+  });
+  if (then) renderImage(S.stack?.id || (await getStack()).id, acqs().length - 1, 'hh', { filtered: true }).then((im) => { if ($('#arNow')) drawTo($('#arNow'), im); });
 }

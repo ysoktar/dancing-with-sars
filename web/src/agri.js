@@ -331,3 +331,117 @@ export function renderLandCover(st, opts = {}) {
   }
   return img;
 }
+
+/**
+ * Relative yield potential (per pixel and per field) from the radar crop signal.
+ * For every cropland pixel: the area under its vegetation-index curve above its own
+ * baseline between start and end of season (accumulated canopy, a standard yield proxy),
+ * and its peak value. Both are ranked within the scene and combined (0.6 / 0.4), so the
+ * index runs from 0 (weakest crop in this window) to 1 (strongest). It is RELATIVE: it
+ * ranks fields against each other, it does not give tonnes per hectare. Calibrating it
+ * needs harvest records (see the YieldSAT models in the notebooks).
+ */
+export const YIELD_CLASSES = [
+  { name: 'Very low', color: '#b91c1c' },
+  { name: 'Low', color: '#f97316' },
+  { name: 'Medium', color: '#facc15' },
+  { name: 'High', color: '#84cc16' },
+  { name: 'Very high', color: '#15803d' },
+];
+
+export function computeYield(st, A) {
+  if (A._yield) return A._yield;
+  const T = st.T, { rvi, cls, sos, eos, label } = A.arrays, days = A.summary.days;
+  const integ = new Float32Array(N).fill(NaN), peak = new Float32Array(N).fill(NaN);
+  const rs = new Float32Array(T);
+  for (let i = 0; i < N; i++) {
+    if (!(cls[i] >= 1 && cls[i] <= 3)) continue;
+    for (let t = 0; t < T; t++) rs[t] = (rvi[Math.max(0, t - 1)][i] + 2 * rvi[t][i] + rvi[Math.min(T - 1, t + 1)][i]) / 4;
+    let base = Infinity, mx = -Infinity;
+    for (let t = 0; t < T; t++) { if (rs[t] < base) base = rs[t]; if (rs[t] > mx) mx = rs[t]; }
+    const d0 = Number.isNaN(sos[i]) ? days[0] : sos[i], d1 = Number.isNaN(eos[i]) ? days[T - 1] : eos[i];
+    let s = 0;
+    for (let t = 1; t < T; t++) {
+      const a = Math.max(days[t - 1], d0), b = Math.min(days[t], d1);
+      if (b <= a) continue;
+      s += ((rs[t - 1] + rs[t]) / 2 - base) * (b - a);
+    }
+    integ[i] = s; peak[i] = mx;
+  }
+  // percentile ranks within the scene's cropland
+  const rank = (arr) => {
+    const idx = []; for (let i = 0; i < N; i++) if (Number.isFinite(arr[i])) idx.push(i);
+    idx.sort((p, q) => arr[p] - arr[q]);
+    const r = new Float32Array(N).fill(NaN);
+    idx.forEach((i, k) => { r[i] = idx.length > 1 ? k / (idx.length - 1) : 0.5; });
+    return r;
+  };
+  const ri = rank(integ), rp = rank(peak);
+  const yi = new Float32Array(N).fill(NaN), ycls = new Uint8Array(N).fill(255);
+  const hist = new Array(20).fill(0);
+  for (let i = 0; i < N; i++) {
+    if (!Number.isFinite(ri[i])) continue;
+    yi[i] = 0.6 * ri[i] + 0.4 * rp[i];
+    ycls[i] = Math.min(4, Math.floor(yi[i] * 5));
+    hist[Math.min(19, Math.floor(yi[i] * 20))]++;
+  }
+  // per field (segments of the crop calendar): mean index, spread inside the field
+  const seg = new Map();
+  for (let i = 0; i < N; i++) {
+    const l = label[i];
+    if (l < 0 || !Number.isFinite(yi[i])) continue;
+    const g = seg.get(l) || { id: l, n: 0, s: 0, s2: 0 };
+    g.n++; g.s += yi[i]; g.s2 += yi[i] * yi[i]; seg.set(l, g);
+  }
+  const fieldMean = new Map();
+  const fields = [...seg.values()].filter((g) => g.n >= 6).map((g) => {
+    const m = g.s / g.n, sd = Math.sqrt(Math.max(0, g.s2 / g.n - m * m));
+    fieldMean.set(g.id, m);
+    return { id: g.id, km2: g.n * st.pixelKm2, index: m, spread: sd, cls: Math.min(4, Math.floor(m * 5)) };
+  }).sort((a, b) => b.index - a.index);
+  const classes = YIELD_CLASSES.map((c, k) => { let n = 0; for (let i = 0; i < N; i++) if (ycls[i] === k) n++; return { ...c, km2: n * st.pixelKm2 }; });
+  // management zones: pixels well below / above their own field's mean
+  let below = 0, above = 0, inField = 0;
+  for (let i = 0; i < N; i++) {
+    const m = fieldMean.get(label[i]);
+    if (m == null || !Number.isFinite(yi[i])) continue;
+    inField++; if (yi[i] < m - 0.2) below++; else if (yi[i] > m + 0.2) above++;
+  }
+  // mean RVI curve of the weakest and strongest fifth (what makes them differ)
+  const prof = (k) => { const p = new Float64Array(T); let n = 0; for (let i = 0; i < N; i++) if (ycls[i] === k) { n++; for (let t = 0; t < T; t++) p[t] += rvi[t][i]; } return Array.from(p, (v) => (n ? v / n : null)); };
+  A._yield = {
+    arrays: { yi, ycls, fieldMean },
+    summary: { classes, fields: fields.slice(0, 120), nFields: fields.length, hist, zones: { below: inField ? below / inField : 0, above: inField ? above / inField : 0 },
+      profiles: { low: prof(0), high: prof(4) } },
+  };
+  return A._yield;
+}
+
+export function renderYield(st, A, opts = {}) {
+  const Y = computeYield(st, A), img = new ImageData(SIZE, SIZE), d = img.data, valid = st.valid;
+  const ramp = (v) => {        // red -> yellow -> green
+    const stops = [[185, 28, 28], [249, 115, 22], [250, 204, 21], [132, 204, 22], [21, 128, 61]];
+    const x = Math.max(0, Math.min(0.9999, v)) * 4, k = Math.floor(x), f = x - k;
+    return stops[k].map((c, j) => c + (stops[k + 1][j] - c) * f);
+  };
+  const lab = A.arrays.label, sel = opts.seg ?? -1;
+  for (let i = 0; i < N; i++) {
+    const j = i * 4;
+    let c;
+    const g = Math.min(255, st.hhF[opts.t ?? 0][i] * 0.45);
+    if (opts.mode === 'field') {
+      const m = Y.arrays.fieldMean.get(lab[i]);
+      c = m == null ? [g, g, g] : ramp(m);
+      const x = i % SIZE, y = (i / SIZE) | 0, id = lab[i];
+      if (id >= 0 && ((x > 0 && lab[i - 1] !== id) || (x < SIZE - 1 && lab[i + 1] !== id) || (y > 0 && lab[i - SIZE] !== id) || (y < SIZE - 1 && lab[i + SIZE] !== id))) c = id === sel ? [255, 255, 255] : [15, 15, 15];
+    } else if (opts.mode === 'zones') {
+      const m = Y.arrays.fieldMean.get(lab[i]), v = Y.arrays.yi[i];
+      c = m == null || !Number.isFinite(v) ? [g, g, g] : v < m - 0.2 ? [220, 38, 38] : v > m + 0.2 ? [34, 197, 94] : [120, 120, 120];
+    } else {
+      const v = Y.arrays.yi[i];
+      c = Number.isFinite(v) ? ramp(v) : [g, g, g];
+    }
+    d[j] = c[0]; d[j + 1] = c[1]; d[j + 2] = c[2]; d[j + 3] = valid[i] ? 255 : 0;
+  }
+  return img;
+}

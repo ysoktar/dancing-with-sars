@@ -15,8 +15,7 @@
     <a class="wordmark" href="#/">Dancing with the SARs</a>
     <nav class="nav" id="nav">
       <a href="#/" data-route="globe">Globe</a>
-      <a href="#/sites" data-route="sites">Sites</a>
-      <a href="#/agriculture" data-route="agriculture">Agriculture</a>
+      <a href="#/region" data-route="region">Select region</a>
       <a href="#/method" data-route="method">What radar can tell</a>
       <a href="#/data" data-route="data">Data &amp; methods</a>
     </nav>
@@ -28,7 +27,7 @@
 
     <aside class="rail" id="rail">
       <div class="rail-intro">
-        <p>The globe is covered with real radar images from the NASA–ISRO <b>NISAR</b> satellite, one complete 12-day orbit cycle at a time. Press play to watch the world change, or pick a site to see what changed there and why.</p>
+        <p>The globe is covered with real radar images from the NASA–ISRO <b>NISAR</b> satellite, one 12-day orbit cycle at a time. Pick any farming region to segment its crops, fields and yield potential.</p>
       </div>
       <div class="rail-list" id="railList"></div>
     </aside>
@@ -37,18 +36,21 @@
       <button class="layers-toggle" id="layersToggle" aria-expanded="false">Layers</button>
       <div class="layers-menu" id="layersMenu">
         <label id="mosaicLayer"><input type="checkbox" data-layer="mosaic" checked> NISAR world mosaic <span class="muted small" id="mosaicDates"></span></label>
-        <label><input type="checkbox" data-layer="frames" checked> Study-site frames (by date)</label>
+        <label><input type="checkbox" data-layer="native" checked> Full-resolution NISAR frames when zoomed in</label>
+        <label id="lcLayer"><input type="checkbox" data-layer="landcover"> Cropland &amp; forest (from the mosaics)</label>
         <label><input type="checkbox" data-layer="density"> Acquisitions per month</label>
-        <label><input type="checkbox" data-layer="footprints"> Frame outlines (sample)</label>
         <label><input type="checkbox" data-layer="events"> Natural events (EONET)</label>
         <label><input type="checkbox" data-layer="satellite" checked> NISAR satellite, orbit &amp; swath</label>
         <label><input type="checkbox" data-layer="night"> Night side lights</label>
       </div>
     </div>
 
+    <div class="lc-legend" id="lcLegend"><span><i style="background:#e8b04a"></i>cropland</span><span><i style="background:#15803d"></i>forest</span><span><i style="background:#84cc16"></i>tree crops / mixed</span><span><i style="background:#a8a29e"></i>grass / bare</span></div>
+    <div class="credits small muted" id="credits">Base map: NASA GIBS Blue Marble (relief + bathymetry) · Sentinel-2 cloudless 2024 by EOX (Copernicus Sentinel data), CC BY-NC-SA 4.0</div>
     <div class="timeline" id="timeline">
       <button id="playBtn" class="play" aria-label="Play timeline"><svg viewBox="0 0 16 16" width="12" height="12"><path d="M4 2.5v11l9-5.5z" fill="currentColor"/></svg></button>
       <span id="tlDate" class="tl-date"></span>
+      <span id="tlEra" class="tl-era"></span>
       <input id="tlRange" type="range" min="0" max="100" value="100" step="1" aria-label="Date" />
     </div>
 

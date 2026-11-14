@@ -118,7 +118,7 @@ const ylgn = (v) => {   // YlGn colour map, 0.08..0.95
  * Render the report into `el`. ctx: { site, box, times, agri, landcover, charts (object to register Chart instances) }.
  */
 export async function renderReport(el, ctx) {
-  const { site, box, times, agri } = ctx;
+  const { site, box, times, rvi } = ctx;
   const [w, s, e, n] = box;
   const cos = Math.cos((site.lat * Math.PI) / 180);
   const wKm = (e - w) * 111.32 * cos, hKm = (n - s) * 111.32, area = wKm * hKm;
@@ -128,9 +128,7 @@ export async function renderReport(el, ctx) {
   const frost = wx ? wx.tmin.filter((t) => t != null && t < 0).length : null;
   const rain = wx ? Math.round(wx.rain.reduce((a, b) => a + b, 0)) : null;
   const ref = wx ? referenceCurves(wx, elev?.mean ?? 200, site.lat) : null;
-  const ns = nisarSeries(times, agri.rviCrop);
-  // dominant pattern from the real NISAR classification
-  const dom = agri.patterns.filter((p) => p.km2 > 0).sort((a, b) => b.km2 - a.km2)[0];
+  const ns = nisarSeries(times, rvi);
   // climate-based expectation (the desktop script's rule)
   let expect = 'Rainfed single summer crop';
   if (elev && wx) {
@@ -151,7 +149,7 @@ export async function renderReport(el, ctx) {
       </div>
       <div class="panel">
         <h3>2 · Radar vegetation index signatures: crops and forest</h3>
-        <p class="small muted" style="margin:4px 0 10px">L-band pulses interact with plant structure (HV volume scattering) and soil moisture [1, 2, 6]. Reference curves are adapted to this window's climate (${frost ?? '–'} frost days, ${rain ?? '–'} mm rain, elevation ${elev?.mean ?? '–'} m). <b>Black dots: this window's cropland, measured by NISAR</b> (rescaled to the reference range). Climate-based expectation: ${esc(expect)}.</p>
+        <p class="small muted" style="margin:4px 0 10px">L-band pulses interact with plant structure (HV volume scattering) and soil moisture [1, 2, 6]. Reference curves are adapted to this window's climate (${frost ?? '–'} frost days, ${rain ?? '–'} mm rain, elevation ${elev?.mean ?? '–'} m). <b>Black dots: this window, measured by NISAR</b> (rescaled to the reference range). Climate-based expectation: ${esc(expect)}.</p>
         <div class="chart lg"><canvas id="rp2"></canvas></div>
       </div>
       <div class="panel">
@@ -178,7 +176,7 @@ export async function renderReport(el, ctx) {
   if (ref) {
     const line = (label, data, color, dash = [], width = 2) => ({ label, data: DAYS.map((d, i) => ({ x: d, y: data[i] })), borderColor: color, backgroundColor: color, borderDash: dash, borderWidth: width, pointRadius: 0, tension: 0.2 });
     C('rp2', { type: 'line', data: { datasets: [
-      { type: 'scatter', label: `★ This window (NISAR cropland RVI, ${ns.pts.length} passes)`, data: ns.pts.map((p) => ({ x: p.doy, y: p.v })), backgroundColor: '#f5f5f5', borderColor: '#111', pointRadius: 5, pointBorderWidth: 1.5 },
+      { type: 'scatter', label: `★ This window (NISAR RVI, ${ns.pts.length} passes)`, data: ns.pts.map((p) => ({ x: p.doy, y: p.v })), backgroundColor: '#f5f5f5', borderColor: '#111', pointRadius: 5, pointBorderWidth: 1.5 },
       line('Winter grain (wheat / barley) [4, 5]', ref.winter, '#fb8c00', [6, 4]),
       line('Single summer crop (maize / sunflower) [2, 4]', ref.summer, '#43a047', [8, 3, 2, 3]),
       line('Irrigated double crop [4]', ref.double, '#00897b', [2, 3]),

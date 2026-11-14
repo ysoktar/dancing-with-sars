@@ -5,7 +5,7 @@ import { SIZE, leeFilter, render, logRatio, maskedMean, darkSeries, otsu } from 
 import { pixelFeatures, kmeans } from './ml.js';
 import { buildRegion } from './regionFetch.js';
 import { readWorldCover } from './worldcover.js';
-import { computeAgri, renderAgri, rviStack, computeLandCover, renderLandCover, WATER_MAX, computeYield, renderYield } from './agri.js';
+import { computeAgri, renderAgri, rviStack, computeLandCover, renderLandCover, WATER_MAX } from './agri.js';
 
 const N = SIZE * SIZE;
 const stacks = new Map();      // site id -> stack
@@ -144,14 +144,6 @@ const ops = {
   agriRender({ id, mode, t, seg }) {
     const st = stacks.get(id), r = results.get(id);
     const img = renderAgri(st, mode, r.agri, { t, seg });
-    return { data: img.data.buffer, w: img.width, h: img.height, transfer: [img.data.buffer] };
-  },
-  yield({ id }) {
-    const r = results.get(id);
-    return computeYield(stacks.get(id), r.agri).summary;
-  },
-  yieldRender({ id, mode, t, seg }) {
-    const img = renderYield(stacks.get(id), results.get(id).agri, { mode, t, seg });
     return { data: img.data.buffer, w: img.width, h: img.height, transfer: [img.data.buffer] };
   },
   landcover({ id }) {

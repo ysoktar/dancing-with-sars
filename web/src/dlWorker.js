@@ -72,6 +72,7 @@ async function run({ lon, lat, season, maxDates = 16, base, mix }, progress) {
   const P = M.tile, B = M.bands.length;
   const X = [], pos = [], used = [], rgb = [];
   const ndviMax = new Float32Array(M.tile * M.tile).fill(-1), ndviMin = new Float32Array(M.tile * M.tile).fill(2);
+  const ndviSeries = [];          // per date, per pixel (for the crop calendar of the model's fields)
   const t0 = Date.UTC(season, 8, 1);
   let done = 0;
   for (const it of items) {
@@ -89,7 +90,9 @@ async function run({ lon, lat, season, maxDates = 16, base, mix }, progress) {
       if (zero / (P * P) > 0.1) continue;             // outside the tile footprint
       X.push(frame); pos.push((Date.parse(it.properties.datetime) - t0) / 86400000); used.push(it.properties.datetime.slice(0, 10));
       // greenest NDVI over the season (B08 = index 6, B04 = index 2): land that never greens up is not a field
-      for (let i = 0; i < P * P; i++) { const r = bands[2][i] + off, nir = bands[6][i] + off; const v = (nir - r) / (nir + r + 1e-6); if (v > ndviMax[i]) ndviMax[i] = v; if (v < ndviMin[i]) ndviMin[i] = v; }
+      const nd = new Float32Array(P * P);
+      for (let i = 0; i < P * P; i++) { const r = bands[2][i] + off, nir = bands[6][i] + off; const v = (nir - r) / (nir + r + 1e-6); nd[i] = v; if (v > ndviMax[i]) ndviMax[i] = v; if (v < ndviMin[i]) ndviMin[i] = v; }
+      ndviSeries.push(nd);
       rgb.push([bands[2], bands[1], bands[0]].map((a) => Float32Array.from(a, (v) => v + off)));
     } catch (e) { /* skip a scene that cannot be read */ }
     progress('Reading Sentinel-2 bands (10 m, 1.28 km window)', ++done, items.length);
@@ -191,7 +194,8 @@ async function run({ lon, lat, season, maxDates = 16, base, mix }, progress) {
   const mid = rgb[Math.floor(rgb.length / 2)], img = new Uint8ClampedArray(N * 4);
   for (let i = 0; i < N; i++) { for (let c = 0; c < 3; c++) img[i * 4 + c] = Math.min(255, (mid[c][i] / 2800) * 255); img[i * 4 + 3] = 255; }
   const classes = M.classes.slice(); classes[UNREC] = 'Cropland, crop not recognised';
-  return { cls, conf, counts, meanConf: confSum.map((s2, k) => (counts[k] ? s2 / counts[k] : 0)), dates: used, rgb: img, size: P, classes, model: M, post,
+  const calendar = cropCalendar(cls, ndviSeries, used, [0], N);
+  return { calendar, cls, conf, counts, meanConf: confSum.map((s2, k) => (counts[k] ? s2 / counts[k] : 0)), dates: used, rgb: img, size: P, classes, model: M, post,
     transfer: [cls.buffer, conf.buffer, img.buffer] };
 }
 
@@ -252,6 +256,7 @@ async function runGrid({ lon, lat, season, base, model, mix }, progress) {
   const ndviMax = new Float32Array(N).fill(-1), ndviMin = new Float32Array(N).fill(2);
   const norm = (b, v) => (v - (M.mean[b] ?? 0)) / ((M.std[b] ?? 1) || 1);
   let done = 0, rgb = null, used = [];
+  const ndviSeries = [];
   for (let s = 0; s < steps; s++) {
     days[s] = s * sd + sd / 2;
     const it = perStep[s];
@@ -266,7 +271,7 @@ async function runGrid({ lon, lat, season, base, model, mix }, progress) {
         s2.forEach((b, k) => set(b, Float32Array.from(arrs[k], (v) => norm(b, v + off))));
         set('OBS_S2', new Float32Array(N).fill(1)); tmask[s] = 1; used.push(it.properties.datetime.slice(0, 10));
         const r = arrs[s2.indexOf('B04')], n8 = arrs[s2.indexOf('B08')];
-        if (r && n8) for (let i = 0; i < N; i++) { const v = (n8[i] - r[i]) / (n8[i] + r[i] + 1e-6); if (v > ndviMax[i]) ndviMax[i] = v; if (v < ndviMin[i]) ndviMin[i] = v; }
+        if (r && n8) { const nd = new Float32Array(N); for (let i = 0; i < N; i++) { const v = (n8[i] - r[i]) / (n8[i] + r[i] + 1e-6); nd[i] = v; if (v > ndviMax[i]) ndviMax[i] = v; if (v < ndviMin[i]) ndviMin[i] = v; } ndviSeries.push(nd); }
         if (!rgb || Math.abs(s - steps / 2) < Math.abs(rgb.s - steps / 2)) rgb = { s, r: arrs[s2.indexOf('B04')], g: arrs[s2.indexOf('B03')], b: arrs[s2.indexOf('B02')], off };
       } catch (e) { /* scene unreadable: step stays empty */ }
     }
@@ -310,15 +315,47 @@ async function runGrid({ lon, lat, season, base, model, mix }, progress) {
     const w = wc ? wc[i] : 40, hard = w === 60 || w === 50 || w === 70 || w === 80 || w === 100;
     if (!field[i] || hard || ndviMax[i] < 0.3) { if (cls[i] !== BG) masked++; cls[i] = BG; }
   }
-  const yieldMap = outs.yld ? Float32Array.from(outs.yld, (v, i) => (cls[i] === BG ? NaN : v * (M.target?.yld?.std ?? 1) + (M.target?.yld?.mean ?? 0))) : null;
+  const yieldMap = null;   // yield heads are not used (no harvest data to validate them)
   const counts = new Array(K + 1).fill(0), confSum = new Array(K + 1).fill(0);
   for (let i = 0; i < N; i++) { counts[cls[i]]++; confSum[cls[i]] += conf[i]; }
   const img = new Uint8ClampedArray(N * 4);
   if (rgb) for (let i = 0; i < N; i++) { img[i * 4] = Math.min(255, ((rgb.r[i] + rgb.off) / 2800) * 255); img[i * 4 + 1] = Math.min(255, ((rgb.g[i] + rgb.off) / 2800) * 255); img[i * 4 + 2] = Math.min(255, ((rgb.b[i] + rgb.off) / 2800) * 255); img[i * 4 + 3] = 255; }
   const classes = head === 'sem' ? names : [...names, 'Not a field'];
-  return { generic: true, head, cls, conf, counts, meanConf: confSum.map((s2, k) => (counts[k] ? s2 / counts[k] : 0)), dates: used, rgb: img, size: P, classes, model: M, yieldMap,
+  const calendar = cropCalendar(cls, ndviSeries, used, [BG], N);
+  return { calendar, generic: true, head, cls, conf, counts, meanConf: confSum.map((s2, k) => (counts[k] ? s2 / counts[k] : 0)), dates: used, rgb: img, size: P, classes, model: M, yieldMap,
     post: { worldcover: !!wc, maskedWcPx: masked, maskedGreenPx: 0, mergedPx: 0, mmuHa: 0, unrecognisedPx: 0, inDomain: true, grid: `${steps} × ${sd} days`, stepsObserved: used.length },
     transfer: [cls.buffer, conf.buffer, img.buffer].concat(yieldMap ? [yieldMap.buffer] : []) };
+}
+
+/**
+ * Crop calendar of the model's fields: for every predicted crop class, the mean Sentinel-2 NDVI of its pixels on
+ * each date, then (on the 1-2-1 smoothed curve) green-up = half-way up to the peak, peak, senescence = half-way down,
+ * harvest = sharpest drop after the peak. Classes in `skip` (background) are left out.
+ */
+function cropCalendar(cls, series, dates, skip, N) {
+  const T = series.length, byClass = new Map();
+  if (T < 4 || dates.length !== T) return [];
+  for (let i = 0; i < N; i++) {
+    const c = cls[i];
+    if (skip.includes(c)) continue;
+    let g = byClass.get(c);
+    if (!g) { g = { n: 0, sum: new Float64Array(T) }; byClass.set(c, g); }
+    g.n++; for (let t = 0; t < T; t++) g.sum[t] += series[t][i];
+  }
+  const day = (t) => dates[Math.max(0, Math.min(T - 1, t))];
+  const out = [];
+  for (const [c, g] of byClass) {
+    if (g.n < 30) continue;
+    const m = Array.from(g.sum, (v) => v / g.n);
+    const s = m.map((v, t) => (m[Math.max(0, t - 1)] + 2 * v + m[Math.min(T - 1, t + 1)]) / 4);
+    let tp = 0; for (let t = 1; t < T; t++) if (s[t] > s[tp]) tp = t;
+    const lo1 = Math.min(...s.slice(0, tp + 1)), lo2 = Math.min(...s.slice(tp));
+    let tu = 0; for (let t = tp; t > 0; t--) if (s[t - 1] <= lo1 + 0.5 * (s[tp] - lo1)) { tu = t; break; }
+    let td = T - 1; for (let t = tp; t < T - 1; t++) if (s[t + 1] <= lo2 + 0.5 * (s[tp] - lo2)) { td = t + 1; break; }
+    let th = -1, best = 0; for (let t = tp + 1; t < T; t++) { const d = m[t - 1] - m[t]; if (d > best) { best = d; th = t; } }
+    out.push({ cls: c, px: g.n, ndvi: m, greenUp: day(tu), peak: day(tp), senescence: day(td), harvest: th > 0 && best > 0.1 ? day(th) : null, peakNdvi: s[tp] });
+  }
+  return out.sort((a, b) => b.px - a.px);
 }
 
 self.onmessage = async (e) => {

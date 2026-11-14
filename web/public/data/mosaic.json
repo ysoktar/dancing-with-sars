@@ -203,17 +203,12 @@
     "NADV": 474,
     "SHNA": 370
    },
-   "coverage": 0.4392,
+   "coverage": 0.4403,
    "resolutionDeg": 0.025,
    "betaFrames": 0,
    "img8k": "mosaic/20260826_20260907_8k.webp",
    "img4k": "mosaic/20260826_20260907_4k.webp",
-   "generated": "2026-11-14T10:31:08Z",
-   "gapFilledPct": 0.0,
-   "polarFill": {
-    "north": 89.98,
-    "south": -89.98
-   }
+   "generated": "2026-11-14T14:53:18Z"
   },
   {
    "id": "20260907_20260919",
@@ -229,17 +224,12 @@
     "NADV": 459,
     "SHNA": 375
    },
-   "coverage": 0.4397,
+   "coverage": 0.4407,
    "resolutionDeg": 0.025,
    "betaFrames": 0,
    "img8k": "mosaic/20260907_20260919_8k.webp",
    "img4k": "mosaic/20260907_20260919_4k.webp",
-   "generated": "2026-11-14T11:05:23Z",
-   "gapFilledPct": 0.0,
-   "polarFill": {
-    "north": 89.98,
-    "south": -89.98
-   }
+   "generated": "2026-11-14T15:00:21Z"
   },
   {
    "id": "20260919_20261001",
@@ -255,17 +245,12 @@
     "NADV": 475,
     "SHNA": 377
    },
-   "coverage": 0.4434,
+   "coverage": 0.4444,
    "resolutionDeg": 0.025,
    "betaFrames": 0,
    "img8k": "mosaic/20260919_20261001_8k.webp",
    "img4k": "mosaic/20260919_20261001_4k.webp",
-   "generated": "2026-11-14T11:37:58Z",
-   "gapFilledPct": 0.0,
-   "polarFill": {
-    "north": 89.98,
-    "south": -89.98
-   }
+   "generated": "2026-11-14T15:07:38Z"
   },
   {
    "id": "20261001_20261013",
@@ -302,12 +287,12 @@
     "NADV": 475,
     "SHNA": 373
    },
-   "coverage": 0.4433,
+   "coverage": 0.4443,
    "resolutionDeg": 0.025,
    "betaFrames": 0,
    "img8k": "mosaic/20261013_20261025_8k.webp",
    "img4k": "mosaic/20261013_20261025_4k.webp",
-   "generated": "2026-11-14T12:13:19Z",
+   "generated": "2026-11-14T15:14:32Z",
    "tiles": {
     "deg": 10,
     "px": 1000,
@@ -1295,6 +1280,10 @@
      ],
      [
       9,
+      25
+     ],
+     [
+      9,
       27
      ],
      [
@@ -1676,10 +1665,6 @@
      [
       14,
       30
-     ],
-     [
-      14,
-      32
      ],
      [
       14,
@@ -2122,11 +2107,6 @@
       35
      ]
     ]
-   },
-   "gapFilledPct": 0.0,
-   "polarFill": {
-    "north": 89.98,
-    "south": -89.98
    }
   },
   {

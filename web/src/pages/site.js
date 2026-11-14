@@ -12,6 +12,8 @@ import { liveContext } from '../liveContext.js';
 import { renderReport } from './report.js';
 import { fetchArchive, ARCHIVE_PLATFORMS } from '../archive.js';
 import { cropMix } from '../cropPrior.js';
+import { suitability, suitClass, GAEZ_TO_SPAM, ENERGY } from '../suitability.js';
+import { era5Soil, powerWetness, windowAnomaly, ERA5_LAYERS } from '../soil.js';
 
 const TABS = [
   ['overview', 'Overview'],
@@ -858,6 +860,8 @@ export function isAgSite(site) { if (site.region) return true; return AG_THEMES.
 
 const AG_TOOLS = [
   ['deep', 'Crop types & calendar', 'U-TAE or your U-Mamba / SITSMamba'],
+  ['suggest', 'What could grow here', 'Suitable crops vs crops grown now'],
+  ['moisture', 'Soil moisture', 'Four soil layers + NISAR surface wetness'],
   ['landcover', 'Cropland vs forest', 'Where fields end and forest begins'],
   ['context', 'Weather & NDVI', 'Rain, temperature, optical greenness'],
 ];
@@ -887,7 +891,7 @@ function agriTab(el) {
 
 function showAgTool() {
   destroyCharts();
-  ({ calendar: agCalendar, harvest: agHarvest, patterns: agPatterns, fields: agFields, context: agContext, landcover: toolLandcover, deep: agDeep }[S.agTool] || agDeep)($('#agTool'));
+  ({ calendar: agCalendar, harvest: agHarvest, patterns: agPatterns, fields: agFields, context: agContext, landcover: toolLandcover, deep: agDeep, suggest: agSuggest, moisture: agMoisture }[S.agTool] || agDeep)($('#agTool'));
 }
 
 async function agMap(canvas, mode, opts = {}) {
@@ -1067,6 +1071,140 @@ async function agContext(el) {
       scales: { x: { ...timeAxis(), min: xmin, max: xmax }, y: { beginAtZero: true, title: { display: true, text: 'mm / week' } }, y1: { position: 'right', grid: { display: false }, title: { display: true, text: '°C' } } },
       plugins: { legend: { labels: { boxWidth: 10 } } } },
   });
+}
+
+// ---------------------------------------------------------------- crop suggestions (GAEZ suitability vs SPAM)
+const SPAM_GROUP_NAME = { VEGE: 'Vegetables', OCER: 'Other cereals', OPUL: 'Other pulses', TROF: 'Fruit', REST: 'Other crops', RICE: 'Rice' };
+const pctTxt = (x) => `${x > 0 ? '+' : ''}${Math.round(x * 100)} %`;
+async function agSuggest(el) {
+  el.innerHTML = '<div class="empty">Reading FAO GAEZ suitability, the SPAM crop mix and ERA5-Land soil moisture for this area…</div>';
+  const b = aoiBounds(), box = [b.W, b.S, b.E, b.N];
+  const [suit, mix, soil] = await Promise.all([
+    suitability(app.base, box),
+    cropMix(app.base, box).catch(() => ({ list: [], totalHa: 0 })),
+    era5Soil(S.site.lat, S.site.lon).catch(() => null),
+  ]);
+  if (S.tab !== 'agri' || S.agTool !== 'suggest') return;
+  if (!suit.cells) { el.innerHTML = '<div class="empty">GAEZ rates no crop here (no current cropland in these cells, or outside the land mask).</div>'; return; }
+  const share = Object.fromEntries(mix.list.map((c) => [c.code, c.share]));
+  const rows = suit.list.filter((c) => !ENERGY.has(c.code)).map((c) => {
+    const sp = GAEZ_TO_SPAM[c.code];
+    const sh = sp ? sp.reduce((a, k) => a + (share[k] || 0), 0) : null;
+    const best = Math.max(c.rain ?? 0, c.irr ?? 0);
+    return { ...c, share: sh, best, irrGain: c.irr != null ? c.irr - (c.rain ?? 0) : 0 };
+  });
+  // crops sharing one SPAM class (carrot, cabbage, onion, tomato -> vegetables) are one row: the best-rated of them
+  const grownBy = new Map();
+  for (const r of rows.filter((x) => x.share >= 0.02 && x.best >= 25)) {
+    const k = (GAEZ_TO_SPAM[r.code] || []).join('+');
+    const o = grownBy.get(k);
+    if (!o) grownBy.set(k, { ...r, members: [r.name] });
+    else { o.members.push(r.name); if (r.best > o.best) Object.assign(o, { ...r, members: o.members }); }
+  }
+  const grown = [...grownBy.values()].map((r) => (r.members.length > 1 ? { ...r, name: `${SPAM_GROUP_NAME[(GAEZ_TO_SPAM[r.code] || [])[0]] || 'Group'} (best rated: ${r.name}; also ${r.members.filter((m) => m !== r.name).join(', ')})` } : r))
+    .sort((p, q) => q.share - p.share);
+  const options = rows.filter((r) => !(r.share >= 0.02) && r.best >= 40).sort((p, q) => q.best - p.best).slice(0, 12);
+  const misfit = rows.filter((r) => r.share >= 0.05 && r.best < 25);
+  const now = Date.now();
+  const root = soil ? windowAnomaly(soil, 2, now - 36 * DAY, now) : null;
+  const surf = soil ? windowAnomaly(soil, 0, now - 20 * DAY, now) : null;
+  const water = (r) => (r.irrGain >= 20 ? '<span class="muted">needs irrigation</span>' : r.rain >= 40 ? 'rain-fed OK' : r.irr != null ? '<span class="muted">irrigation helps</span>' : '');
+  const row = (r, extra) => `<tr><td>${esc(r.name)}</td><td>${suitClass(r.rain)} <span class="muted">(${Math.round(r.rain ?? 0)})</span></td><td>${r.irr != null ? `${suitClass(r.irr)} <span class="muted">(${Math.round(r.irr)})</span>` : '–'}</td><td>${water(r)}</td>${extra(r)}</tr>`;
+  const head = (last) => `<tr><th>Crop</th><th>Rain-fed</th><th>Irrigated</th><th>Water</th><th>${last}</th></tr>`;
+  el.innerHTML = `
+    <div class="panel">
+      <p class="muted" style="max-width:880px">Which crops the climate, soil and terrain of this area <b>could</b> support (FAO GAEZ v4 suitability on today's cropland) set against the crops that <b>are</b> grown here (SPAM). Crops that are suitable but not grown are options to consider; crops that are grown but rated poorly depend on irrigation or are under stress.</p>
+      ${root ? `<div class="stats" style="margin:10px 0">
+        <div class="stat"><b>${pctTxt(surf.pct)}</b><span>topsoil 0–7 cm vs normal (last 3 weeks)</span></div>
+        <div class="stat"><b>${pctTxt(root.pct)}</b><span>root zone 28–100 cm vs normal (last 5 weeks)</span></div>
+        <div class="stat"><b>${root.mean.toFixed(2)}</b><span>root-zone water, m³/m³ (normal ${root.normal.toFixed(2)})</span></div></div>` : ''}
+      <div class="chart" style="height:440px"><canvas id="sgBar"></canvas></div>
+      <h3 class="small muted" style="font-weight:500;margin-top:14px">Options: suitable here but not grown in this area</h3>
+      ${options.length ? `<table class="t">${head('Grown now')}${options.map((r) => row(r, (x) => `<td>${x.share == null ? '–' : x.share > 0 ? '< 2 %' : 'no'}</td>`)).join('')}</table>` : '<p class="muted">No crop rated medium or better that is not already grown.</p>'}
+      <h3 class="small muted" style="font-weight:500;margin-top:14px">Grown here now (SPAM) and how suitable they are</h3>
+      ${grown.length ? `<table class="t">${head('Share of crop area')}${grown.map((r) => row(r, (x) => `<td class="num">${Math.round(x.share * 100)} %</td>`)).join('')}</table>` : '<p class="muted">No SPAM crop data for this area.</p>'}
+      ${misfit.length ? `<p class="note"><b>Grown but rated below "moderate":</b> ${misfit.map((r) => esc(r.name)).join(', ')}, which probably depends on irrigation beyond GAEZ's assumptions, a microclimate, or is at risk in dry years.</p>` : ''}
+      ${root && root.pct < -0.15 ? `<p class="note">The root zone is ${Math.round(-root.pct * 100)} % drier than normal for the time of year, so rain-fed options carry more risk this season; crops marked "needs irrigation" are not realistic without water.</p>` : ''}
+      <p class="note">Suitability: ${esc(suit.source)} (${esc(suit.license)}); index 0–100, classes as in GAEZ (≥85 very high, ≥70 high, ≥55 good, ≥40 medium, ≥25 moderate, ≥10 marginal). Mean over ${suit.cells} cell(s) of 0.25° (~28 km): it describes the area, not one parcel, and knows nothing about the field's own soil, water rights, markets or prices. Crops grown: ${esc(mix.source || 'SPAM 2010')}. Soil moisture: ERA5-Land via Open-Meteo, normal = 2019–now mean for the same days of the year. Energy grasses (miscanthus, switchgrass…) are left out.</p>
+    </div>`;
+  const top = rows.slice(0, 16);
+  chart('sgBar', {
+    type: 'bar',
+    data: { labels: top.map((r) => r.name), datasets: [
+      { label: 'Rain-fed', data: top.map((r) => r.rain ?? 0), backgroundColor: '#44e07a' },
+      { label: 'Irrigated', data: top.map((r) => r.irr ?? 0), backgroundColor: '#3fb8ff' },
+    ] },
+    options: { indexAxis: 'y', maintainAspectRatio: false, animation: false,
+      scales: { x: { min: 0, max: 100, title: { display: true, text: 'GAEZ suitability index (0–100)' } }, y: { ticks: { autoSkip: false } } },
+      plugins: { legend: { labels: { boxWidth: 10 } }, tooltip: { callbacks: { afterLabel: (c) => suitClass(c.raw) } } } },
+  });
+}
+
+// ---------------------------------------------------------------- soil moisture
+async function agMoisture(el) {
+  el.innerHTML = '<div class="empty">Fetching ERA5-Land soil moisture (4 layers), NASA POWER soil wetness and computing NISAR surface wetness…</div>';
+  if (!S.stack) S.stack = await getStack();
+  const [soil, pw, wet] = await Promise.all([
+    era5Soil(S.site.lat, S.site.lon).catch((e) => ({ error: String(e) })),
+    powerWetness(S.site.lat, S.site.lon).catch(() => null),
+    call('wetness', { id: S.stack.id }).catch(() => ({ sm: [], px: 0 })),
+  ]);
+  if (S.tab !== 'agri' || S.agTool !== 'moisture') return;
+  if (soil.error) { el.innerHTML = `<div class="empty">Could not load ERA5-Land: ${esc(soil.error)}</div>`; return; }
+  const ts = times();
+  const t0 = Math.min(ts[0], Date.now() - 200 * DAY) - 30 * DAY;
+  const tOfD = (d) => Date.parse(d + 'T12:00:00Z');
+  const idx = soil.dates.map((d, i) => [tOfD(d), i]).filter(([t]) => t >= t0);
+  const now = Date.now();
+  const anoms = ERA5_LAYERS.map((_, k) => windowAnomaly(soil, k, now - 20 * DAY, now));
+  // NISAR wetness vs ERA5 0-7 cm on the pass dates
+  const surfAt = (t) => { const d = new Date(t).toISOString().slice(0, 10); const i = soil.dates.indexOf(d); return i >= 0 ? soil.layers[0].values[i] : null; };
+  const pairs = wet.sm.map((v, i) => [v, surfAt(ts[i])]).filter(([a, b2]) => a != null && b2 != null);
+  const r = pearson(pairs);
+  el.innerHTML = `
+    <div class="panel">
+      <p class="muted" style="max-width:880px">Soil water in four depths from the ERA5-Land reanalysis (~9 km), its normal for the time of year, and a relative surface-wetness index measured by NISAR itself in the low-vegetation pixels of this area.</p>
+      <table class="t" style="margin:8px 0"><tr><th>Layer</th><th style="text-align:right">last 3 weeks, m³/m³</th><th style="text-align:right">normal</th><th style="text-align:right">vs normal</th></tr>
+      ${ERA5_LAYERS.map(([, label, color], k) => (anoms[k] ? `<tr><td><span class="tag" style="--c:${color}"><i></i>${label}</span></td><td class="num">${anoms[k].mean.toFixed(3)}</td><td class="num">${anoms[k].normal.toFixed(3)}</td><td class="num">${pctTxt(anoms[k].pct)}</td></tr>` : '')).join('')}</table>
+      <div class="chart lg"><canvas id="smEra"></canvas></div>
+      <h3 class="small muted" style="font-weight:500;margin-top:14px">NISAR relative surface wetness vs ERA5-Land topsoil</h3>
+      ${wet.sm.length ? `<div class="chart sm"><canvas id="smSar"></canvas></div>
+      <p class="note">${wet.px} low-vegetation radar pixels (${Math.round(wet.km2 || 0)} km²); only passes on which a pixel is bare (low HV) count; per pixel 0 = its driest bare pass, 1 = its wettest (change detection on HH, Wagner et al. 1999); a gap = too few bare pixels that day. ${pairs.length >= 5 ? `Correlation with ERA5-Land 0–7 cm on the ${pairs.length} pass dates: <b>r = ${r.toFixed(2)}</b>${r < 0.3 ? ' (weak: vegetation growth, tillage or the different footprint dominate here)' : ''}.` : ''} It is relative and needs bare or low vegetation; under a closed canopy L-band HH follows the plants, not the soil.</p>`
+      : `<p class="muted">Not enough passes or low-vegetation pixels (${wet.px}) for the radar index.</p>`}
+      ${pw ? `<h3 class="small muted" style="font-weight:500;margin-top:14px">NASA POWER soil wetness, monthly since 2016</h3><div class="chart sm"><canvas id="smPow"></canvas></div>` : ''}
+      <p class="note">${esc(soil.source)}; ERA5-Land grid point ${soil.gridLat.toFixed(2)}°, ${soil.gridLon.toFixed(2)}°. Normal = mean of the same days of the year (±7 days) over 2019–now. ${pw ? `${esc(pw.source)} (0 = dry, 1 = saturated; surface, root zone, whole profile).` : ''} Reanalysis is model-based (weather data assimilated, ~9 km); it does not see a single field's irrigation.</p>
+    </div>`;
+  chart('smEra', {
+    type: 'line',
+    data: { datasets: [
+      ...soil.layers.map((L) => ({ label: L.label, data: idx.map(([t, i]) => ({ x: t, y: L.values[i] })), borderColor: L.color, backgroundColor: L.color, pointRadius: 0, borderWidth: 1.5 })),
+      { label: '0–7 cm normal', data: idx.map(([t, i]) => ({ x: t, y: soil.layers[0].normal[i] })), borderColor: '#3fb8ff', borderDash: [4, 4], pointRadius: 0, borderWidth: 1 },
+      { label: 'NISAR passes', data: ts.filter((t) => t >= t0).map((t) => ({ x: t, y: surfAt(t) })), borderColor: '#fff', backgroundColor: '#fff', showLine: false, pointRadius: 3 },
+    ] },
+    options: { maintainAspectRatio: false, animation: false, parsing: false, scales: { x: timeAxis(), y: { title: { display: true, text: 'volumetric soil water, m³/m³' } } }, plugins: { legend: { labels: { boxWidth: 10 } } } },
+  });
+  if (wet.sm.length) chart('smSar', {
+    type: 'line',
+    data: { datasets: [
+      { label: 'NISAR relative wetness', data: ts.map((x, i) => ({ x, y: wet.sm[i] })), borderColor: '#e8b04a', backgroundColor: '#e8b04a', pointRadius: 3, tension: 0, spanGaps: false, yAxisID: 'y' },
+      { label: 'ERA5-Land 0–7 cm', data: idx.filter(([t]) => t >= ts[0] - 5 * DAY).map(([t, i]) => ({ x: t, y: soil.layers[0].values[i] })), borderColor: '#3fb8ff', pointRadius: 0, borderWidth: 1, yAxisID: 'y1' },
+    ] },
+    options: { maintainAspectRatio: false, animation: false, parsing: false, scales: { x: { ...timeAxis(), min: ts[0] - 5 * DAY, max: ts[ts.length - 1] + 5 * DAY }, y: { min: 0, max: 1, title: { display: true, text: 'NISAR (0–1)' } }, y1: { position: 'right', grid: { display: false }, title: { display: true, text: 'm³/m³' } } }, plugins: { legend: { labels: { boxWidth: 10 } } } },
+  });
+  if (pw) chart('smPow', {
+    type: 'line',
+    data: { datasets: [['top', 'surface', '#3fb8ff'], ['root', 'root zone', '#a3e635'], ['prof', 'profile', '#e8b04a']].map(([k, label, c]) => ({ label, data: pw.months.map((m, i) => ({ x: tOfD(m), y: pw[k][i] })), borderColor: c, backgroundColor: c, pointRadius: 0, borderWidth: 1.5 })) },
+    options: { maintainAspectRatio: false, animation: false, parsing: false, scales: { x: timeAxis(), y: { min: 0, max: 1, title: { display: true, text: 'wetness (0–1)' } } }, plugins: { legend: { labels: { boxWidth: 10 } } } },
+  });
+}
+
+function pearson(p) {
+  const n = p.length;
+  if (n < 3) return 0;
+  const mx = p.reduce((a, [x]) => a + x, 0) / n, my = p.reduce((a, [, y]) => a + y, 0) / n;
+  let sxy = 0, sxx = 0, syy = 0;
+  for (const [x, y] of p) { sxy += (x - mx) * (y - my); sxx += (x - mx) ** 2; syy += (y - my) ** 2; }
+  return sxx && syy ? sxy / Math.sqrt(sxx * syy) : 0;
 }
 
 // ---------------------------------------------------------------- region summary (live regions)

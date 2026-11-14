@@ -79,7 +79,11 @@ def list_granules(t0: str, t1: str):
             break
     gs = []
     for e in out:
-        png = next((l["href"] for l in e.get("links", []) if l["href"].startswith("https") and l["href"].endswith("_LATLON.png")), None)
+        links = [l["href"] for l in e.get("links", []) if l["href"].startswith("https") and "/BROWSE/" in l["href"]]
+        png = next((h for h in links if h.endswith("_LATLON.png")), None)
+        beta = png is None
+        if beta:   # beta products: geocoded browse named <granule>.png (map projection, not a lat/lon grid)
+            png = next((h for h in links if h.endswith(e["title"] + ".png")), None)
         try:
             nums = list(map(float, e["polygons"][0][0].split()))
         except (KeyError, IndexError, TypeError, ValueError):
@@ -87,12 +91,14 @@ def list_granules(t0: str, t1: str):
         lats, lons = nums[0::2], nums[1::2]
         if not png:
             continue
+        if beta and abs(sum(lats) / len(lats)) > 60:
+            continue   # beta browse near the poles is polar-stereographic: a lat/lon fit would misplace it
         if max(lons) - min(lons) > 180:   # crosses the antimeridian: unwrap to one side (> 180°)
             lons = [x + 360 if x < 0 else x for x in lons]
         parts = e["title"].split("_")
         mode = parts[9] if len(parts) > 9 else ""
         gs.append({"id": e["title"], "png": png, "lats": lats, "lons": lons, "time": e["time_start"],
-                   "mode": mode, "dir": parts[6] if len(parts) > 6 else "", "size": float(e.get("granule_size") or 0)})
+                   "mode": mode, "dir": parts[6] if len(parts) > 6 else "", "size": float(e.get("granule_size") or 0), "beta": beta})
     # one product per scene (keep the latest processing)
     uniq = {}
     for g in gs:
@@ -119,13 +125,16 @@ def bounds_from_footprint(a: np.ndarray, lats, lons):
     return west, north - h * sy, west + w * sx, north
 
 
-def shrink(g):
-    """Download one browse image, return (x0, y0, rgba patch at mosaic resolution)."""
-    cp = CACHE / (g["id"] + ".png")
-    meta = CACHE / (g["id"] + ".json")
+def shrink(g, res=None, cache=None, lazy=False):
+    """Download one browse image, return (x0, y0, rgba patch at `res` degrees per pixel).
+    With lazy=True the cached file path is returned instead of the pixels (loaded later, saves RAM)."""
+    res = res or RES
+    cache = cache or CACHE
+    cp = cache / (g["id"] + ".png")
+    meta = cache / (g["id"] + ".json")
     if cp.exists() and meta.exists():
         x0, y0 = json.loads(meta.read_text())
-        return g, x0, y0, np.asarray(Image.open(cp))
+        return g, x0, y0, (cp if lazy else np.asarray(Image.open(cp)))
     body, _ = get(g["png"])
     im = Image.open(io.BytesIO(body)).convert("RGB")
     small = im.reduce(4)  # quick 4x box reduction for the extent fit
@@ -133,17 +142,17 @@ def shrink(g):
     if not b:
         return g, None, None, None
     west, south, east, north = b
-    x0 = (west + 180) / RES
-    y0 = (90 - north) / RES
-    pw = max(1, round((east - west) / RES))
-    ph = max(1, round((north - south) / RES))
+    x0 = (west + 180) / res
+    y0 = (90 - north) / res
+    pw = max(1, round((east - west) / res))
+    ph = max(1, round((north - south) / res))
     patch = np.asarray(im.resize((pw, ph), Image.BOX)).astype(np.uint8)
     valid = np.asarray(Image.fromarray((np.asarray(im).astype(np.int32).sum(axis=2) > 6).astype(np.uint8) * 255)
                        .resize((pw, ph), Image.BOX)) > 110  # trim the dark resampling halo, keep neighbours touching
     rgba = np.dstack([patch, valid.astype(np.uint8) * 255])
     Image.fromarray(rgba, "RGBA").save(cp)
     meta.write_text(json.dumps([round(x0), round(y0)]))
-    return g, round(x0), round(y0), rgba
+    return g, round(x0), round(y0), (cp if lazy else rgba)
 
 
 def paint(canvas, rgba, x0, y0):
@@ -188,12 +197,144 @@ def land_mask(dilate_px=3):
     return np.asarray(img) > 0
 
 
+TILE_RES = 0.01      # ~1.1 km per pixel
+TILE_DEG = 10        # 10° x 10° tiles of 1000 x 1000 px
+
+
+def fetch_all(gs, workers, res, cache, lazy=False):
+    """Download/shrink every frame in parallel. Returns [(g, x0, y0, rgba)] in painting priority order."""
+    cache.mkdir(parents=True, exist_ok=True)
+    res_list = [None] * len(gs)
+    fails = 0
+    t0 = time.time()
+    with ThreadPoolExecutor(workers) as ex:
+        futs = {ex.submit(shrink, g, res, cache, lazy): i for i, g in enumerate(gs)}
+        for k, f in enumerate(as_completed(futs)):
+            i = futs[f]
+            try:
+                r = f.result()
+                if r[3] is not None: res_list[i] = r
+                else: fails += 1
+            except Exception as e:  # noqa: BLE001
+                fails += 1
+                print(f"   ! {gs[i]['id'][:60]}: {e}", file=sys.stderr)
+            if (k + 1) % 1000 == 0:
+                el = time.time() - t0
+                print(f"   {k + 1}/{len(gs)} frames · {el / 60:.1f} min · eta {el / (k + 1) * (len(gs) - k - 1) / 60:.0f} min", flush=True)
+    return [r for r in res_list if r is not None], fails
+
+
+def _ix(y0, x0, ph, pw, Hc, Wc, row0=0):
+    """Row/column index arrays of a patch on a (band of the) global grid, with longitude wrap-around."""
+    rows = np.arange(y0, y0 + ph) - row0
+    keep = (rows >= 0) & (rows < Hc)
+    cols = (np.arange(x0, x0 + pw)) % Wc
+    return rows[keep], keep, cols
+
+
+def _load(p):
+    return p if isinstance(p, np.ndarray) else np.asarray(Image.open(p))
+
+
+def _height(p):
+    return p.shape[0] if isinstance(p, np.ndarray) else Image.open(p).size[1]
+
+
+def _weight(alpha, mode, feather_px):
+    from scipy import ndimage
+    m = alpha > 0
+    d = ndimage.distance_transform_edt(np.pad(m, 1))[1:-1, 1:-1]
+    w = np.clip(d / feather_px, 0, 1) ** 1.5
+    dual = mode.startswith("DH") or mode.startswith("QP")
+    return (w * (1.0 if dual else 0.03)).astype(np.float32)
+
+
+def blend(patches, Hc, Wc, row0, land, feather_px, gains=None):
+    """Seamless mosaic: feathered weighted mean of all frames, then every frame's brightness is matched
+    (per channel gain/offset) to the consensus of its neighbours and the frames are blended again.
+    If `gains` is given (from a coarser pass) the matching step is skipped and those gains are applied."""
+    def accumulate(gain_of):
+        acc = np.zeros((Hc, Wc, 3), np.float32)
+        wsum = np.zeros((Hc, Wc), np.float32)
+        for g, x0, y0, rgba in patches:
+            rgba = _load(rgba)
+            ph, pw = rgba.shape[:2]
+            rows, keep, cols = _ix(y0, x0, ph, pw, Hc, Wc, row0)
+            if not len(rows): continue
+            w = _weight(rgba[..., 3], g["mode"], feather_px)[keep]
+            px = rgba[keep, :, :3].astype(np.float32)
+            gn = gain_of(g)
+            if gn is not None:
+                px = np.clip(px * gn[0] + gn[1], 0, 255)
+            ix = np.ix_(rows, cols)
+            acc[ix] += px * w[..., None]
+            wsum[ix] += w
+        return acc, wsum
+
+    if gains is None:
+        acc, wsum = accumulate(lambda g: None)
+        ref = (acc / np.maximum(wsum, 1e-6)[..., None]).astype(np.uint8)
+        del acc
+        gains = {}
+        for g, x0, y0, rgba in patches:
+            rgba = _load(rgba)
+            ph, pw = rgba.shape[:2]
+            rows, keep, cols = _ix(y0, x0, ph, pw, Hc, Wc, row0)
+            m = (rgba[keep, :, 3] > 0) & (wsum[np.ix_(rows, cols)] > 0)
+            if m.sum() < 50: continue
+            pv = rgba[keep, :, :3][m].astype(np.float32); rv = ref[np.ix_(rows, cols)][m].astype(np.float32)
+            gn, of = [], []
+            for c in range(3):
+                p20, p50, p80 = np.percentile(pv[:, c], (20, 50, 80))
+                r20, r50, r80 = np.percentile(rv[:, c], (20, 50, 80))
+                k = float(np.clip((r80 - r20) / max(p80 - p20, 1.0), 0.6, 1.6))
+                gn.append(k); of.append(float(r50 - k * p50))
+            gains[g["id"]] = (np.array(gn, np.float32), np.array(of, np.float32))
+        del ref, wsum
+    acc, wsum = accumulate(lambda g: gains.get(g["id"]))
+    out = np.zeros((Hc, Wc, 4), np.uint8)
+    out[..., :3] = np.clip(acc / np.maximum(wsum, 1e-6)[..., None], 0, 255).astype(np.uint8)
+    del acc
+    out[..., 3] = ((wsum > 1e-4) & land).astype(np.uint8) * 255
+    return out, gains
+
+
+def build_tiles(gs, gains, cid, workers, out):
+    """High-resolution 10° tiles (1000 x 1000 px, ~1.1 km) for zooming in; land tiles only."""
+    tcache = ROOT / "pipeline" / ".cache" / f"mosaic_{TILE_RES}"
+    print(f"   tiles: fetching frames at {TILE_RES}°/px", flush=True)
+    patches, _ = fetch_all(gs, workers, TILE_RES, tcache, lazy=True)
+    heights = {id(p): _height(p[3]) for p in patches}
+    Wt, Ht = int(360 / TILE_RES), int(180 / TILE_RES)
+    n = int(TILE_DEG / TILE_RES)
+    land_lo = land_mask()
+    tdir = out / "tiles" / cid
+    tdir.mkdir(parents=True, exist_ok=True)
+    tiles = []
+    for r in range(Ht // n):
+        band_rows = (r * n, (r + 1) * n)
+        sel = [p for p in patches if p[2] < band_rows[1] and p[2] + heights[id(p)] > band_rows[0]]
+        if not sel: continue
+        land = np.asarray(Image.fromarray(land_lo[int(band_rows[0] * TILE_RES / RES):int(band_rows[1] * TILE_RES / RES)].astype(np.uint8) * 255)
+                          .resize((Wt, n), Image.NEAREST)) > 0
+        band, _ = blend(sel, n, Wt, band_rows[0], land, feather_px=40, gains=gains)
+        for c in range(Wt // n):
+            t = band[:, c * n:(c + 1) * n]
+            if t[..., 3].any():
+                Image.fromarray(t, "RGBA").save(tdir / f"{r}_{c}.webp", quality=82, method=4)
+                tiles.append([r, c])
+        print(f"   tiles: band {r + 1}/{Ht // n} done ({len(tiles)} tiles so far)", flush=True)
+        del band
+    return {"deg": TILE_DEG, "px": n, "path": f"mosaic/tiles/{cid}", "list": tiles}
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--start", default="2026-10-01")
     ap.add_argument("--days", type=int, default=12)
     ap.add_argument("--workers", type=int, default=16)
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--tiles", action="store_true", help=f"also write {TILE_DEG}° tiles at {TILE_RES}° per pixel for zoomed-in viewing")
     args = ap.parse_args()
     d0 = date.fromisoformat(args.start)
     d1 = d0 + timedelta(days=args.days)
@@ -206,37 +347,14 @@ def main():
     if args.dry_run:
         return
     CACHE.mkdir(parents=True, exist_ok=True)
-    canvas = np.zeros((H, W, 4), np.uint8)
-    done = fails = 0
     t0 = time.time()
-    # download in parallel, paint strictly in priority order
-    results = {}
-    with ThreadPoolExecutor(args.workers) as ex:
-        futs = {ex.submit(shrink, g): i for i, g in enumerate(gs)}
-        nxt = 0
-        for f in as_completed(futs):
-            i = futs[f]
-            try:
-                results[i] = f.result()
-            except Exception as e:  # noqa: BLE001
-                results[i] = (gs[i], None, None, None)
-                print(f"   ! {gs[i]['id'][:60]}: {e}", file=sys.stderr)
-            while nxt in results:
-                g, x0, y0, rgba = results.pop(nxt)
-                nxt += 1
-                if rgba is None:
-                    fails += 1
-                    continue
-                paint(canvas, rgba, x0, y0)
-                done += 1
-                if done % 250 == 0:
-                    el = time.time() - t0
-                    print(f"   {done}/{len(gs)} painted · {el / 60:.1f} min · eta {el / done * (len(gs) - done) / 60:.0f} min", flush=True)
-
-    # open ocean and sea ice are mostly noise in L-band browse images: keep land, ice sheets and ice shelves (+~8 km of coast)
-    np.multiply(canvas[..., 3], land_mask(), out=canvas[..., 3], casting='unsafe')   # in place: no extra 400 MB copy
-    land = canvas[..., 3] > 0
-    print(f"   painted {done}, failed {fails}, covered {land.mean() * 100:.1f}% of the globe grid")
+    patches, fails = fetch_all(gs, args.workers, RES, CACHE)
+    print(f"   {len(patches)} frames ready, {fails} failed · {(time.time() - t0) / 60:.1f} min", flush=True)
+    land = land_mask()
+    canvas, gains = blend(patches, H, W, 0, land, feather_px=16)
+    done = len(patches)
+    covered = canvas[..., 3] > 0
+    print(f"   blended {done} frames, covered {covered.mean() * 100:.1f}% of the globe grid")
     out = OUT / "mosaic"
     out.mkdir(parents=True, exist_ok=True)
     img = Image.fromarray(canvas, "RGBA")
@@ -246,10 +364,12 @@ def main():
     entry = {
         "id": cid, "start": str(d0), "end": str(d1 - timedelta(days=1)), "granules": done, "failed": fails,
         "modes": dict(Counter(g["mode"] for g in gs).most_common(6)),
-        "coverage": round(float(land.mean()), 4), "resolutionDeg": RES,
+        "coverage": round(float(covered.mean()), 4), "resolutionDeg": RES, "betaFrames": sum(g["beta"] for g in gs),
         "img8k": f"mosaic/{cid}_8k.webp", "img4k": f"mosaic/{cid}_4k.webp",
         "generated": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
     }
+    if args.tiles:
+        entry["tiles"] = build_tiles(gs, gains, cid, args.workers, out)
     (out / f"{cid}.json").write_text(json.dumps(entry, indent=1))
     # rebuild the index from every cycle's own file (safe when several builds run in parallel)
     cycles = sorted((json.loads(f.read_text()) for f in out.glob("*.json")), key=lambda c: c["start"])

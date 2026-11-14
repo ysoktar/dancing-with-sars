@@ -4,6 +4,7 @@
 
 import Globe from 'globe.gl';
 import * as THREE from 'three';
+import { twoline2satrec, propagate, gstime, eciToGeodetic, degreesLat, degreesLong } from 'satellite.js';
 import { themeOf } from './sites.js';
 
 const DEG = Math.PI / 180;
@@ -20,7 +21,10 @@ export class GlobeView {
     this.events = [];
     this.texCache = new Map();
     this.frameMeshes = new Map();
-    this.loader = new THREE.TextureLoader();
+    // textures are decoded off the main thread (createImageBitmap), so switching cycles / layers does not stall rendering
+    this.loader = new THREE.ImageBitmapLoader();
+    this.loader.setOptions({ imageOrientation: 'flipY', premultiplyAlpha: 'none' });
+    this.tiles = new Map();          // high-resolution mosaic tiles currently on the globe
     this.selected = null;
 
     this.globe = new Globe(el, { rendererConfig: { antialias: true, alpha: true, powerPreference: 'high-performance' } })
@@ -88,6 +92,17 @@ export class GlobeView {
     document.addEventListener('visibilitychange', () => (document.hidden ? this.pause() : this.resume()));
   }
 
+  _texture(url, cb, onError) {
+    this.loader.load(url, (bmp) => {
+      const tex = new THREE.Texture(bmp);
+      tex.flipY = false;                      // the bitmap is already flipped by createImageBitmap
+      tex.colorSpace = THREE.SRGBColorSpace;
+      tex.anisotropy = this.maxAniso || 4;
+      tex.needsUpdate = true;
+      cb(tex);
+    }, undefined, onError);
+  }
+
   /** Stop rendering while the globe is hidden (page in front, tab in background). */
   pause() {
     if (this.paused) return;
@@ -141,9 +156,7 @@ export class GlobeView {
       this.mosTex.delete(url); this.mosTex.set(url, t); // refresh LRU order
       return cb(t);
     }
-    this.loader.load(url, (tex) => {
-      tex.colorSpace = THREE.SRGBColorSpace;
-      tex.anisotropy = this.maxAniso;
+    this._texture(url, (tex) => {
       this.mosTex.set(url, tex);
       while (this.mosTex.size > 4) {
         const [k, old] = this.mosTex.entries().next().value;
@@ -167,7 +180,7 @@ export class GlobeView {
       this.mosaic.material.needsUpdate = true;
       this.mosaic.visible = this.layers.mosaic;
     });
-    if (this.mosaic.userData.id !== c.id) { this.mosaic.userData.id = c.id; apply(want(false)); }
+    if (this.mosaic.userData.id !== c.id) { this.mosaic.userData.id = c.id; apply(want(false)); this._clearTiles(); }
     clearTimeout(this._bigTimer);
     if (this.canBig) this._bigTimer = setTimeout(() => apply(want(true)), 700);
   }
@@ -199,6 +212,7 @@ export class GlobeView {
   update(date, force = false) {
     if (!date) return;
     this.date = date;
+    this._setSatDay(date);
     this._showMosaic(date);
     const month = date.toISOString().slice(0, 7);
     if (this.coverage && (force || month !== this._month)) {
@@ -261,12 +275,7 @@ export class GlobeView {
     this.latestReq = this.latestReq || {};
     this.latestReq[key] = url;
     if (this.texCache.has(url)) apply(this.texCache.get(url));
-    else this.loader.load(url, (tex) => {
-      tex.colorSpace = THREE.SRGBColorSpace;
-      tex.anisotropy = this.maxAniso;
-      this.texCache.set(url, tex);
-      apply(tex);
-    });
+    else this._texture(url, (tex) => { this.texCache.set(url, tex); apply(tex); });
   }
 
   _marker(site) {
@@ -285,7 +294,7 @@ export class GlobeView {
     const gold = new THREE.MeshPhongMaterial({ color: 0xd4a017, emissive: 0x4a3200, shininess: 80 });
     const panel = new THREE.MeshPhongMaterial({ color: 0x1e3a8a, emissive: 0x0b1a40, shininess: 120 });
     const mesh = new THREE.MeshPhongMaterial({ color: 0xe5e7eb, emissive: 0x333333, side: THREE.DoubleSide, transparent: true, opacity: 0.85 });
-    const s = 1.1;
+    const s = 0.55;
     const bus = new THREE.Mesh(new THREE.BoxGeometry(1.2 * s, 1.2 * s, 2.0 * s), gold);
     g.add(bus);
     const wing = new THREE.Mesh(new THREE.BoxGeometry(5 * s, 0.08 * s, 1.4 * s), panel);
@@ -302,47 +311,155 @@ export class GlobeView {
     return g;
   }
 
-  /** Satellite and its trail as plain three.js objects, updated in place (no layer rebuild per frame). */
+  /** High-resolution mosaic tiles (10°, ~1.1 km/px) are streamed in when zoomed in on a cycle that has them. */
+  _clearTiles() {
+    for (const m of this.tiles.values()) { m.geometry.dispose(); m.material.map?.dispose(); m.material.dispose(); this.globe.scene().remove(m); }
+    this.tiles.clear();
+  }
+
+  _updateTiles() {
+    const c = this.currentCycle, T = c && c.tiles;
+    const pov = this.globe.pointOfView();
+    if (!T || !this.layers.mosaic || this.paused || pov.altitude > 1.1) {
+      for (const m of this.tiles.values()) m.visible = false;
+      return;
+    }
+    const toVec = (lat, lng) => { const p = lat * DEG, l = lng * DEG; return [Math.cos(p) * Math.cos(l), Math.cos(p) * Math.sin(l), Math.sin(p)]; };
+    const cam = toVec(pov.lat, pov.lng);
+    const cap = Math.acos(1 / (1 + pov.altitude)) + 8 * DEG;          // visible spherical cap (+ margin)
+    const want = [];
+    for (const [r, col] of T.list) {
+      const N = 90 - r * T.deg, Wl = -180 + col * T.deg;
+      const v = toVec(N - T.deg / 2, Wl + T.deg / 2);
+      const ang = Math.acos(Math.max(-1, Math.min(1, v[0] * cam[0] + v[1] * cam[1] + v[2] * cam[2])));
+      if (ang < cap) want.push([ang, r, col]);
+    }
+    want.sort((a, b) => a[0] - b[0]);
+    const keep = new Set(want.slice(0, 48).map(([, r, col]) => `${r}_${col}`));
+    for (const [k, m] of this.tiles) {
+      m.visible = keep.has(k);
+      if (!keep.has(k) && this.tiles.size > 96) { m.geometry.dispose(); m.material.map?.dispose(); m.material.dispose(); this.globe.scene().remove(m); this.tiles.delete(k); }
+    }
+    let started = 0;
+    for (const k of keep) {
+      if (this.tiles.has(k) || started >= 4) continue;                  // at most 4 new tile requests per update
+      started++;
+      const [r, col] = k.split('_').map(Number);
+      const N = 90 - r * T.deg, S = N - T.deg, Wl = -180 + col * T.deg;
+      const geo = new THREE.SphereGeometry(this.globe.getGlobeRadius() * 1.0016, 24, 24, (90 + Wl) * DEG, T.deg * DEG, (90 - N) * DEG, T.deg * DEG);
+      const mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ transparent: true, depthWrite: false, opacity: 0 }));
+      mesh.renderOrder = 1;
+      this.tiles.set(k, mesh);
+      this.globe.scene().add(mesh);
+      const cyc = c.id;
+      this._texture(`${this.base}data/${T.path}/${k}.webp`, (tex) => {
+        if (this.currentCycle?.id !== cyc || this.tiles.get(k) !== mesh) { tex.dispose(); return; }
+        mesh.material.map = tex; mesh.material.opacity = 0.95; mesh.material.needsUpdate = true;
+      });
+    }
+  }
+
+  /** Real NISAR orbit (SGP4 from the latest CelesTrak TLE). The satellite flies on the timeline date with an
+   * accelerated clock (1 s = 1 min), with its ground trail and the ~242 km L-band swath to the left of the track. */
+  setTLE(tle) {
+    try { this.satrec = twoline2satrec(tle.line1, tle.line2); } catch (e) { this.satrec = null; }
+  }
+
+  _satAt(date) {
+    if (this.satrec) {
+      const pv = propagate(this.satrec, date);
+      if (pv && pv.position) {
+        const g = eciToGeodetic(pv.position, gstime(date));
+        return { lat: degreesLat(g.latitude), lng: degreesLong(g.longitude), alt: g.height / R_EARTH_KM };
+      }
+    }
+    const p = orbitLatLng((date.getTime() / 60000) % 1e6);   // fallback: circular sun-synchronous orbit
+    return p;
+  }
+
   _buildSatellite() {
     this.satGroup = new THREE.Group();
     this.sat = this._satelliteModel();
-    this.sat.scale.setScalar(0.9);
     this.satGroup.add(this.sat);
-    this.trailN = 60;
+    this.trailN = 90;                                  // 45 minutes of track, 30 s apart
     const pos = new Float32Array(this.trailN * 3), col = new Float32Array(this.trailN * 3);
-    for (let i = 0; i < this.trailN; i++) {             // fade from transparent-looking dark to amber
-      const k = i / (this.trailN - 1);
-      col.set([0.91 * k, 0.69 * k, 0.29 * k], i * 3);
-    }
+    for (let i = 0; i < this.trailN; i++) { const k = (i / (this.trailN - 1)) ** 1.5; col.set([0.91 * k, 0.69 * k, 0.29 * k], i * 3); }
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
     geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
     this.trail = new THREE.Line(geo, new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
     this.trail.frustumCulled = false;
     this.satGroup.add(this.trail);
+    // swath ribbon on the ground (near / far edge per trail point)
+    const sp = new Float32Array(this.trailN * 2 * 3), sa = new Float32Array(this.trailN * 2);
+    const idx = [];
+    for (let i = 0; i < this.trailN - 1; i++) { const a = 2 * i; idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); }
+    for (let i = 0; i < this.trailN; i++) sa[2 * i] = sa[2 * i + 1] = (i / (this.trailN - 1)) ** 2;
+    const sg = new THREE.BufferGeometry();
+    sg.setAttribute('position', new THREE.BufferAttribute(sp, 3));
+    sg.setAttribute('fade', new THREE.BufferAttribute(sa, 1));
+    sg.setIndex(idx);
+    this.swath = new THREE.Mesh(sg, new THREE.ShaderMaterial({
+      transparent: true, depthWrite: false, side: THREE.DoubleSide,
+      vertexShader: 'attribute float fade; varying float vF; void main(){ vF = fade; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
+      fragmentShader: 'varying float vF; void main(){ gl_FragColor = vec4(0.91, 0.69, 0.29, 0.38 * vF); }',
+    }));
+    this.swath.frustumCulled = false;
+    this.satGroup.add(this.swath);
     this.globe.scene().add(this.satGroup);
+    this.satClock = { base: Date.now(), t0: performance.now() };
+  }
+
+  /** Move the satellite clock to a timeline date (keeps the time of day running). */
+  _setSatDay(date) {
+    const day = Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
+    if (this.satClock && this.satClock.day !== day) { this.satClock = { day, base: day + 10 * 3600e3, t0: performance.now() }; }
   }
 
   _animate() {
-    const v = new THREE.Vector3();
-    const tick = () => {
+    const R = () => this.globe.getGlobeRadius();
+    const NEAR_KM = 440, FAR_KM = 680;                 // swath edges from nadir (left-looking L-band, ~242 km wide)
+    const dest = (lat, lng, brg, km) => {            // great-circle destination point (degrees)
+      const d = km / R_EARTH_KM, φ1 = lat * DEG, λ1 = lng * DEG, θ = brg * DEG;
+      const φ2 = Math.asin(Math.sin(φ1) * Math.cos(d) + Math.cos(φ1) * Math.sin(d) * Math.cos(θ));
+      const λ2 = λ1 + Math.atan2(Math.sin(θ) * Math.sin(d) * Math.cos(φ1), Math.cos(d) - Math.sin(φ1) * Math.sin(φ2));
+      return [φ2 / DEG, λ2 / DEG];
+    };
+    const bearing = (a, b) => {
+      const φ1 = a.lat * DEG, φ2 = b.lat * DEG, dλ = (b.lng - a.lng) * DEG;
+      return Math.atan2(Math.sin(dλ) * Math.cos(φ2), Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(dλ)) / DEG;
+    };
+    let last = 0, lastTiles = 0;
+    const tick = (now) => {
       requestAnimationFrame(tick);
-      if (this.paused || !this.layers.satellite) return;
-      // accelerated circular orbit model: 1 real second = 1 orbital minute
-      const tMin = (performance.now() - this.satT0) / 1000;
-      const p = orbitLatLng(tMin);
+      if (now - lastTiles > 250) { lastTiles = now; this._updateTiles(); }
+      if (this.paused || !this.layers.satellite || now - last < 33) return;   // ~30 fps is plenty for the satellite
+      last = now;
+      const t = this.satClock.base + (performance.now() - this.satClock.t0) * 60;   // 1 s = 1 min
+      const p = this._satAt(new Date(t));
       const c = this.globe.getCoords(p.lat, p.lng, p.alt);
       this.sat.position.set(c.x, c.y, c.z);
       this.sat.lookAt(0, 0, 0);
-      const arr = this.trail.geometry.attributes.position.array;
+      const tp = this.trail.geometry.attributes.position.array;
+      const sp = this.swath.geometry.attributes.position.array;
+      let prev = null;
       for (let i = 0; i < this.trailN; i++) {
-        const q = orbitLatLng(tMin - (this.trailN - 1 - i) * 0.6);
+        const q = this._satAt(new Date(t - (this.trailN - 1 - i) * 30000));
         const cc = this.globe.getCoords(q.lat, q.lng, q.alt);
-        v.set(cc.x, cc.y, cc.z); arr[i * 3] = v.x; arr[i * 3 + 1] = v.y; arr[i * 3 + 2] = v.z;
+        tp[i * 3] = cc.x; tp[i * 3 + 1] = cc.y; tp[i * 3 + 2] = cc.z;
+        const nxt = i < this.trailN - 1 ? this._satAt(new Date(t - (this.trailN - 2 - i) * 30000)) : null;
+        const brg = nxt ? bearing(q, nxt) : (prev ? bearing(prev, q) : 0);
+        for (const [k, km] of [[0, NEAR_KM], [1, FAR_KM]]) {
+          const [la, lo] = dest(q.lat, q.lng, brg - 90, km);      // left of the flight direction
+          const g = this.globe.getCoords(la, lo, 0.003);
+          sp.set([g.x, g.y, g.z], (2 * i + k) * 3);
+        }
+        prev = q;
       }
       this.trail.geometry.attributes.position.needsUpdate = true;
+      this.swath.geometry.attributes.position.needsUpdate = true;
     };
-    tick();
+    requestAnimationFrame(tick);
   }
 }
 

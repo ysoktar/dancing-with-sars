@@ -40,29 +40,15 @@
         <label><input type="checkbox" data-layer="density"> Acquisitions per month</label>
         <label><input type="checkbox" data-layer="footprints"> Frame outlines (sample)</label>
         <label><input type="checkbox" data-layer="events"> Natural events (EONET)</label>
-        <label><input type="checkbox" data-layer="satellite" checked> Satellite orbit</label>
+        <label><input type="checkbox" data-layer="satellite" checked> NISAR satellite, orbit &amp; swath</label>
         <label><input type="checkbox" data-layer="night"> Night side lights</label>
       </div>
     </div>
 
     <div class="timeline" id="timeline">
-      <button id="playBtn" class="play" aria-label="Play timeline"><svg viewBox="0 0 16 16" width="14" height="14"><path d="M4 2.5v11l9-5.5z" fill="currentColor"/></svg></button>
-      <div class="tl-body">
-        <div class="tl-row">
-          <span id="tlDate" class="tl-date"></span>
-          <span id="tlInfo" class="tl-info"></span>
-          <select id="tlSpeed" aria-label="Playback speed">
-            <option value="1">1 day / step</option>
-            <option value="3" selected>3 days / step</option>
-            <option value="12">12 days / step</option>
-          </select>
-        </div>
-        <div class="tl-track">
-          <canvas id="tlBars"></canvas>
-          <input id="tlRange" type="range" min="0" max="100" value="100" step="1" aria-label="Date" />
-        </div>
-        <div id="tlMonths" class="tl-months"></div>
-      </div>
+      <button id="playBtn" class="play" aria-label="Play timeline"><svg viewBox="0 0 16 16" width="12" height="12"><path d="M4 2.5v11l9-5.5z" fill="currentColor"/></svg></button>
+      <span id="tlDate" class="tl-date"></span>
+      <input id="tlRange" type="range" min="0" max="100" value="100" step="1" aria-label="Date" />
     </div>
 
     <!-- pages open in front of the globe -->

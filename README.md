@@ -38,7 +38,7 @@ Dancing with the SARs: a planetary surface fingerprint explorer
 ### Summary (under 1,500 characters)
 
 ```
-How does Earth's surface physically transform under human land use, in different hemispheres? Our 3-D globe reads real NISAR L-band radar as a structural fingerprint: HH tracks roughness and soil moisture, HV tracks plant volume, and their rise and fall over the season reveals what is happening on the ground. Worldwide NISAR mosaics for every 12-day cycle since October 2025 cover the globe, shown in the L-band dual-pol convention and as multi-date composites in which colour means change. Draw any area: every NISAR pass is fetched live from NASA's ASF archive, aligned and analysed in the browser. A radar ground-truth library built from NISAR passes over known Brazilian landscapes (soybean, sugarcane, rice, centre pivots, pasture, rainforest, Pantanal…) decodes unlabelled areas elsewhere, e.g. in Turkey, and flags structural shifts such as bare land turning into irrigated fields. For farmland the site adds deep-learning crop maps (U-TAE), per-crop NISAR curves, crop suggestions from FAO GAEZ suitability, and soil moisture in four depths plus a NISAR surface-wetness index. For hazards it detects landslide scars and gives a rain-triggered landslide outlook, and maps the physical spread of mine-tailings spills and the farmland they reach. Every result states its confidence and what SAR can and cannot measure.
+How does Earth's surface physically transform under human land use, in different hemispheres? Our 3-D globe reads real NISAR L-band radar as a structural fingerprint: HH tracks roughness and soil moisture, HV tracks plant volume, and their rise and fall over the season reveals what is happening on the ground. Worldwide NISAR mosaics for every 12-day cycle since October 2025 cover the globe, shown in the L-band dual-pol convention and as multi-date composites in which colour means change. Draw any area: every NISAR pass is fetched live from NASA's ASF archive, aligned and analysed in the browser. Compare two places, for example a Brazilian soybean belt and a Turkish plain: both are described by the same radar fingerprint, and the site says how alike they behave, which parts look alike and how their seasons line up (with a six-month shift between hemispheres). For farmland the site adds deep-learning crop maps (U-TAE), per-crop NISAR curves, crop suggestions from FAO GAEZ suitability, and soil moisture in four depths plus a NISAR surface-wetness index. For hazards it detects landslide scars and gives a rain-triggered landslide outlook, and maps the physical spread of mine-tailings spills and the farmland they reach. Every result states its confidence and what SAR can and cannot measure.
 ```
 
 ### Project Demonstration (slides ≤ 7 or video ≤ 30 s)
@@ -48,7 +48,7 @@ Suggested 7-slide deck. Each line is one slide, using screenshots from the live 
 1. **Title.** "Dancing with the SARs: a planetary surface fingerprint explorer", the globe in HH · HV · HH/HV (forest green, fields blue).
 2. **The idea.** L-band radar = roughness, moisture and plant volume. Their rhythm over a season is a fingerprint of land use, visible through cloud and darkness.
 3. **Globe and timeline.** World mosaics per cycle, multi-date composite (colour = change), 48 years of radar missions on one timeline, live satellite and swath.
-4. **Brazil → Turkey.** The radar ground-truth library from known Brazilian landscapes, an unlabelled Turkish area matched to it, structural shifts (bare 2021 → irrigated now).
+4. **Brazil ↔ Turkey.** Two areas compared by their radar fingerprint: similarity, the map of where they look alike, and season curves lined up across hemispheres.
 5. **Farmland.** Crop map (U-TAE) with per-crop NISAR curves, crop suggestions (GAEZ vs crops grown), soil moisture in four depths + NISAR wetness.
 6. **Hazards.** Landslide scars and the rain-triggered outlook; mine-spill extent and the farmland it reached, without pretending to measure contamination.
 7. **Honest and open.** What SAR can and cannot tell; confidence on every map; open code, no-login pipeline, everything computed in the browser.
@@ -73,7 +73,7 @@ Dancing with the SARs is a planetary surface fingerprint explorer built on the N
 
 • Any region, live. Draw a rectangle anywhere (3–200 km). The browser searches NASA's ASF archive, downloads every NISAR pass, mosaics frames, aligns the dates by phase correlation and filters speckle. Nothing is precomputed or installed.
 
-• Surface fingerprint (Brazil → anywhere). NISAR passes over 30 well-known Brazilian areas (soybean, sugarcane, irrigated rice, coffee, centre pivots, pasture, rainforest, eucalyptus, Pantanal, cerrado) form a radar ground-truth library. Every ~280 m block of the chosen area is matched to the nearest archetype by its structural features (mean HH and HV, their temporal spread, HV range, RVI, HV trend), with a confidence. Blocks that ESA WorldCover 2021 called bare or grassland but that now behave like cultivated or irrigated land are flagged as structural shifts (new irrigation, desert to cropland).
+• Compare two areas. Area B (coordinates, a recent area, or one of ten Brazilian reference landscapes: soybean, sugarcane, irrigated rice, coffee, centre pivots, pasture, rainforest, eucalyptus, Pantanal, cerrado) is fetched live like A. Both get the same fingerprint per ~300 m block (mean HH and HV, their pass-to-pass variability, HV range, RVI). The site reports the overlap of the two fingerprints, maps which parts of A behave like B, and lines up the season curves, optionally shifted by six months for the other hemisphere.
 
 • Farmland. Crop types from a deep network in the browser (U-TAE on Sentinel-2, with the team's U-Mamba / SITSMamba when their weights are loaded), cleaned with ESA WorldCover and the SPAM crop mix, with a crop calendar and the NISAR L-band curve of each crop; cropland vs forest from NISAR; crop suggestions (FAO GAEZ v4 suitability of 50 crops, rain-fed and irrigated, against the crops grown now and the current root-zone moisture); soil moisture in four depths (ERA5-Land), NASA POWER soil wetness and a NISAR bare-soil wetness index.
 
@@ -89,10 +89,10 @@ TOOLS
 JavaScript (Vite, globe.gl / three.js, Chart.js, satellite.js, geotiff.js, ONNX Runtime Web, Web Workers), Python (numpy, Pillow, scipy, PyTorch for the ONNX export), GitHub Actions and Pages, Google Colab and PyTorch for the deep-learning notebooks (U-Mamba, SITSMamba, U-TAE; Google's Flood Hub LSTM).
 
 WHAT MAKES IT CREATIVE
-Radar as a fingerprint, not a picture: a library of known Brazilian landscapes decodes surface change on another continent. Any region on Earth, analysed live from the public archive in the browser. One timeline spans 48 years of spaceborne radar. Every page carries an explicit honesty layer: confidence, look-alikes, and the limits of what radar can see.
+Radar as a fingerprint, not a picture: two places on different continents compared by how their surfaces behave. Any region on Earth, analysed live from the public archive in the browser. One timeline spans 48 years of spaceborne radar. Every page carries an explicit honesty layer: confidence, look-alikes, and the limits of what radar can see.
 
 WHAT WE CONSIDERED
-Data volume: the full NISAR archive is petabytes, so we use browse products (8-bit, ~165 m) and document the route to calibrated data. Values are never altered for looks: the mosaics are raw browse values, display stretches are fixed and the same everywhere. Public NISAR data over Brazil starts in June 2026, so the library covers June–November; a full-year, phase-shifted (six months between hemispheres) curve match becomes possible in 2027. Radar does not measure crop species, yield or soil chemistry directly: crop types come from a trained optical network, suitability from FAO GAEZ, and the spill tool maps physical spread, not contamination. The deep model was trained in France and says so elsewhere.
+Data volume: the full NISAR archive is petabytes, so we use browse products (8-bit, ~165 m) and document the route to calibrated data. Values are never altered for looks: the mosaics are raw browse values, display stretches are fixed and the same everywhere. We tried automatic matching to a library of Brazilian landscapes: in a leave-one-area-out test it found the right structural class for only 48 % of cells (25 % by chance), and public NISAR data over Brazil only starts in June 2026 (Brazil's dry season, when its crops are bare), so we show a transparent two-area comparison instead; a full-year library becomes possible in 2027. Radar does not measure crop species, yield or soil chemistry directly: crop types come from a trained optical network, suitability from FAO GAEZ, and the spill tool maps physical spread, not contamination. The deep model was trained in France and says so elsewhere.
 ```
 
 ### Use of Super Intelligence (SI)
@@ -184,7 +184,7 @@ SI tools were used to help write code and documentation. An AI coding assistant 
 | **Select region** | Drag a rectangle on the globe (3–200 km), or search a place first. Recent areas are remembered; every view has a shareable link (`#/region/<w>/<s>/<e>/<n>/<tab>`). |
 | **Region page** | *Summary · Crops · Parcel report · Archive 1978→ · Radar images · Change & ML · Forecast*. |
 | **Crops** | Crop types & calendar (U-TAE, or the team's U-Mamba / SITSMamba) with per-crop NISAR curves · **What could grow here** (GAEZ suitability vs crops grown) · **Soil moisture** (ERA5-Land 4 layers, NASA POWER, NISAR wetness) · Cropland vs forest · Weather & NDVI. |
-| **Change & ML** | **Surface fingerprint** (Brazil archetype library, structural shifts) · Change between two dates · Surface types (k-means) · Cropland vs forest · **Landslides** (detection + hazard outlook) · **Mine spill / mudflow** (spread + farmland reached). |
+| **Change & ML** | **Compare two areas** (similarity, where they look alike, season curves) · Change between two dates · Surface types (k-means) · Cropland vs forest · **Landslides** (detection + hazard outlook) · **Mine spill / mudflow** (spread + farmland reached). |
 | **Parcel report** | The team's parcel analyzer on the web: geometry and elevation, RVI signatures (reference crops vs the region's real NISAR curve), monthly calendar matrix, a year of NASA POWER weather, references. |
 | **Archive 1978→** | Every radar acquisition ASF holds over the area, per mission and year, browse samples, and ALOS PALSAR (L-band, 2006–11) next to NISAR. |
 | **What radar can tell** | What L-band SAR measures directly, what it estimates with other data, what it cannot see. |
@@ -310,12 +310,12 @@ GUNW and GOFF granules on the site's track are cropped the same way and paired b
 6. **Crop and mask.** 256 × 256 crop; valid = inside the footprint (shrunk ~1.5 km) and not border-connected no-data.
 7. **Speckle.** Multi-temporal Quegan–Yu filter, J_t = E_t · (1/T) Σ_k I_k / E_k with 5 × 5 local means, then a light 3 × 3 Lee pass (Lee 5 × 5 when fewer than 4 dates).
 
-### 5.10 Surface fingerprint and the Brazil archetype library (`pipeline/build_archetypes.py`, op `fingerprint` in `sarWorker.js`)
-* **Library.** Ten land uses, three well-known Brazilian areas each (soybean belt of Mato Grosso and Goiás, sugarcane around Ribeirão Preto, irrigated rice of Rio Grande do Sul, coffee of Minas Gerais, centre pivots of Cristalina / Paracatu, pasture, intact Amazon forest, eucalyptus of Três Lagoas, Pantanal wetland, cerrado savanna). For each ~9 km box, every public NISAR GCOV pass of the track that covers it most often is sampled at 32 × 32 cells (~280 m) and lightly smoothed (3 × 3), like the browser's speckle filter.
-* **Features per cell.** Mean HH and HV (roughness + moisture / plant volume), their temporal standard deviation (how much the surface changes pass to pass), HV range p90 − p10 (growth / harvest amplitude), mean RVI = 4·HV / (HH + HV), and the HV trend per 100 days (growing or being cleared). The archetype is the median over its cells; the library-wide inter-quartile range of each feature is the distance scale.
-* **Matching.** In the browser, the region's filtered series is averaged into ~280 m blocks (the library's cell size) and the same features are computed. Distance = RMS of the feature differences in library IQR units; confidence = softmax(−d²/2) over the archetypes; blocks farther than 2.5 from every archetype are "unlike the library".
-* **Structural shifts.** A block that ESA WorldCover 2021 called ≥ 60 % bare, shrub or grass and that now matches a cultivated or irrigated archetype (soybean, sugarcane, rice, coffee, pivot) with ≥ 40 % confidence: new irrigation, desert or rangeland turned into fields since 2021.
-* **Season.** Public NISAR GCOV over Brazil starts on 21 June 2026, so the library covers June–November (Brazil's dry season and the start of soybean sowing). The features avoid calendar-specific curve shapes; a full-year curve match with the six-month hemisphere shift becomes possible once NISAR has a year over Brazil (mid-2027).
+### 5.10 Comparing two areas (op `compare` in `sarWorker.js`), and why not an automatic library
+* **Features.** For both areas the filtered NISAR series is averaged into ~300 m blocks and each block gets: mean HH, mean HV, temporal standard deviation of HH and of HV, HV range (p90 − p10 over the passes) and mean RVI.
+* **Similarity.** For each feature, the overlap of the two areas' value distributions (histogram intersection, 0–100 %); the overall similarity is their mean. The map colours each block of A by its distance to B's median block, in units of the robust spread of the two areas together (< 0.7 like B, < 1.4 somewhat, otherwise unlike).
+* **Seasons.** The mean HH, HV and RVI curves of both areas are drawn on a day-of-year axis; B can be shifted by six months for the other hemisphere, and the RVI curves' correlation on the shared days is reported.
+* **Brazilian reference areas.** Ten land uses (soybean, sugarcane, irrigated rice, coffee, centre pivots, pasture, intact forest, eucalyptus, Pantanal, cerrado), three well-known areas each, are offered as one-click areas B.
+* **Why not automatic matching.** `pipeline/build_archetypes.py` builds a library from those areas (WorldCover-filtered cells, 7 features) and tests it leave-one-area-out: the right one of 10 land uses for 19 % of cells (chance 10 %), the right one of 4 structural classes for 48 % (chance 25 %; annual cropland and closed canopy 68 %, grass / wetland 21 %). On the Harran Plain (irrigated summer cotton, Turkey) it answered "forest / sugarcane", because public NISAR data over Brazil start in June 2026: in Brazil's dry season its annual crops are bare, while Turkey's are in full canopy. The library stays in the repository for a full-year rebuild in 2027.
 
 ### 5.11 Deep learning in the browser (`web/src/dlWorker.js`, `ml/export_utae_onnx.py`, `ml/export_mamba_onnx.py`)
 * **Model.** U-TAE (Garnot & Landrieu, ICCV 2021): a U-Net whose skip connections are aggregated over time by a lightweight temporal attention encoder (L-TAE). Published PASTIS weights, fold 2 (test mIoU 65.0 %, OA 84.1 %). The team's U-Mamba and SITSMamba (notebooks 01, 02) are exported with `ml/export_mamba_onnx.py` and appear in the model list when their weights are added.
@@ -395,7 +395,7 @@ Details: [ml/README.md](ml/README.md).
 * **Browse images.** Brightness values come from 8-bit browse images (≈ 100–150 m effective pixels), not calibrated γ⁰ at 10–20 m. Indices are relative. `pipeline/fetch_hdf5.py` shows the calibrated route (NASA Earthdata login).
 * **Product maturity.** Products are labelled *beta* (before Jan 2026) or *provisional* (until 25 Oct 2026) by the NISAR project and may be reprocessed.
 * **What radar does not measure.** Crop species, yield and soil chemistry are not read from radar here: crop types come from a trained optical network, suitability from FAO GAEZ, and the spill tool maps physical spread, not contamination.
-* **Fingerprint library.** 30 Brazilian areas, June–November 2026 only, ~9 km box means (other land uses inside a box blur its archetype). A match means "behaves like", not "is"; northern-hemisphere areas sit in a different season phase.
+* **Two-area comparison.** Browse brightness can differ slightly between tracks, so levels are compared more loosely than changes; similar radar behaviour does not prove the same land use; areas with little calendar overlap give no curve match.
 * **Short series.** With fewer than ~10 passes, or less than a full year, some seasons are invisible.
 * **Wet-season-only series.** At Sylhet and the Mekong, wet-season flooding can look permanent.
 * **Look-alikes.**
@@ -473,7 +473,7 @@ python3 pipeline/build_suitability.py                # FAO GAEZ v4 suitability t
 ```
 
 ```bash
-python3 pipeline/build_archetypes.py                 # Brazil radar archetype library from NISAR passes (~30 min)
+python3 pipeline/build_archetypes.py                 # Brazil reference library + self-test (~10 min)
 ```
 
 ```bash
@@ -505,7 +505,7 @@ pipeline/            data pipeline (Python, no login)
 web/                 website (Vite)
   src/main.js        boot, router, timeline
   src/globe.js       globe, mosaics, LOD tiles, satellite + swath
-  src/sarWorker.js   Web Worker: all pixel work (live regions, filters, fingerprint, landslides, spills, wetness)
+  src/sarWorker.js   Web Worker: all pixel work (live regions, filters, two-area comparison, landslides, spills, wetness)
   src/regionFetch.js live NISAR series for any point (ASF search, browse, FFT co-registration)
   src/dlWorker.js    U-TAE in the browser (Sentinel-2 COGs + ONNX Runtime)
   src/liveContext.js NASA POWER + MODIS NDVI for any region
@@ -553,7 +553,7 @@ docs/GLOBAL_DATA.md  archive sizes and download routes
 
 Bu proje NISAR uydusunun **gerçek** L-band radar verisini bir "gezegen yüzeyi parmak izi" olarak okuyan bir 3B küre sitesidir. HH yüzeyin pürüzlülüğünü ve nemini, HV bitki hacmini gösterir; ikisinin sezon boyunca inip çıkışı arazide ne olduğunun parmak izidir. Dünyanın herhangi bir yerinde bir dikdörtgen çizilir, bütün NISAR geçişleri ASF arşivinden tarayıcıda canlı çekilir ve analiz edilir:
 
-* **Yüzey parmak izi:** Brezilya'daki bilinen arazilerden (soya, şeker kamışı, çeltik, kahve, pivot sulama, mera, yağmur ormanı, okaliptüs, Pantanal, cerrado) kurulan radar kütüphanesiyle eşleştirme; 2021'de çıplak/mera olup şimdi sulu tarım gibi davranan alanlar ("yapısal değişim");
+* **İki alan karşılaştırma:** iki yerin (ör. Brezilya soya kuşağı ve Harran) radar parmak izinin ne kadar benzediği, A'nın hangi kısımlarının B'ye benzediği ve yarım küreler arası 6 ay kaydırmalı sezon eğrileri;
 * **Tarım:** U-TAE (ve takımın U-Mamba / SITSMamba modelleri) ile ürün türü haritası, ürün başına NISAR eğrisi, FAO GAEZ'e göre ürün önerileri, 4 derinlikte toprak nemi ve NISAR yüzey ıslaklığı;
 * **Afetler:** heyelan izi tespiti ve yağışa bağlı heyelan tehlikesi (7 günlük tahmin), maden atığı / çamur yayılımı ve ulaştığı tarım alanı (kirlilik değil, fiziksel yayılım);
 * değişim tespiti, sel geçmişi, parsel raporu ve 1978'e uzanan radar arşivi.

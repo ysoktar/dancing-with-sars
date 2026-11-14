@@ -509,7 +509,7 @@ function motion(el) {
 
 // ================================================================== ANALYSIS
 const TOOLS = [
-  ['fingerprint', 'Surface fingerprint', 'Match to the Brazil radar library'],
+  ['compare', 'Compare two areas', 'How alike two places behave'],
   ['change', 'Change between two dates', 'Log-ratio + automatic threshold'],
   ['classes', 'Surface types', 'Unsupervised k-means clustering'],
   ['landcover', 'Cropland vs forest', 'Seasonal swing vs canopy volume'],
@@ -534,7 +534,7 @@ function analysis(el) {
 
 function showTool() {
   destroyCharts();
-  ({ change: toolChange, classes: toolClasses, landcover: toolLandcover, floodhist: toolFloodHist, landslide: toolLandslide, spill: toolSpill, fingerprint: toolFingerprint }[S.tool] || toolChange)($('#tool'));
+  ({ change: toolChange, classes: toolClasses, landcover: toolLandcover, floodhist: toolFloodHist, landslide: toolLandslide, spill: toolSpill, fingerprint: toolFingerprint, compare: toolCompare }[S.tool] || toolChange)($('#tool'));
 }
 
 // ---------------------------------------------------------------- cropland vs forest
@@ -1073,6 +1073,114 @@ async function agContext(el) {
     ] },
     options: { maintainAspectRatio: false, animation: false, parsing: false,
       scales: { x: { ...timeAxis(), min: xmin, max: xmax }, y: { beginAtZero: true, title: { display: true, text: 'mm / week' } }, y1: { position: 'right', grid: { display: false }, title: { display: true, text: '°C' } } },
+      plugins: { legend: { labels: { boxWidth: 10 } } } },
+  });
+}
+
+// ---------------------------------------------------------------- two-area similarity
+const cmpStacks = new Map();
+function toolCompare(el) {
+  const R = S.site, b = aoiBounds();
+  const hw = (b.E - b.W) / 2, hh = (b.N - b.S) / 2;
+  let recentList = [];
+  try { recentList = JSON.parse(localStorage.getItem('dws.recentRegions2') || '[]').filter((x) => x.box.join() !== [b.W, b.S, b.E, b.N].join()); } catch (e) { /* none */ }
+  const refs = (archLib?.archetypes || []).flatMap((a) => a.sites.slice(0, 1).map((x) => ({ label: `${a.name} (Brazil)`, lat: x.lat, lon: x.lon })));
+  el.innerHTML = `
+    <div class="panel">
+      <p class="muted" style="max-width:880px">Compare this area (A) with any other area (B). Both are fetched live from NISAR and described the same way: how bright the radar is (HH, HV), how much it changes from pass to pass, and the plant index RVI. The result says how similar the two surfaces behave and which parts of A look most like B.</p>
+      <div class="controls" style="flex-wrap:wrap">
+        <label>Area B at <input id="cmpLL" placeholder="lat, lon  e.g. -12.55, -55.75" style="width:220px"></label>
+        ${recentList.length ? `<label>or a recent area <select id="cmpRecent"><option value="">–</option>${recentList.map((x, i) => `<option value="${i}">${esc(x.label || x.box.map((v) => v.toFixed(2)).join(', '))}</option>`).join('')}</select></label>` : ''}
+        <label>or a reference <select id="cmpRef"><option value="">–</option>${refs.map((x, i) => `<option value="${i}">${esc(x.label)}</option>`).join('')}</select></label>
+        <label><input type="checkbox" id="cmpShift" ${(R.lat >= 0) !== true ? '' : ''}> shift B by 6 months (other hemisphere)</label>
+        <button class="btn" id="cmpGo">Compare</button>
+      </div>
+      <div id="cmpOut"><p class="note">B is drawn with the same size as A (${(2 * hw * 111 * Math.cos((R.lat * Math.PI) / 180)).toFixed(0)} × ${(2 * hh * 111).toFixed(0)} km). Fetching it takes as long as opening a new area.</p></div>
+    </div>`;
+  if (!refs.length) fetch(`${app.base}data/archetypes.json`).then((r) => r.json()).then((j) => { archLib = j; if (S.tool === 'compare') toolCompare(el); });
+  const boxAt = (lat, lon) => { const hl = hw; return [lon - hl, lat - hh, lon + hl, lat + hh]; };
+  $('#cmpGo').addEventListener('click', async () => {
+    let box = null;
+    const ll = $('#cmpLL').value.split(/[ ,;]+/).map(Number).filter((v) => !Number.isNaN(v));
+    if ($('#cmpRecent')?.value) box = recentList[+$('#cmpRecent').value].box;
+    else if ($('#cmpRef').value) { const r0 = refs[+$('#cmpRef').value]; box = boxAt(r0.lat, r0.lon); }
+    else if (ll.length === 2 && Math.abs(ll[0]) <= 90) box = boxAt(ll[0], ll[1]);
+    if (!box) { $('#cmpOut').innerHTML = '<div class="empty">Enter "lat, lon" or pick an area.</div>'; return; }
+    const key = box.map((v) => v.toFixed(4)).join('/'), idB = `cmp_${key}`;
+    $('#cmpOut').innerHTML = '<div class="loading-region"><div class="small muted" id="cmpStage">Searching the ASF archive for area B…</div><div class="bar"><i id="cmpBar"></i></div></div>';
+    try {
+      if (!cmpStacks.has(key)) cmpStacks.set(key, call('region', { id: idB, box, maxDates: 24 }, [], (p) => {
+        if ($('#cmpStage')) $('#cmpStage').textContent = `Area B: ${p.stage}${p.total > 1 ? ` · ${p.done} / ${p.total}` : ''}`;
+        if ($('#cmpBar')) $('#cmpBar').style.width = `${p.total ? (100 * p.done) / p.total : 5}%`;
+      }));
+      const infoB = await cmpStacks.get(key);
+      if (!S.stack) S.stack = await getStack();
+      const r = await call('compare', { idA: S.stack.id, idB });
+      if (S.tool !== 'compare' || !$('#cmpOut')) return;
+      if (r.error) { $('#cmpOut').innerHTML = `<div class="empty">${esc(r.error)}</div>`; return; }
+      showCompare(r, infoB, box, $('#cmpShift').checked);
+    } catch (e) {
+      cmpStacks.delete(key);
+      $('#cmpOut').innerHTML = `<div class="empty">Area B could not be loaded: ${esc(e.message)}</div>`;
+    }
+  });
+}
+
+function showCompare(r, infoB, boxB, shift) {
+  const pct0 = Math.round(r.similarity * 100);
+  const verdict = pct0 >= 75 ? 'very similar' : pct0 >= 55 ? 'similar' : pct0 >= 35 ? 'partly similar' : 'different';
+  const tsA = times(), accB = infoB.acquisitions || [];
+  const doy = (t) => { const d = new Date(t); return (t - Date.UTC(d.getUTCFullYear(), 0, 1)) / DAY; };
+  const tB = accB.map((a) => Date.parse(a.date + 'T12:00:00Z'));
+  const off = shift ? 182 : 0;
+  const ptsA = (k) => tsA.map((t, i) => ({ x: doy(t), y: r.curves.a[k][i] })).filter((p) => p.y != null).sort((p, q) => p.x - q.x);
+  const ptsB = (k) => tB.map((t, i) => ({ x: (doy(t) + off) % 365, y: r.curves.b[k][i] })).filter((p) => p.y != null).sort((p, q) => p.x - q.x);
+  // calendar overlap and curve correlation (RVI) on the shared days of the year
+  const interp = (pts, x) => { for (let i = 1; i < pts.length; i++) if (pts[i].x >= x && pts[i - 1].x <= x) { const w = (x - pts[i - 1].x) / Math.max(pts[i].x - pts[i - 1].x, 1e-6); return pts[i - 1].y * (1 - w) + pts[i].y * w; } return null; };
+  const pa = ptsA('rvi'), pb = ptsB('rvi'), pairs = [];
+  for (let x = 0; x < 365; x += 6) { const ya = interp(pa, x), yb = interp(pb, x); if (ya != null && yb != null) pairs.push([ya, yb]); }
+  const rr = pairs.length >= 5 ? pearson(pairs) : null;
+  const latB = (boxB[1] + boxB[3]) / 2, lonB = (boxB[0] + boxB[2]) / 2;
+  $('#cmpOut').innerHTML = `
+    <div class="stats" style="margin:10px 0">
+      <div class="stat"><b>${pct0} %</b><span>overall similarity · ${verdict}</span></div>
+      <div class="stat"><b>${Math.round(r.closeShare * 100)} %</b><span>of area A behaves like B's typical surface</span></div>
+      <div class="stat"><b>${rr == null ? '–' : rr.toFixed(2)}</b><span>season-curve match (RVI)${rr == null ? ': the two calendars barely overlap' : ''}</span></div>
+    </div>
+    <div class="result">
+      <canvas class="map" id="cmpMap" width="512" height="512"></canvas>
+      <div>
+        <div class="legend" style="margin-bottom:8px"><span><i style="background:#22c55e"></i>like B</span><span><i style="background:#eab308"></i>somewhat</span><span><i style="background:#ef4444"></i>unlike B</span><span><i style="background:#111"></i>water / no data</span></div>
+        <table class="t"><tr><th>Feature</th><th style="text-align:right">A</th><th style="text-align:right">B</th><th style="text-align:right">overlap</th></tr>
+        ${r.feats.map((f) => `<tr><td>${esc(f.name)}</td><td class="num">${f.name === 'RVI' ? f.a.toFixed(2) : f.a.toFixed(0)}</td><td class="num">${f.name === 'RVI' ? f.b.toFixed(2) : f.b.toFixed(0)}</td><td class="num">${Math.round(f.overlap * 100)} %</td></tr>`).join('')}</table>
+        <p class="note">Area B: ${latB.toFixed(3)}°, ${lonB.toFixed(3)}°, ${accB.length} passes${accB.length ? ` (${accB[0].date} – ${accB[accB.length - 1].date})` : ''}.</p>
+      </div>
+    </div>
+    <h3 class="small muted" style="font-weight:500;margin-top:12px">Through the year (day of year${shift ? ', B shifted by 6 months' : ''})</h3>
+    <div class="chart sm"><canvas id="cmpCurve"></canvas></div>
+    <p class="note">Similarity = how much the distributions of the six features overlap (100 % = identical spread of values). The map colours every ~${Math.round(r.blockM)} m block of A by its distance to B's typical block. Radar brightness comes from 8-bit browse images, which can differ a little between tracks, so levels are compared more loosely than changes. Areas in different hemispheres have opposite seasons: tick "shift B by 6 months" to line up the crop calendars. Similar radar behaviour does not prove the same land use.</p>`;
+  const dist = new Float32Array(r.dist), G = r.G, img = new ImageData(G, G);
+  for (let g = 0; g < G * G; g++) {
+    const d = dist[g], o = g * 4;
+    img.data[o + 3] = 255;
+    if (d < 0) { img.data[o] = img.data[o + 1] = img.data[o + 2] = 17; continue; }
+    const c = d < 0.7 ? [34, 197, 94] : d < 1.4 ? [234, 179, 8] : [239, 68, 68];
+    const k = Math.max(0.45, 1 - Math.min(d, 3) / 6);
+    img.data[o] = c[0] * k; img.data[o + 1] = c[1] * k; img.data[o + 2] = c[2] * k;
+  }
+  const cv = $('#cmpMap'), cx = cv.getContext('2d'), tmp = new OffscreenCanvas(G, G);
+  tmp.getContext('2d').putImageData(img, 0, 0); cx.imageSmoothingEnabled = false; cx.drawImage(tmp, 0, 0, cv.width, cv.height);
+  chart('cmpCurve', {
+    type: 'line',
+    data: { datasets: [
+      { label: 'A · RVI', data: ptsA('rvi'), borderColor: '#e8b04a', backgroundColor: '#e8b04a', pointRadius: 3, tension: 0.25 },
+      { label: 'B · RVI', data: ptsB('rvi'), borderColor: '#3fb8ff', backgroundColor: '#3fb8ff', pointRadius: 3, tension: 0.25 },
+      { label: 'A · HV', data: ptsA('hv'), borderColor: 'rgba(232,176,74,0.45)', borderDash: [4, 3], pointRadius: 0, yAxisID: 'y1' },
+      { label: 'B · HV', data: ptsB('hv'), borderColor: 'rgba(63,184,255,0.45)', borderDash: [4, 3], pointRadius: 0, yAxisID: 'y1' },
+    ] },
+    options: { maintainAspectRatio: false, animation: false, parsing: false,
+      scales: { x: { type: 'linear', min: 0, max: 365, ticks: { callback: (v) => ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][Math.min(11, Math.floor(v / 30.42))] } },
+        y: { title: { display: true, text: 'RVI' } }, y1: { position: 'right', grid: { display: false }, title: { display: true, text: 'HV' } } },
       plugins: { legend: { labels: { boxWidth: 10 } } } },
   });
 }

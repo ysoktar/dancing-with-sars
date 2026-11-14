@@ -113,6 +113,43 @@ async function region({ id, box, maxDates }, progress) {
   return { ...summary(st), ...st.meta };
 }
 
+/**
+ * Structural features of ~blockM blocks of a stack: mean HH, mean HV, temporal spread of HH and HV, HV range
+ * (p90 - p10 over the passes), mean RVI. Water blocks and blocks with < 50 % valid pixels are skipped.
+ */
+const FEAT_NAMES = ['mean HH', 'mean HV', 'HH variability', 'HV variability', 'HV range', 'RVI'];
+function blockFeatures(st, blockM = 280) {
+  const T = st.T, pxM = Math.sqrt(st.pixelKm2) * 1000, B = Math.max(1, Math.round(blockM / pxM)), G = Math.floor(SIZE / B), F = 6;
+  const out = new Float32Array(G * G * F), ok = new Uint8Array(G * G);
+  const hh = new Float64Array(T), hv = new Float64Array(T);
+  const curveH = new Float64Array(T), curveV = new Float64Array(T);
+  let nb = 0;
+  for (let gy = 0; gy < G; gy++) for (let gx = 0; gx < G; gx++) {
+    hh.fill(0); hv.fill(0);
+    let n = 0;
+    for (let yy = gy * B; yy < (gy + 1) * B; yy++) for (let xx = gx * B; xx < (gx + 1) * B; xx++) {
+      const i = yy * SIZE + xx;
+      if (!st.valid[i]) continue;
+      n++;
+      for (let t = 0; t < T; t++) { hh[t] += st.hhF[t][i]; hv[t] += st.hvF[t][i]; }
+    }
+    if (n < (B * B) / 2) continue;
+    let mH = 0, mV = 0, rv = 0;
+    for (let t = 0; t < T; t++) { hh[t] /= n; hv[t] /= n; mH += hh[t]; mV += hv[t]; rv += (4 * hv[t]) / (hh[t] + hv[t] + 1); }
+    mH /= T; mV /= T; rv /= T;
+    if (mH < 25 && mV < 25) continue;
+    let sH = 0, sV = 0;
+    for (let t = 0; t < T; t++) { sH += (hh[t] - mH) ** 2; sV += (hv[t] - mV) ** 2; curveH[t] += hh[t]; curveV[t] += hv[t]; }
+    const sorted = Array.from(hv).sort((x, y) => x - y);
+    const g = gy * G + gx, o = g * F;
+    out[o] = mH; out[o + 1] = mV; out[o + 2] = Math.sqrt(sH / T); out[o + 3] = Math.sqrt(sV / T);
+    out[o + 4] = sorted[Math.floor(0.9 * (T - 1))] - sorted[Math.floor(0.1 * (T - 1))]; out[o + 5] = rv;
+    ok[g] = 1; nb++;
+  }
+  const hhC = Array.from(curveH, (v) => (nb ? v / nb : null)), hvC = Array.from(curveV, (v) => (nb ? v / nb : null));
+  return { G, B, F, out, ok, nb, blockM: B * pxM, hh: hhC, hv: hvC, rvi: hhC.map((h, t) => (h == null ? null : (4 * hvC[t]) / (h + hvC[t] + 1))) };
+}
+
 const ops = {
   load,
   region,
@@ -531,6 +568,45 @@ const ops = {
       groups: Gs.map((x, k) => ({ id: x.id, km2: area[k], conf: area[k] ? confSum[k] / area[k] : 0 })),
       archetypes: A.map((x, k) => ({ id: x.id, km2: archArea[k] })),
       unlikeKm2: area[K], shiftKm2: shiftTotal, transfer: [best.buffer, conf.buffer, arch.buffer, shift.buffer] };
+  },
+
+  /**
+   * Two-area similarity. Both areas get the same block features. Each feature is scaled by its robust spread over the
+   * two areas together. Overall similarity = mean over features of the overlap of the two value distributions
+   * (histogram intersection, 0..1). Map: each block of A coloured by its distance to B's typical (median) block.
+   */
+  compare({ idA, idB }) {
+    const A = blockFeatures(stacks.get(idA)), Bf = blockFeatures(stacks.get(idB)), F = A.F;
+    if (A.nb < 10 || Bf.nb < 10) return { error: 'Too few valid land blocks in one of the areas.' };
+    const col = (X, j) => { const v = []; for (let g = 0; g < X.ok.length; g++) if (X.ok[g]) v.push(X.out[g * F + j]); return v; };
+    const med = (v) => { const s2 = v.slice().sort((x, y) => x - y); return s2[s2.length >> 1]; };
+    const feats = [], scale = [], mB = [];
+    let overlapSum = 0;
+    for (let j = 0; j < F; j++) {
+      const a = col(A, j), b = col(Bf, j), all = a.concat(b);
+      const m = med(all), sd = Math.max(1e-3, 1.4826 * med(all.map((x) => Math.abs(x - m))));
+      const lo = Math.min(...all), hi = Math.max(...all), nbins = 24, w = (hi - lo) / nbins || 1;
+      const ha = new Float64Array(nbins), hb = new Float64Array(nbins);
+      for (const x of a) ha[Math.min(nbins - 1, Math.floor((x - lo) / w))] += 1 / a.length;
+      for (const x of b) hb[Math.min(nbins - 1, Math.floor((x - lo) / w))] += 1 / b.length;
+      let ov = 0;
+      for (let k = 0; k < nbins; k++) ov += Math.min(ha[k], hb[k]);
+      overlapSum += ov;
+      const ma = med(a), mb = med(b);
+      scale.push(sd); mB.push(mb);
+      feats.push({ name: FEAT_NAMES[j], a: ma, b: mb, diffSigma: (ma - mb) / sd, overlap: ov, histA: Array.from(ha), histB: Array.from(hb), lo, hi });
+    }
+    const dist = new Float32Array(A.G * A.G).fill(-1);
+    let close = 0;
+    for (let g = 0; g < A.ok.length; g++) {
+      if (!A.ok[g]) continue;
+      let d = 0;
+      for (let j = 0; j < F; j++) d += ((A.out[g * F + j] - mB[j]) / scale[j]) ** 2;
+      dist[g] = Math.sqrt(d / F);
+      if (dist[g] < 1) close++;
+    }
+    return { similarity: overlapSum / F, feats, G: A.G, dist: dist.buffer, closeShare: close / A.nb, blockM: A.blockM,
+      curves: { a: { hh: A.hh, hv: A.hv, rvi: A.rvi }, b: { hh: Bf.hh, hv: Bf.hv, rvi: Bf.rvi } }, transfer: [dist.buffer] };
   },
 
   pixel({ id, x, y }) {

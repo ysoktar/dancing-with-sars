@@ -6,3 +6,6 @@ __pycache__/
 *.pyc
 .DS_Store
 pipeline/.*.log
+
+# notebooks are kept locally / on Drive, not in the repository (rebuild with ml/build_notebooks.py)
+ml/notebooks/*.ipynb

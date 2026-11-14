@@ -362,6 +362,80 @@ const ops = {
       data: img.buffer, w: SIZE, h: SIZE, transfer: [img.buffer] };
   },
 
+  /**
+   * Mine-tailings spill / mudflow extent between passes a (before) and b (after): pixels whose HV dropped (vegetation
+   * buried or stripped) or whose HH went dark (smooth wet mud, standing water) by more than k robust sigmas of the
+   * change over the whole window (most of which is unchanged). Pixels that were already water are excluded. Connected
+   * patches of >= minPx pixels; each changed pixel is counted against the ESA WorldCover class it covered.
+   */
+  spill({ id, a, b, k = 3, minPx = 4 }) {
+    const st = stacks.get(id), T = st.T;
+    if (!(a < b) || b >= T) return { error: 'Pick a "before" date earlier than the "after" date.' };
+    const a0 = Math.max(0, a - 1);
+    const pre = (arr, i) => (a0 < a ? (arr[a0][i] + arr[a][i]) / 2 : arr[a][i]);
+    const dHV = new Float32Array(N), dHH = new Float32Array(N), keep = new Uint8Array(N);
+    const sv = [], sh = [];
+    for (let i = 0; i < N; i++) {
+      if (!st.valid[i]) continue;
+      const hhB = pre(st.hhF, i);
+      if (hhB < 60 || (st.wc && st.wc[i] === 80)) continue;   // already water / shadow
+      dHV[i] = st.hvF[b][i] - pre(st.hvF, i); dHH[i] = st.hhF[b][i] - hhB; keep[i] = 1;
+      if (i % 3 === 0) { sv.push(dHV[i]); sh.push(dHH[i]); }
+    }
+    const robust = (v) => {
+      const m = v.slice().sort((x, y) => x - y)[v.length >> 1];
+      const d = v.map((x) => Math.abs(x - m)).sort((x, y) => x - y)[v.length >> 1];
+      return { m, s: Math.max(2, 1.4826 * d) };
+    };
+    if (sv.length < 100) return { error: 'Too few valid radar pixels.' };
+    const nV = robust(sv), nH = robust(sh);
+    const cand = new Uint8Array(N);
+    for (let i = 0; i < N; i++) {
+      if (!keep[i]) continue;
+      const zV = (dHV[i] - nV.m) / nV.s, zH = (dHH[i] - nH.m) / nH.s;
+      if (zH < -k && st.hhF[b][i] < 70) cand[i] = 2;        // dark after: water / smooth wet mud
+      else if (zV < -k) cand[i] = 1;                         // vegetation buried / stripped
+    }
+    const lab = new Int32Array(N), patches = [], stack = [];
+    for (let i = 0; i < N; i++) {
+      if (!cand[i] || lab[i]) continue;
+      const pid = patches.length + 1, members = [];
+      stack.push(i); lab[i] = pid;
+      while (stack.length) {
+        const j = stack.pop(), x = j % SIZE, y = (j / SIZE) | 0;
+        members.push(j);
+        for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+          const xx = x + dx, yy = y + dy;
+          if (xx < 0 || yy < 0 || xx >= SIZE || yy >= SIZE) continue;
+          const q = yy * SIZE + xx;
+          if (cand[q] && !lab[q]) { lab[q] = pid; stack.push(q); }
+        }
+      }
+      if (members.length < minPx) { for (const j of members) cand[j] = 0; patches.push(null); continue; }
+      let sx = 0, sy = 0, wet = 0, crop = 0;
+      for (const j of members) { sx += j % SIZE; sy += (j / SIZE) | 0; if (cand[j] === 2) wet++; if (st.wc && st.wc[j] === 40) crop++; }
+      const n = members.length;
+      patches.push({ px: n, km2: n * st.pixelKm2, x: sx / n, y: sy / n, wet: wet / n, cropKm2: crop * st.pixelKm2 });
+    }
+    const list = patches.filter(Boolean).sort((p, q) => q.km2 - p.km2);
+    const WC = { 10: 'tree cover', 20: 'shrubland', 30: 'grassland', 40: 'cropland', 50: 'built-up', 60: 'bare / sparse', 70: 'snow / ice', 90: 'wetland', 95: 'mangroves', 100: 'moss / lichen' };
+    const byClass = {};
+    const img = new Uint8ClampedArray(N * 4);
+    for (let i = 0; i < N; i++) {
+      if (!cand[i]) continue;
+      const o = i * 4;
+      if (cand[i] === 2) { img[o] = 40; img[o + 1] = 200; img[o + 2] = 255; } else { img[o] = 255; img[o + 1] = 120; img[o + 2] = 30; }
+      img[o + 3] = 255;
+      const c = st.wc ? WC[st.wc[i]] || 'other' : 'unknown';
+      byClass[c] = (byClass[c] || 0) + st.pixelKm2;
+      if (st.wc && st.wc[i] === 40) { img[o] = 255; img[o + 1] = 40; img[o + 2] = 160; }   // on cropland: magenta
+    }
+    const total = list.reduce((s2, p) => s2 + p.km2, 0);
+    return { patches: list.slice(0, 30), n: list.length, km2: total, cropKm2: list.reduce((s2, p) => s2 + p.cropKm2, 0),
+      byClass: Object.entries(byClass).sort((p, q) => q[1] - p[1]), worldcover: !!st.wc, sigmaHV: nV.s, sigmaHH: nH.s,
+      data: img.buffer, w: SIZE, h: SIZE, transfer: [img.buffer] };
+  },
+
   pixel({ id, x, y }) {
     const st = stacks.get(id);
     const avg = (arr) => {

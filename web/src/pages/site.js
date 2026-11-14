@@ -514,6 +514,7 @@ const TOOLS = [
   ['landcover', 'Cropland vs forest', 'Seasonal swing vs canopy volume'],
   ['floodhist', 'Flood history', 'NISAR water vs 20 years of floods'],
   ['landslide', 'Landslides', 'Detect slides + rain-triggered hazard'],
+  ['spill', 'Mine spill / mudflow', 'Spread of tailings and farmland reached'],
 ];
 
 function analysis(el) {
@@ -532,7 +533,7 @@ function analysis(el) {
 
 function showTool() {
   destroyCharts();
-  ({ change: toolChange, classes: toolClasses, landcover: toolLandcover, floodhist: toolFloodHist, landslide: toolLandslide }[S.tool] || toolChange)($('#tool'));
+  ({ change: toolChange, classes: toolClasses, landcover: toolLandcover, floodhist: toolFloodHist, landslide: toolLandslide, spill: toolSpill }[S.tool] || toolChange)($('#tool'));
 }
 
 // ---------------------------------------------------------------- cropland vs forest
@@ -1073,6 +1074,51 @@ async function agContext(el) {
       scales: { x: { ...timeAxis(), min: xmin, max: xmax }, y: { beginAtZero: true, title: { display: true, text: 'mm / week' } }, y1: { position: 'right', grid: { display: false }, title: { display: true, text: '°C' } } },
       plugins: { legend: { labels: { boxWidth: 10 } } } },
   });
+}
+
+// ---------------------------------------------------------------- mine-tailings spill / mudflow extent
+function toolSpill(el) {
+  const A = acqs(), opts = A.map((a, i) => `<option value="${i}">${a.date}</option>`).join('');
+  el.innerHTML = `
+    <div class="panel">
+      <p class="muted" style="max-width:880px">When a tailings dam fails or a mine spills, mud and water bury the surface: vegetation disappears (L-band HV drops) and smooth wet mud or ponded water turns HH dark. This tool maps that <b>physical spread</b> between two passes and how much farmland it reached. It does <b>not</b> measure contamination: radar cannot see arsenic, lead or cadmium in soil. Use the result to decide where soil and water samples should be taken first.</p>
+      <div class="controls">
+        <label>Before <select id="spA">${opts}</select></label>
+        <label>After <select id="spB">${opts}</select></label>
+        <label>Sensitivity <select id="spK"><option value="2.5">high (2.5σ)</option><option value="3" selected>normal (3σ)</option><option value="4">strict (4σ)</option></select></label>
+      </div>
+      <div class="result">
+        <canvas class="map" id="spMap" width="512" height="512"></canvas>
+        <div id="spOut"><div class="empty">Mapping…</div></div>
+      </div>
+    </div>`;
+  $('#spA').value = Math.max(0, A.length - 2);
+  $('#spB').value = A.length - 1;
+  const b = aoiBounds();
+  const run = async () => {
+    const a = +$('#spA').value, bb = +$('#spB').value, tok = ++viewToken;
+    $('#spOut').innerHTML = '<div class="empty">Mapping…</div>';
+    const r = await call('spill', { id: S.stack.id, a, b: bb, k: +$('#spK').value });
+    const base = await renderImage(S.stack.id, bb, 'rgb');
+    if (tok !== viewToken || !$('#spMap')) return;
+    if (r.error) { $('#spOut').innerHTML = `<div class="empty">${esc(r.error)}</div>`; return; }
+    const ov = new Uint8ClampedArray(r.data), d = base.data;
+    for (let i = 0; i < ov.length; i += 4) if (ov[i + 3]) for (let c = 0; c < 3; c++) d[i + c] = d[i + c] * 0.25 + ov[i + c] * 0.75;
+    drawTo($('#spMap'), base);
+    const lonOf = (x) => b.W + ((x + 0.5) / SIZE) * (b.E - b.W), latOf = (y) => b.N - ((y + 0.5) / SIZE) * (b.N - b.S);
+    $('#spOut').innerHTML = `
+      <div class="stats" style="margin-bottom:10px">
+        <div class="stat"><b>${r.km2.toFixed(2)} km²</b><span>changed like a spill (${r.n} patches)</span></div>
+        <div class="stat"><b>${r.worldcover ? `${(r.cropKm2 * 100).toFixed(0)} ha` : '–'}</b><span>of it on cropland (ESA WorldCover)</span></div>
+      </div>
+      <div class="legend" style="margin-bottom:10px"><span><i style="background:#ff781e"></i>vegetation buried / stripped (HV drop)</span><span><i style="background:#28c8ff"></i>dark after: water or wet mud (HH drop)</span><span><i style="background:#ff28a0"></i>on cropland</span></div>
+      ${r.byClass.length ? `<table class="t"><tr><th>Land cover reached (WorldCover 2021)</th><th style="text-align:right">km²</th></tr>${r.byClass.map(([c, v]) => `<tr><td>${esc(c)}</td><td class="num">${v.toFixed(2)}</td></tr>`).join('')}</table>` : ''}
+      ${r.patches.length ? `<table class="t" style="margin-top:8px"><tr><th>Patch</th><th style="text-align:right">km²</th><th style="text-align:right">cropland ha</th><th style="text-align:right">wet / dark</th><th>Location</th></tr>
+      ${r.patches.slice(0, 8).map((p, i) => `<tr><td>${i + 1}</td><td class="num">${p.km2.toFixed(2)}</td><td class="num">${(p.cropKm2 * 100).toFixed(0)}</td><td class="num">${Math.round(p.wet * 100)} %</td><td class="small">${latOf(p.y).toFixed(4)}, ${lonOf(p.x).toFixed(4)}</td></tr>`).join('')}</table>` : '<p class="muted">Nothing changed like a spill between these passes.</p>'}
+      <p class="note">${A[a].date}${a > 0 ? ` (with ${A[a - 1].date})` : ''} → ${A[bb].date}. Changed = HV drop or HH darkening beyond ${$('#spK').value}× the robust spread of the change over the window (σ HV ${r.sigmaHV.toFixed(1)}, σ HH ${r.sigmaHH.toFixed(1)} browse units); pixels that were water before are left out; patches ≥ 4 radar pixels. Harvest, ploughing, floods, fire and new open-pit work change the radar in the same way: check the patches against the Optical view and local reports. Contamination (heavy metals, acidity) needs soil / water samples and laboratory analysis; hyperspectral imagery (EnMAP, PRISMA) can help target them.</p>`;
+  };
+  ['spA', 'spB', 'spK'].forEach((id) => $('#' + id).addEventListener('change', run));
+  run();
 }
 
 // ---------------------------------------------------------------- landslides

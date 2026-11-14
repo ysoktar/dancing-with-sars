@@ -1,0 +1,26 @@
+{
+ "id": "20261025_20261118",
+ "start": "2026-10-25",
+ "end": "2026-11-17",
+ "granules": 11625,
+ "failed": 0,
+ "modes": {
+  "DHDH": 6236,
+  "NASV": 3274,
+  "SHSH": 967,
+  "NADV": 320,
+  "SVSH": 296,
+  "SHNA": 273
+ },
+ "coverage": 0.422,
+ "resolutionDeg": 0.025,
+ "betaFrames": 0,
+ "img8k": "mosaic/20261025_20261118_8k.webp",
+ "img4k": "mosaic/20261025_20261118_4k.webp",
+ "generated": "2026-11-14T17:20:58Z",
+ "gapFilledPct": 5.9,
+ "polarFill": {
+  "north": 77.72,
+  "south": -88.04
+ }
+}

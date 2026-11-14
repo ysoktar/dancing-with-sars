@@ -27,31 +27,47 @@ function inside(poly, x, y) {
   return c;
 }
 
-/** Search ASF and pick the track + one granule per date. */
+/**
+ * Search ASF for every GCOV granule touching the drawn box and pick one pass geometry (path + direction).
+ * A pass is split into ~3° frames, so an area on a frame border needs two frames of the same date:
+ * all frames of the chosen path/direction on a date are kept and mosaicked later.
+ */
 export async function planRegion(lon, lat, box, maxDates = 24) {
-  const q = new URLSearchParams({ dataset: 'NISAR', processingLevel: 'GCOV', intersectsWith: `POINT(${lon.toFixed(4)} ${lat.toFixed(4)})`, output: 'jsonlite', maxResults: '2000' });
+  const [w, s, e, n] = box;
+  const poly = `POLYGON((${w} ${s},${e} ${s},${e} ${n},${w} ${n},${w} ${s}))`;
+  const q = new URLSearchParams({ dataset: 'NISAR', processingLevel: 'GCOV', intersectsWith: poly, output: 'jsonlite', maxResults: '3000' });
   const r = await fetch(`${SEARCH}?${q}`);
   if (!r.ok) throw new Error(`ASF search failed (${r.status})`);
   const all = (await r.json()).results || [];
   const gs = all.filter((g) => (g.browse || []).some((b) => b.endsWith('_LATLON.png')) && g.wkt);
-  if (!gs.length) return { granules: [], total: all.length };
-  const full = gs.filter((g) => { const p = polygon(g.wkt); return [[box[0], box[1]], [box[0], box[3]], [box[2], box[1]], [box[2], box[3]]].every(([x, y]) => inside(p, x, y)); });
-  const pool = full.length ? full : gs;
-  const key = (g) => `${g.path}|${g.frame}|${g.flightDirection}`;
-  const cnt = {};
-  pool.forEach((g) => { cnt[key(g)] = (cnt[key(g)] || 0) + 1; });
-  const track = Object.entries(cnt).sort((a, b) => b[1] - a[1])[0][0];
-  const byDate = {};
-  for (const g of pool) {
-    if (key(g) !== track) continue;
-    const d = g.startTime.slice(0, 10);
+  if (!gs.length) return { dates: [], total: all.length };
+  const corners = [[w, s], [w, n], [e, s], [e, n], [(w + e) / 2, (s + n) / 2]];
+  const key = (g) => `${g.path}|${g.flightDirection}`;
+  // per pass geometry and date: best granule per frame
+  const groups = {};
+  for (const g of gs) {
+    const d = g.startTime.slice(0, 10), k = key(g);
     const score = [!(g.collectionName || '').includes('PROVISIONAL') ? 1 : 0, g.crid || ''];
-    const prev = byDate[d];
-    if (!prev || score[0] > prev.s[0] || (score[0] === prev.s[0] && score[1] > prev.s[1])) byDate[d] = { g, s: score };
+    const slot = ((groups[k] = groups[k] || {})[d] = groups[k][d] || {});
+    const prev = slot[g.frame];
+    if (!prev || score[0] > prev.s[0] || (score[0] === prev.s[0] && score[1] > prev.s[1])) slot[g.frame] = { g, s: score };
   }
-  const dates = Object.keys(byDate).sort().slice(-maxDates);
-  const [path, frame, dir] = track.split('|');
-  return { granules: dates.map((d) => byDate[d].g), track: { path: +path, frame: +frame, dir }, fullCover: full.length, total: all.length };
+  // a date "covers" the box when every corner (and the centre) lies inside one of its frames
+  const covers = (frames) => corners.every(([x, y]) => frames.some((f) => inside(polygon(f.g.wkt), x, y)));
+  let best = null;
+  for (const [k, byDate] of Object.entries(groups)) {
+    const ds = Object.keys(byDate);
+    const full = ds.filter((d) => covers(Object.values(byDate[d]))).length;
+    const sc = [full, ds.length];
+    if (!best || sc[0] > best.sc[0] || (sc[0] === best.sc[0] && sc[1] > best.sc[1])) best = { k, sc, byDate };
+  }
+  const ds = Object.keys(best.byDate).sort();
+  const fullDates = ds.filter((d) => covers(Object.values(best.byDate[d])));
+  const use = (fullDates.length >= 4 ? fullDates : ds).slice(-maxDates);
+  const [path, dir] = best.k.split('|');
+  const frames = [...new Set(use.flatMap((d) => Object.keys(best.byDate[d])))].map(Number).sort((x, y) => x - y);
+  return { dates: use.map((d) => ({ date: d, granules: Object.values(best.byDate[d]).map((f) => f.g) })), track: { path: +path, frame: frames.join('+'), dir },
+    fullCover: fullDates.length, total: all.length };
 }
 
 async function loadBrowse(g) {
@@ -229,15 +245,16 @@ export async function buildRegion({ box, maxDates = 24 }, progress = () => {}) {
   const lon = (box[0] + box[2]) / 2, lat = (box[1] + box[3]) / 2;
   progress('Searching the ASF archive', 0, 1);
   const plan = await planRegion(lon, lat, box, maxDates);
-  if (!plan.granules.length) throw new Error(plan.total ? 'NISAR has passes here, but none with a geocoded browse image yet.' : 'No NISAR GCOV acquisitions cover this point yet.');
+  if (!plan.dates.length) throw new Error(plan.total ? 'NISAR has passes here, but none with a geocoded browse image yet.' : 'No NISAR GCOV acquisitions cover this area yet.');
+  const all = plan.dates.flatMap((d) => d.granules.map((g) => ({ g, date: d.date })));
   const items = [];
   let done = 0;
-  const queue = plan.granules.slice();
+  const queue = all.slice();
   const worker = async () => {
     while (queue.length) {
-      const g = queue.shift();
-      try { const it = await loadBrowse(g); if (it) items.push(it); } catch (e) { /* skip a failed date */ }
-      progress('Downloading radar images', ++done, plan.granules.length);
+      const { g, date } = queue.shift();
+      try { const it = await loadBrowse(g); if (it) { it.date = date; items.push(it); } } catch (e) { /* skip a failed frame */ }
+      progress('Downloading radar images', ++done, all.length);
     }
   };
   await Promise.all([worker(), worker(), worker(), worker()]);
@@ -246,23 +263,38 @@ export async function buildRegion({ box, maxDates = 24 }, progress = () => {}) {
   progress('Aligning the dates (phase correlation)', 0, 1);
   coregister(items, lon, lat, box);
   const N = SIZE * SIZE, hh = [], hv = [], acqs = [];
-  const validAll = new Uint8Array(N).fill(1);
-  for (const it of items) {
-    const rgba = sample(it, box, SIZE);
-    const v = validMask(it, box, rgba);
-    let vf = 0; for (let i = 0; i < N; i++) vf += v[i];
-    vf /= N;
-    if (vf < 0.6) { it.bmp.close(); continue; }
-    const H = new Float32Array(N), V = new Float32Array(N);
-    let sh = 0, sv = 0, n = 0;
-    for (let i = 0; i < N; i++) { H[i] = rgba[i * 4]; V[i] = rgba[i * 4 + 1]; if (v[i]) { sh += H[i]; sv += V[i]; n++; } else validAll[i] = 0; }
+  const valid = new Uint8Array(N), seen = new Uint16Array(N);
+  const dates = [...new Set(items.map((it) => it.date))].sort();
+  for (const date of dates) {
+    // mosaic the frames of this date: each pixel from the first frame that has valid data there
+    const H = new Float32Array(N), V = new Float32Array(N), have = new Uint8Array(N);
+    const parts = items.filter((it) => it.date === date);
+    for (const it of parts) {
+      const rgba = sample(it, box, SIZE), v = validMask(it, box, rgba);
+      for (let i = 0; i < N; i++) if (v[i] && !have[i]) { H[i] = rgba[i * 4]; V[i] = rgba[i * 4 + 1]; have[i] = 1; }
+      it.bmp.close();
+    }
+    let vf = 0, sh = 0, sv = 0;
+    for (let i = 0; i < N; i++) if (have[i]) { vf++; sh += H[i]; sv += V[i]; }
+    if (vf / N < 0.5) continue;
+    for (let i = 0; i < N; i++) if (have[i]) seen[i]++;
     hh.push(H); hv.push(V);
-    acqs.push({ date: it.g.startTime.slice(0, 10), time: it.g.startTime, granule: it.g.productID || it.g.granuleName, collection: it.g.collectionName,
-      browse: it.png, h5: it.g.downloadUrl, valid: +vf.toFixed(3), hh: +(sh / n).toFixed(2), hv: +(sv / n).toFixed(2), coregShiftKm: it.shiftKm, kml: it.kml });
-    it.bmp.close();
+    const g0 = parts[0];
+    acqs.push({ date, time: g0.g.startTime, granule: parts.map((p) => p.g.productID || p.g.granuleName).join(' + '), frames: parts.length, collection: g0.g.collectionName,
+      browse: g0.png, h5: g0.g.downloadUrl, valid: +(vf / N).toFixed(3), hh: +(sh / vf).toFixed(2), hv: +(sv / vf).toFixed(2), coregShiftKm: g0.shiftKm, kml: parts.every((p) => p.kml) });
   }
-  if (hh.length < 2) throw new Error(`Only ${hh.length} usable pass(es) cover this window. Try a point nearer the middle of a NISAR swath.`);
-  return { hh, hv, valid: validAll, acquisitions: acqs, track: plan.track, box, fullCover: plan.fullCover };
+  if (hh.length < 2) throw new Error(`Only ${hh.length} usable pass(es) cover this area: it may lie at the edge of NISAR's swaths. Try drawing it slightly to one side.`);
+  // pixels seen on at least 60 % of the passes count as valid (the stack fills the others from neighbouring dates)
+  for (let i = 0; i < N; i++) valid[i] = seen[i] >= 0.6 * hh.length ? 1 : 0;
+  for (let t = 0; t < hh.length; t++) {
+    // gaps on a single date: carry the nearest date's value so filters and change maps are not polluted by zeros
+    for (let i = 0; i < N; i++) if (!hh[t][i] && !hv[t][i] && valid[i]) {
+      for (let k = 1; k < hh.length; k++) { const u = t - k >= 0 ? t - k : null, w2 = t + k < hh.length ? t + k : null;
+        const src = u != null && (hh[u][i] || hv[u][i]) ? u : (w2 != null && (hh[w2][i] || hv[w2][i]) ? w2 : null);
+        if (src != null) { hh[t][i] = hh[src][i]; hv[t][i] = hv[src][i]; break; } }
+    }
+  }
+  return { hh, hv, valid, acquisitions: acqs, track: plan.track, box, fullCover: plan.fullCover };
 }
 
 /** One whole browse frame for the globe: bounds + a canvas with no-data made transparent (max 2048 px). */
@@ -280,14 +312,26 @@ export async function loadFrame(g, reference = null) {
   for (let i = 0; i < n; i++) dist[i] = d[i * 4] + d[i * 4 + 1] + d[i * 4 + 2] <= 6 ? 0 : 1e9;
   for (let y = 0; y < h; y++) for (let xx = 0; xx < w; xx++) { const i = y * w + xx; if (!dist[i]) continue; let v = dist[i]; if (xx) v = Math.min(v, dist[i - 1] + 1); if (y) v = Math.min(v, dist[i - w] + 1); if (xx && y) v = Math.min(v, dist[i - w - 1] + 1.414); if (y && xx < w - 1) v = Math.min(v, dist[i - w + 1] + 1.414); dist[i] = v; }
   for (let y = h - 1; y >= 0; y--) for (let xx = w - 1; xx >= 0; xx--) { const i = y * w + xx; if (!dist[i]) continue; let v = dist[i]; if (xx < w - 1) v = Math.min(v, dist[i + 1] + 1); if (y < h - 1) v = Math.min(v, dist[i + w] + 1); if (xx < w - 1 && y < h - 1) v = Math.min(v, dist[i + w + 1] + 1.414); if (y < h - 1 && xx) v = Math.min(v, dist[i + w - 1] + 1.414); dist[i] = v; }
-  const rim = 4, ramp = Math.max(24, Math.round(Math.max(w, h) * 0.04));
+  const rim = Math.max(8, Math.round(Math.max(w, h) * 0.006)), ramp = Math.max(32, Math.round(Math.max(w, h) * 0.05));
   // brightness / colour matched to the mosaic underneath (same consensus the world mosaic uses)
   let gain = null;
   if (reference) {
-    const st = [0, 1, 2].map(() => ({ s: 0, s2: 0, n: 0 }));
-    for (let i = 0; i < n; i += 7) if (dist[i] > ramp) for (let ch = 0; ch < 3; ch++) { const v = d[i * 4 + ch]; st[ch].s += v; st[ch].s2 += v * v; st[ch].n++; }
-    const ref = reference(it.bounds);
-    if (ref && st[0].n > 100) gain = st.map((q, ch) => { const m = q.s / q.n, sd = Math.sqrt(Math.max(1, q.s2 / q.n - m * m)); const g2 = Math.max(0.5, Math.min(1.8, ref[ch].sd / sd)); return [g2, ref[ch].m - g2 * m]; });
+    // paired samples: each frame pixel against the mosaic pixel at the same place, so only the frame's own footprint counts
+    const [W0, S0, E0, N0] = it.bounds;
+    const F = [0, 1, 2].map(() => ({ s: 0, s2: 0 })), R = [0, 1, 2].map(() => ({ s: 0, s2: 0 }));
+    let cnt = 0;
+    for (let y = 0; y < h; y += 6) for (let xx = 0; xx < w; xx += 6) {
+      const i = y * w + xx;
+      if (dist[i] <= ramp) continue;
+      const ref = reference(W0 + ((xx + 0.5) / w) * (E0 - W0), N0 - ((y + 0.5) / h) * (N0 - S0));
+      if (!ref) continue;
+      for (let ch = 0; ch < 3; ch++) { const a = d[i * 4 + ch], b = ref[ch]; F[ch].s += a; F[ch].s2 += a * a; R[ch].s += b; R[ch].s2 += b * b; }
+      cnt++;
+    }
+    if (cnt > 200) gain = [0, 1, 2].map((ch) => {
+      const mf = F[ch].s / cnt, sf = Math.sqrt(Math.max(1, F[ch].s2 / cnt - mf * mf)), mr = R[ch].s / cnt, sr = Math.sqrt(Math.max(1, R[ch].s2 / cnt - mr * mr));
+      const g2 = Math.max(0.5, Math.min(1.8, sr / sf)); return [g2, mr - g2 * mf];
+    });
   }
   for (let i = 0; i < n; i++) {
     const j = i * 4;

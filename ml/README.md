@@ -8,6 +8,7 @@ Four notebooks that train and compare two Mamba-based architectures on **where c
 | 2 | [`02_SITSMamba_PASTIS-R_to_YieldSAT.ipynb`](notebooks/02_SITSMamba_PASTIS-R_to_YieldSAT.ipynb) | SITSMamba ([arXiv:2409.09673](https://arxiv.org/abs/2409.09673)) |
 | 3 | [`03_UTAE_pretrained_PASTIS-R_to_YieldSAT.ipynb`](notebooks/03_UTAE_pretrained_PASTIS-R_to_YieldSAT.ipynb) | Baseline that **starts from published weights** (U-TAE, PASTIS, 5 folds) |
 | 4 | [`04_Compare_models.ipynb`](notebooks/04_Compare_models.ipynb) | Tables, learning curves, per-class IoU and a report for every finished run |
+| 5 | [`05_Google_FloodHub_LSTM.ipynb`](notebooks/05_Google_FloodHub_LSTM.ipynb) | Google's pretrained Flood Hub river LSTM ([google-research/flood-forecasting](https://github.com/google-research/flood-forecasting)) on the Caravan gauges nearest each site, out-of-sample (from Oct 2023); exports `flood_lstm.json`. Built by `build_flood_notebook.py`. |
 
 > Note: arXiv **2604.00940** is the *YieldSAT* dataset paper (CVPR 2026), not U-Mamba. U-Mamba is arXiv 2401.04722. YieldSAT is used here as the second dataset.
 
@@ -31,6 +32,8 @@ Stage 2  YieldSAT  (Argentina, Brazil, Uruguay, Germany · 2,173 fields · 10 m)
 * PASTIS-R time series are placed on one 24-step grid (18-day bins, mean or median of observations, with observation flags). YieldSAT already provides 24 steps.
 * SAR and optical channels are randomly dropped during PASTIS training, so the models also work when SAR is missing, as in YieldSAT.
 * YieldSAT uses grouped folds (no field in two folds; `YS_SPLIT_BY = 'farm'` or `'year'` for harder shifts). Folds are saved once and shared by every model.
+
+**Memory note (PyTorch fallback).** When the `mamba_ssm` CUDA kernels cannot be built, SITSMamba runs one Mamba sequence per pixel (batch × 128 × 128 sequences). The fallback's sequential scan has a hand-written backward that keeps only the inputs and recomputes the hidden states in batch chunks sized to a quarter of the free GPU memory, so it no longer runs out of memory on a 40 GB A100.
 
 ## Model adaptations
 

@@ -10,10 +10,10 @@ const N = SIZE * SIZE;
 export const WATER_MAX = 90;
 export const PATTERNS = [
   { name: 'Open water', color: '#2563eb', why: 'Dark in HH on most passes (calm water reflects the pulse away).' },
-  { name: 'Paddy rice', color: '#22d3ee', why: 'Flooded (dark HH) for a short period, then the canopy grows: the transplanting signature.' },
-  { name: 'Double / multiple crop', color: '#f59e0b', why: 'Two or more clear growth peaks in the radar vegetation index within the series.' },
-  { name: 'Single crop', color: '#facc15', why: 'One clear growth peak followed by a drop (harvest).' },
-  { name: 'Perennial / trees', color: '#16a34a', why: 'High and steady vegetation index: orchards, plantations, forest, permanent grassland.' },
+  { name: 'Flooded, then grown (paddy-like)', color: '#22d3ee', why: 'Dark in HH (standing water) for a short period, then the canopy grows: the signature of fields flooded before planting, typically rice.' },
+  { name: 'Two or more growing seasons', color: '#f59e0b', why: 'Two or more clear growth peaks of the radar vegetation index in the series: the field was cropped more than once.' },
+  { name: 'One growing season', color: '#facc15', why: 'One clear growth peak followed by a drop (harvest).' },
+  { name: 'Steady vegetation', color: '#16a34a', why: 'High vegetation index with little seasonal change: orchards, plantations, forest, permanent grassland.' },
   { name: 'Bare / built / fallow', color: '#a8a29e', why: 'Low vegetation index with little seasonal change: towns, roads, bare or fallow land.' },
 ];
 
@@ -111,6 +111,8 @@ export function computeAgri(st, days, t0 = 0) {
     else cls[i] = 5;
   }
   const isCrop = (c) => c >= 1 && c <= 3;
+  const prior = applyPrior(st, cls, amp, ampThr);
+  minimumMappingUnit(cls, valid, isCrop, 4);
 
   // per-pass curves
   const nValid = valid.reduce((a, b) => a + b, 0);
@@ -148,11 +150,76 @@ export function computeAgri(st, days, t0 = 0) {
   return {
     arrays: { sos, pos, eos, harvest, flood, cls, label: seg.label, rvi },
     summary: {
-      days, thr, croplandPct: nCrop / nValid, croplandKm2: nCrop * st.pixelKm2,
+      prior, days, thr, croplandPct: nCrop / nValid, croplandKm2: nCrop * st.pixelKm2,
       floodKm2, harvestCum, rviCrop, patterns, segments: seg.list, peakMonthHist, hist,
       rviRange: [pct(rvi[0], valid, 0.02), pct(rvi[Math.floor(T / 2)], valid, 0.98)],
     },
   };
+}
+
+/**
+ * Land-cover prior from ESA WorldCover 10 m (st.wc, resampled to the grid). Radar seasonality alone
+ * mistakes noise in deserts and grass for fields, so:
+ *   crop patterns only where WorldCover maps cropland (or grassland with a very strong seasonal cycle, e.g. irrigated hay);
+ *   bare / sparse, snow, built-up -> bare / built; permanent water -> water; tree cover -> perennial / trees.
+ * Returns a summary of what the prior changed.
+ */
+function applyPrior(st, cls, amp, ampThr) {
+  const wc = st.wc;
+  if (!wc) return { used: false };
+  let removed = 0, kept = 0, n = 0;
+  for (let i = 0; i < N; i++) {
+    if (cls[i] === 255 || !wc[i]) continue;
+    n++;
+    const c = cls[i], w = wc[i], crop = c >= 1 && c <= 3;
+    if (crop) {
+      // never fields: bare / desert, built-up, snow, water. Tree, shrub and grass cover can hold fields
+      // (WorldCover often labels farmland with tree rows as trees), so there a clear seasonal cycle is required.
+      const hard = w === 60 || w === 50 || w === 70 || w === 80 || w === 100;
+      const ok = w === 40 || w === 90 || (!hard && amp[i] > 1.5 * ampThr);
+      if (!ok) { removed++; cls[i] = w === 10 ? 4 : w === 80 ? 0 : 5; } else kept++;
+    } else if (c === 0 && (w === 60 || w === 50 || w === 20 || w === 30)) cls[i] = 5;   // dry sand / smooth ground looks like water in L-band HH
+    else if (w === 80 && c !== 0) cls[i] = 0;
+    else if ((w === 60 || w === 50 || w === 70) && c === 4) cls[i] = 5;
+    else if (w === 10 && c === 5) cls[i] = 4;
+  }
+  let wcCrop = 0; for (let i = 0; i < N; i++) if (wc[i] === 40) wcCrop++;
+  return { used: true, removedPx: removed, keptPx: kept, wcCropPct: n ? wcCrop / n : 0, removedPct: (removed + kept) ? removed / (removed + kept) : 0 };
+}
+
+/**
+ * Minimum mapping unit: a 3x3 majority filter smooths speckle, then crop patches smaller than `minPx`
+ * pixels are merged into their most common neighbouring class.
+ */
+function minimumMappingUnit(cls, valid, isCrop, minPx) {
+  const sm = cls.slice();
+  for (let y = 1; y < SIZE - 1; y++) for (let x = 1; x < SIZE - 1; x++) {
+    const i = y * SIZE + x;
+    if (cls[i] === 255) continue;
+    const cnt = new Uint8Array(6);
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) { const c = cls[i + dy * SIZE + dx]; if (c < 6) cnt[c]++; }
+    let b = cls[i]; for (let c = 0; c < 6; c++) if (cnt[c] > cnt[b]) b = c;
+    sm[i] = b;
+  }
+  cls.set(sm);
+  const seen = new Uint8Array(N), stack = new Int32Array(N);
+  for (let s0 = 0; s0 < N; s0++) {
+    if (seen[s0] || !isCrop(cls[s0])) continue;
+    const c = cls[s0], px = [];
+    let top = 0; stack[top++] = s0; seen[s0] = 1;
+    const nb = new Uint32Array(7);
+    while (top) {
+      const i = stack[--top]; px.push(i);
+      const x = i % SIZE, y = (i / SIZE) | 0;
+      for (const j of [x > 0 ? i - 1 : -1, x < SIZE - 1 ? i + 1 : -1, y > 0 ? i - SIZE : -1, y < SIZE - 1 ? i + SIZE : -1]) {
+        if (j < 0) continue;
+        if (cls[j] === c) { if (!seen[j]) { seen[j] = 1; stack[top++] = j; } } else if (cls[j] < 6) nb[cls[j]]++;
+      }
+    }
+    if (px.length >= minPx) continue;
+    let b = -1, bn = 0; for (let k = 0; k < 6; k++) if (nb[k] > bn) { bn = nb[k]; b = k; }
+    if (b >= 0) for (const i of px) cls[i] = b;
+  }
 }
 
 /** Field-like segments: connected regions with the same cropping pattern and harvest month. */
@@ -285,6 +352,16 @@ export function computeLandCover(st) {
     else if (amp[i] > ampThr && (hv[i] < hvThr || amp[i] > ampHi)) { cls[i] = 1; conf[i] = clamp(2.5 * Math.max(Math.min(da, -dh), (amp[i] - ampHi) / sAmp)); }
     else if (hv[i] >= hvThr) { cls[i] = 2; conf[i] = clamp(2.5 * Math.min(dh, da, (ampHi - amp[i]) / sAmp)); }
     else { cls[i] = 4; conf[i] = clamp(2.5 * Math.min(-dh, -da)); }
+    // WorldCover prior: cropland only where WorldCover maps cropland; deserts, towns and grassland are not fields
+    const w = st.wc ? st.wc[i] : 0;
+    if (w) {
+      const hard = w === 60 || w === 50 || w === 70 || w === 80 || w === 100;
+      if (cls[i] === 1 && w !== 40 && (hard || amp[i] <= ampHi)) cls[i] = w === 10 ? 2 : 4;
+      else if (cls[i] === 3 && w !== 80 && w !== 90 && w !== 40) cls[i] = 4;     // dark sand / smooth ground, not water
+      else if (cls[i] === 0 && w === 40) cls[i] = 2;                       // steady canopy inside mapped cropland: tree crops
+      else if (w === 80) cls[i] = 3;
+      else if ((w === 60 || w === 50 || w === 70) && cls[i] !== 3) cls[i] = 4;
+    }
   }
   // forest-cropland edges (4-neighbour) -> a proxy for the clearing frontier
   let edge = 0;
@@ -332,116 +409,3 @@ export function renderLandCover(st, opts = {}) {
   return img;
 }
 
-/**
- * Relative yield potential (per pixel and per field) from the radar crop signal.
- * For every cropland pixel: the area under its vegetation-index curve above its own
- * baseline between start and end of season (accumulated canopy, a standard yield proxy),
- * and its peak value. Both are ranked within the scene and combined (0.6 / 0.4), so the
- * index runs from 0 (weakest crop in this window) to 1 (strongest). It is RELATIVE: it
- * ranks fields against each other, it does not give tonnes per hectare. Calibrating it
- * needs harvest records (see the YieldSAT models in the notebooks).
- */
-export const YIELD_CLASSES = [
-  { name: 'Very low', color: '#b91c1c' },
-  { name: 'Low', color: '#f97316' },
-  { name: 'Medium', color: '#facc15' },
-  { name: 'High', color: '#84cc16' },
-  { name: 'Very high', color: '#15803d' },
-];
-
-export function computeYield(st, A) {
-  if (A._yield) return A._yield;
-  const T = st.T, { rvi, cls, sos, eos, label } = A.arrays, days = A.summary.days;
-  const integ = new Float32Array(N).fill(NaN), peak = new Float32Array(N).fill(NaN);
-  const rs = new Float32Array(T);
-  for (let i = 0; i < N; i++) {
-    if (!(cls[i] >= 1 && cls[i] <= 3)) continue;
-    for (let t = 0; t < T; t++) rs[t] = (rvi[Math.max(0, t - 1)][i] + 2 * rvi[t][i] + rvi[Math.min(T - 1, t + 1)][i]) / 4;
-    let base = Infinity, mx = -Infinity;
-    for (let t = 0; t < T; t++) { if (rs[t] < base) base = rs[t]; if (rs[t] > mx) mx = rs[t]; }
-    const d0 = Number.isNaN(sos[i]) ? days[0] : sos[i], d1 = Number.isNaN(eos[i]) ? days[T - 1] : eos[i];
-    let s = 0;
-    for (let t = 1; t < T; t++) {
-      const a = Math.max(days[t - 1], d0), b = Math.min(days[t], d1);
-      if (b <= a) continue;
-      s += ((rs[t - 1] + rs[t]) / 2 - base) * (b - a);
-    }
-    integ[i] = s; peak[i] = mx;
-  }
-  // percentile ranks within the scene's cropland
-  const rank = (arr) => {
-    const idx = []; for (let i = 0; i < N; i++) if (Number.isFinite(arr[i])) idx.push(i);
-    idx.sort((p, q) => arr[p] - arr[q]);
-    const r = new Float32Array(N).fill(NaN);
-    idx.forEach((i, k) => { r[i] = idx.length > 1 ? k / (idx.length - 1) : 0.5; });
-    return r;
-  };
-  const ri = rank(integ), rp = rank(peak);
-  const yi = new Float32Array(N).fill(NaN), ycls = new Uint8Array(N).fill(255);
-  const hist = new Array(20).fill(0);
-  for (let i = 0; i < N; i++) {
-    if (!Number.isFinite(ri[i])) continue;
-    yi[i] = 0.6 * ri[i] + 0.4 * rp[i];
-    ycls[i] = Math.min(4, Math.floor(yi[i] * 5));
-    hist[Math.min(19, Math.floor(yi[i] * 20))]++;
-  }
-  // per field (segments of the crop calendar): mean index, spread inside the field
-  const seg = new Map();
-  for (let i = 0; i < N; i++) {
-    const l = label[i];
-    if (l < 0 || !Number.isFinite(yi[i])) continue;
-    const g = seg.get(l) || { id: l, n: 0, s: 0, s2: 0 };
-    g.n++; g.s += yi[i]; g.s2 += yi[i] * yi[i]; seg.set(l, g);
-  }
-  const fieldMean = new Map();
-  const fields = [...seg.values()].filter((g) => g.n >= 6).map((g) => {
-    const m = g.s / g.n, sd = Math.sqrt(Math.max(0, g.s2 / g.n - m * m));
-    fieldMean.set(g.id, m);
-    return { id: g.id, km2: g.n * st.pixelKm2, index: m, spread: sd, cls: Math.min(4, Math.floor(m * 5)) };
-  }).sort((a, b) => b.index - a.index);
-  const classes = YIELD_CLASSES.map((c, k) => { let n = 0; for (let i = 0; i < N; i++) if (ycls[i] === k) n++; return { ...c, km2: n * st.pixelKm2 }; });
-  // management zones: pixels well below / above their own field's mean
-  let below = 0, above = 0, inField = 0;
-  for (let i = 0; i < N; i++) {
-    const m = fieldMean.get(label[i]);
-    if (m == null || !Number.isFinite(yi[i])) continue;
-    inField++; if (yi[i] < m - 0.2) below++; else if (yi[i] > m + 0.2) above++;
-  }
-  // mean RVI curve of the weakest and strongest fifth (what makes them differ)
-  const prof = (k) => { const p = new Float64Array(T); let n = 0; for (let i = 0; i < N; i++) if (ycls[i] === k) { n++; for (let t = 0; t < T; t++) p[t] += rvi[t][i]; } return Array.from(p, (v) => (n ? v / n : null)); };
-  A._yield = {
-    arrays: { yi, ycls, fieldMean },
-    summary: { classes, fields: fields.slice(0, 120), nFields: fields.length, hist, zones: { below: inField ? below / inField : 0, above: inField ? above / inField : 0 },
-      profiles: { low: prof(0), high: prof(4) } },
-  };
-  return A._yield;
-}
-
-export function renderYield(st, A, opts = {}) {
-  const Y = computeYield(st, A), img = new ImageData(SIZE, SIZE), d = img.data, valid = st.valid;
-  const ramp = (v) => {        // red -> yellow -> green
-    const stops = [[185, 28, 28], [249, 115, 22], [250, 204, 21], [132, 204, 22], [21, 128, 61]];
-    const x = Math.max(0, Math.min(0.9999, v)) * 4, k = Math.floor(x), f = x - k;
-    return stops[k].map((c, j) => c + (stops[k + 1][j] - c) * f);
-  };
-  const lab = A.arrays.label, sel = opts.seg ?? -1;
-  for (let i = 0; i < N; i++) {
-    const j = i * 4;
-    let c;
-    const g = Math.min(255, st.hhF[opts.t ?? 0][i] * 0.45);
-    if (opts.mode === 'field') {
-      const m = Y.arrays.fieldMean.get(lab[i]);
-      c = m == null ? [g, g, g] : ramp(m);
-      const x = i % SIZE, y = (i / SIZE) | 0, id = lab[i];
-      if (id >= 0 && ((x > 0 && lab[i - 1] !== id) || (x < SIZE - 1 && lab[i + 1] !== id) || (y > 0 && lab[i - SIZE] !== id) || (y < SIZE - 1 && lab[i + SIZE] !== id))) c = id === sel ? [255, 255, 255] : [15, 15, 15];
-    } else if (opts.mode === 'zones') {
-      const m = Y.arrays.fieldMean.get(lab[i]), v = Y.arrays.yi[i];
-      c = m == null || !Number.isFinite(v) ? [g, g, g] : v < m - 0.2 ? [220, 38, 38] : v > m + 0.2 ? [34, 197, 94] : [120, 120, 120];
-    } else {
-      const v = Y.arrays.yi[i];
-      c = Number.isFinite(v) ? ramp(v) : [g, g, g];
-    }
-    d[j] = c[0]; d[j + 1] = c[1]; d[j + 2] = c[2]; d[j + 3] = valid[i] ? 255 : 0;
-  }
-  return img;
-}

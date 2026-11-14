@@ -18,7 +18,7 @@ export class GlobeView {
   constructor(el, { base, onSiteClick }) {
     this.base = base;
     this.onSiteClick = onSiteClick;
-    this.layers = { mosaic: true, frames: true, density: false, footprints: false, satellite: true, night: false, events: false };
+    this.layers = { mosaic: true, mtc: true, frames: true, density: false, footprints: false, satellite: true, night: false, events: false };
     this.events = [];
     this.texCache = new Map();
     this.frameMeshes = new Map();
@@ -179,7 +179,7 @@ export class GlobeView {
     this.mosTex = new Map(); // url -> texture (LRU)
     const r = this.globe.getGlobeRadius() * 1.0012;
     const geo = new THREE.SphereGeometry(r, 256, 128, (90 - 180) * DEG, 2 * Math.PI, 0, Math.PI);
-    this.mosaic = new THREE.Mesh(geo, this._litMaterial({ opacity: 0.92 }));
+    this.mosaic = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ transparent: true, depthWrite: false }));   // unlit: the browse values as they are
     this.mosaic.renderOrder = 1;
     this.mosaic.visible = false;
     this.globe.scene().add(this.mosaic);
@@ -215,6 +215,7 @@ export class GlobeView {
     if (!this.mosaic) return;
     const c = this.cycleAt(date);
     this.currentCycle = c;
+    this._showMtc(c);
     if (!c || !this.layers.mosaic) { this.mosaic.visible = false; return; }
     // small texture while the date is moving, the 8k one once it settles
     const want = (big) => this.base + 'data/' + (big ? c.img8k : c.img4k);
@@ -246,6 +247,7 @@ export class GlobeView {
     if (name === 'mosaic' && this.mosaic) this._showMosaic(this.date || new Date());
     if (name === 'satellite') this.satGroup.visible = on;
     if (name === 'landcover') this.setLandcover(this.base + 'data/landcover_4k.webp', on);
+    if (name === 'mtc') this._showMtc(this.currentCycle);
     this.update(this.date, true);
   }
 
@@ -382,7 +384,7 @@ export class GlobeView {
    */
   async _updateNative() {
     const pov = this.globe.pointOfView(), c = this.currentCycle;
-    const on = c && this.layers.mosaic && this.layers.native !== false && pov.altitude < 0.5 && !this.paused;
+    const on = c && this.layers.mosaic && !this.layers.mtc && this.layers.native !== false && pov.altitude < 0.5 && !this.paused;
     if (!on) { for (const m of this.native.values()) m.visible = false; this._nativeKey = null; return; }
     for (const m of this.native.values()) m.visible = m.userData.cycle === c.id;
     const span = Math.max(0.6, pov.altitude * 18);
@@ -401,14 +403,13 @@ export class GlobeView {
       for (const g of pick) {
         const id = g.productID || g.granuleName;
         if (this.native.has(id) || this.currentCycle !== c) continue;
-        const ref = await this._mosaicReference(c);
-        const frame = await loadFrame(g, ref).catch(() => null);
+        const frame = await loadFrame(g).catch(() => null);   // raw NISAR browse values, no colour matching
         if (!frame || this.currentCycle !== c) continue;
         const [W, S, E, N] = frame.bounds, r = this.globe.getGlobeRadius() * 1.0022;
         const geo = new THREE.SphereGeometry(r, 64, 64, (90 + W) * DEG, (E - W) * DEG, (90 - N) * DEG, (N - S) * DEG);
         const tex = new THREE.Texture(frame.canvas);
         tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = this.maxAniso || 4; tex.flipY = false; tex.needsUpdate = true;
-        const mat = this._litMaterial({ map: tex }, [(W + 180) / 360, (S + 90) / 180, (E - W) / 360, (N - S) / 180]);
+        const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false });
         const mesh = new THREE.Mesh(geo, mat);
         mesh.renderOrder = 3; mesh.userData.cycle = c.id;
         this.globe.scene().add(mesh);
@@ -432,16 +433,12 @@ export class GlobeView {
     }
     const R = this._refData;
     if (!R) return null;
-    return ([W, S, E, N]) => {
-      const x0 = Math.floor(((W + 180) / 360) * R.w), x1 = Math.ceil(((E + 180) / 360) * R.w), y0 = Math.floor(((90 - N) / 180) * R.h), y1 = Math.ceil(((90 - S) / 180) * R.h);
-      const st = [0, 1, 2].map(() => ({ s: 0, s2: 0, n: 0 }));
-      for (let y = Math.max(0, y0); y < Math.min(R.h, y1); y++) for (let xx = x0; xx < x1; xx++) {
-        const j = (y * R.w + ((xx % R.w) + R.w) % R.w) * 4;
-        if (R.d[j + 3] < 200) continue;
-        for (let ch = 0; ch < 3; ch++) { const v = R.d[j + ch]; st[ch].s += v; st[ch].s2 += v * v; st[ch].n++; }
-      }
-      if (st[0].n < 30) return null;
-      return st.map((q) => { const m = q.s / q.n; return { m, sd: Math.sqrt(Math.max(1, q.s2 / q.n - m * m)) }; });
+    // sampler: mosaic colour at (lon, lat), or null where the mosaic has no data
+    return (lon, lat) => {
+      const x = Math.floor((((lon + 180) / 360) * R.w % R.w + R.w) % R.w), y = Math.floor(((90 - lat) / 180) * R.h);
+      if (y < 0 || y >= R.h) return null;
+      const j = (y * R.w + x) * 4;
+      return R.d[j + 3] < 200 ? null : [R.d[j], R.d[j + 1], R.d[j + 2]];
     };
   }
 
@@ -478,6 +475,64 @@ export class GlobeView {
       this._texture(this.base + 'textures/earth-night.jpg', (tex) => { this.nightMesh.material.map = tex; this.nightMesh.material.needsUpdate = true; });
     }
     if (this.nightMesh) this.nightMesh.visible = on;
+  }
+
+  /**
+   * Multi-date composite of three world-mosaic cycles: R, G, B = HH of the cycle two steps before, one step before
+   * (about a month apart) and the timeline's cycle, with the raw browse values. Unchanged surfaces stay grey/white or
+   * black; colours show where and when fields changed.
+   */
+  mtcCycles(c) {
+    const full = (this.cycles || []).filter((x) => (Date.parse(x.end) - Date.parse(x.start)) / 86400000 <= 26);
+    let i = full.findIndex((x) => x.id === c?.id);
+    if (i < 0) i = full.length - 1;
+    if (i < 2) return null;
+    const step = i >= 4 ? 2 : 1;
+    return [full[i - 2 * step], full[i - step], full[i]];
+  }
+
+  _showMtc(c) {
+    const on = this.layers.mtc && c;
+    if (!on) { if (this.mtcMesh) this.mtcMesh.visible = false; return; }
+    const cyc = this.mtcCycles(c);
+    if (!cyc) { if (this.mtcMesh) this.mtcMesh.visible = false; this.mtcInfo = null; this.onMtc?.(null); return; }
+    const key = cyc.map((x) => x.id).join('|');
+    if (!this.mtcMesh) {
+      const r = this.globe.getGlobeRadius() * 1.0014;
+      const geo = new THREE.SphereGeometry(r, 256, 128, (90 - 180) * DEG, 2 * Math.PI, 0, Math.PI);
+      const mat = new THREE.ShaderMaterial({
+        transparent: true, depthWrite: false,
+        uniforms: { tA: { value: null }, tB: { value: null }, tC: { value: null } },
+        vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+        // raw HH (red channel of the browse composite) of each cycle; colour-space: the textures are sRGB-decoded by three,
+        // so encode back to keep the stored byte values on screen
+        fragmentShader: `uniform sampler2D tA, tB, tC; varying vec2 vUv;
+          vec3 toSRGB(vec3 c){ return mix(c * 12.92, 1.055 * pow(c, vec3(1.0/2.4)) - 0.055, step(0.0031308, c)); }
+          void main(){ vec4 a = texture2D(tA, vUv), b = texture2D(tB, vUv), c = texture2D(tC, vUv);
+            float al = min(a.a, min(b.a, c.a)); if (al < 0.5) discard;
+            // fixed display mapping (same everywhere, data unchanged): stretch 90..240 of the 8-bit browse values, gamma 1.4,
+            // then differences between the three dates x2 around their mean, so changes show as colour
+            vec3 v = pow(clamp((toSRGB(vec3(a.r, b.r, c.r)) * 255.0 - 90.0) / 150.0, 0.0, 1.0), vec3(1.4));
+            float m = (v.r + v.g + v.b) / 3.0;
+            v = clamp(m + 2.0 * (v - m), 0.0, 1.0);
+            gl_FragColor = vec4(v, 1.0); }`,
+      });
+      this.mtcMesh = new THREE.Mesh(geo, mat);
+      this.mtcMesh.renderOrder = 2;
+      this.globe.scene().add(this.mtcMesh);
+      this.mtcTex = new Map();
+    }
+    this.mtcMesh.visible = true;
+    if (this.mtcKey === key) return;
+    this.mtcKey = key;
+    this.mtcInfo = cyc;
+    this.onMtc?.(cyc);
+    ['tA', 'tB', 'tC'].forEach((u, k) => {
+      const url = this.base + 'data/' + (this.canBig ? cyc[k].img8k : cyc[k].img4k);
+      const apply = (tex) => { if (this.mtcKey !== key) return; this.mtcMesh.material.uniforms[u].value = tex; };
+      if (this.mtcTex.has(url)) apply(this.mtcTex.get(url));
+      else this._texture(url, (tex) => { this.mtcTex.set(url, tex); if (this.mtcTex.size > 9) { const [k0, t0] = this.mtcTex.entries().next().value; t0.dispose(); this.mtcTex.delete(k0); } apply(tex); });
+    });
   }
 
   // ---------------------------------------------------------------- region picking
@@ -519,6 +574,7 @@ export class GlobeView {
 
   /** Outline of the selected analysis window. */
   showBox(box) {
+    this.boxShown = !!box;
     if (!box) { this.globe.pathsData([]); return; }
     const [w, s, e, n] = box, ring = [];
     const k = 12;
@@ -551,7 +607,7 @@ export class GlobeView {
   _updateTiles() {
     const c = this.currentCycle, T = c && c.tiles;
     const pov = this.globe.pointOfView();
-    if (!T || !this.layers.mosaic || this.paused || pov.altitude > 1.1) {
+    if (!T || !this.layers.mosaic || this.layers.mtc || this.paused || pov.altitude > 1.1) {
       for (const m of this.tiles.values()) m.visible = false;
       return;
     }
@@ -578,14 +634,14 @@ export class GlobeView {
       const [r, col] = k.split('_').map(Number);
       const N = 90 - r * T.deg, S = N - T.deg, Wl = -180 + col * T.deg;
       const geo = new THREE.SphereGeometry(this.globe.getGlobeRadius() * 1.0016, 24, 24, (90 + Wl) * DEG, T.deg * DEG, (90 - N) * DEG, T.deg * DEG);
-      const mesh = new THREE.Mesh(geo, this._litMaterial({ opacity: 0 }, [(Wl + 180) / 360, (S + 90) / 180, T.deg / 360, T.deg / 180]));
+      const mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ transparent: true, depthWrite: false, opacity: 0 }));
       mesh.renderOrder = 1;
       this.tiles.set(k, mesh);
       this.globe.scene().add(mesh);
       const cyc = c.id;
       this._texture(`${this.base}data/${T.path}/${k}.webp`, (tex) => {
         if (this.currentCycle?.id !== cyc || this.tiles.get(k) !== mesh) { tex.dispose(); return; }
-        mesh.material.map = tex; mesh.material.opacity = 0.95; mesh.material.needsUpdate = true;
+        mesh.material.map = tex; mesh.material.opacity = 1; mesh.material.needsUpdate = true;
       });
     }
   }

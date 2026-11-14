@@ -71,8 +71,8 @@ def _scan(u, delta, A, B, C, D):
 
 
 def _scan_seq(u, delta, A, B, C, D):
-    """Same recurrence, step by step: never materialises (b, l, d, n). Faster for short sequences (L <= 64)."""
-    u, delta, B, C = u.float(), delta.float(), B.float(), C.float()
+    """Same recurrence, step by step (reference implementation, autograd keeps every step)."""
+    u, delta, B, C = (x.float() if x.dtype in (torch.float16, torch.bfloat16) else x for x in (u, delta, B, C))
     b, l, d = u.shape
     h = u.new_zeros(b, d, A.shape[1])
     ys = []
@@ -80,6 +80,69 @@ def _scan_seq(u, delta, A, B, C, D):
         h = torch.exp(delta[:, t, :, None] * A) * h + (delta[:, t] * u[:, t])[..., None] * B[:, t, None, :]
         ys.append(torch.einsum('bdn,bn->bd', h, C[:, t]))
     return torch.stack(ys, 1) + u * D
+
+
+SCAN_BUDGET = 1.5e8   # max float elements of hidden states held at once in the backward pass (~0.6 GB)
+
+
+class _SeqScanFn(torch.autograd.Function):
+    """Memory-lean sequential selective scan (what the CUDA kernel does):
+    forward keeps only the current (b, d, n) state and saves just the inputs;
+    backward recomputes the states chunk by chunk over the batch and runs the
+    reverse recurrence by hand, so peak memory is bounded by SCAN_BUDGET."""
+    @staticmethod
+    def forward(ctx, u, delta, A, B, C):
+        b, l, d = u.shape
+        h = u.new_zeros(b, d, A.shape[1])
+        y = u.new_empty(b, l, d)
+        for t in range(l):
+            h = torch.exp(delta[:, t, :, None] * A) * h + (delta[:, t] * u[:, t])[..., None] * B[:, t, None, :]
+            y[:, t] = torch.einsum('bdn,bn->bd', h, C[:, t])
+        ctx.save_for_backward(u, delta, A, B, C)
+        return y
+
+    @staticmethod
+    def backward(ctx, gy):
+        u, delta, A, B, C = ctx.saved_tensors
+        b, l, d = u.shape
+        n = A.shape[1]
+        gu, gdelta, gB, gC = torch.zeros_like(u), torch.zeros_like(delta), torch.zeros_like(B), torch.zeros_like(C)
+        gA = torch.zeros_like(A)
+        budget = SCAN_BUDGET
+        if u.is_cuda:   # use up to a quarter of the currently free GPU memory for the recomputed states
+            budget = max(budget, torch.cuda.mem_get_info(u.device)[0] * 0.25 / u.element_size())
+        per = max(1, int(budget // (l * d * n)))
+        for s in range(0, b, per):
+            sl = slice(s, s + per)
+            uu, dd, BB, CC, gg = u[sl], delta[sl], B[sl], C[sl], gy[sl]
+            bb = uu.shape[0]
+            hs = uu.new_empty(l, bb, d, n)
+            h = uu.new_zeros(bb, d, n)
+            for t in range(l):
+                h = torch.exp(dd[:, t, :, None] * A) * h + (dd[:, t] * uu[:, t])[..., None] * BB[:, t, None, :]
+                hs[t] = h
+            gh = uu.new_zeros(bb, d, n)
+            for t in range(l - 1, -1, -1):
+                gh += gg[:, t, :, None] * CC[:, t, None, :]
+                gC[sl, t] = torch.einsum('bdn,bd->bn', hs[t], gg[:, t])
+                a = torch.exp(dd[:, t, :, None] * A)
+                ghB = (gh * BB[:, t, None, :]).sum(-1)                       # (bb, d)
+                gu[sl, t] = ghB * dd[:, t]
+                gB[sl, t] = torch.einsum('bdn,bd->bn', gh, dd[:, t] * uu[:, t])
+                if t > 0:
+                    gla = gh * hs[t - 1] * a                                 # grad w.r.t. log a = delta*A
+                    gdelta[sl, t] = (gla * A).sum(-1) + ghB * uu[:, t]
+                    gA += torch.einsum('bdn,bd->dn', gla, dd[:, t])
+                else:
+                    gdelta[sl, t] = ghB * uu[:, t]
+                gh = gh * a
+            del hs
+        return gu, gdelta, gA, gB, gC
+
+
+def _scan_lean(u, delta, A, B, C, D):
+    u, delta, B, C = u.float(), delta.float(), B.float(), C.float()
+    return _SeqScanFn.apply(u, delta, A.float(), B, C) + u * D
 
 
 class MambaTorch(nn.Module):
@@ -114,14 +177,15 @@ class MambaTorch(nn.Module):
         dtr, Bm, Cm = dbc.split([self.dt_rank, self.d_state, self.d_state], dim=-1)
         delta = F.softplus(self.dt_proj(dtr))
         A = -torch.exp(self.A_log.float())
-        # chunk the batch so the (b, l, d, n) scan tensors stay within memory
-        scan = _scan_seq if l <= 64 else _scan
-        budget = 4e8 if scan is _scan_seq else 6.4e7          # sequential scan keeps only (b, d, n) per step
-        per = max(1, int(budget // ((1 if scan is _scan_seq else l) * self.d_inner * self.d_state)))
-        # gradient checkpointing per chunk: the states are recomputed in backward, as the CUDA kernel does
-        run = (lambda *a: torch.utils.checkpoint.checkpoint(scan, *a, use_reentrant=False)) if (self.training and torch.is_grad_enabled()) else scan
-        ys = [run(u[i:i + per], delta[i:i + per], A, Bm[i:i + per], Cm[i:i + per], self.D.float()) for i in range(0, b, per)]
-        y = torch.cat(ys, 0).to(x.dtype) * F.silu(z)
+        if l <= 64:
+            # short sequences (satellite time series): lean sequential scan, bounded memory in backward
+            y = _scan_lean(u, delta, A, Bm, Cm, self.D.float())
+        else:
+            # long sequences (spatial tokens): parallel log-space scan, batch-chunked with checkpointing
+            per = max(1, int(6.4e7 // (l * self.d_inner * self.d_state)))
+            run = (lambda *a: torch.utils.checkpoint.checkpoint(_scan, *a, use_reentrant=False)) if (self.training and torch.is_grad_enabled()) else _scan
+            y = torch.cat([run(u[i:i + per], delta[i:i + per], A, Bm[i:i + per], Cm[i:i + per], self.D.float()) for i in range(0, b, per)], 0)
+        y = y.to(x.dtype) * F.silu(z)
         return self.out_proj(y)
 
 
@@ -144,5 +208,14 @@ def _check_scan():
     ref = torch.stack(ys, 1)
     err = max((ref - _scan(u, delta, A, Bm, Cm, D)).abs().max().item(), (ref - _scan_seq(u, delta, A, Bm, Cm, D)).abs().max().item())
     assert err < 1e-3, f'scan mismatch {err}'
+    # the hand-written backward must match autograd through the reference recurrence
+    ins = [x.clone().double().requires_grad_() for x in (u, delta, A, Bm, Cm)]
+    ins2 = [x.clone().detach().requires_grad_() for x in ins]
+    g = torch.randn(b, l, d, dtype=torch.float64)
+    (_SeqScanFn.apply(*ins) * g).sum().backward()
+    (_scan_seq(*ins2, torch.zeros(d, dtype=torch.float64)).double() * g).sum().backward()
+    gerr = max((x.grad - y.grad).abs().max().item() for x, y in zip(ins, ins2))
+    assert gerr < 1e-6, f'scan gradient mismatch {gerr}'
+    err = max(err, gerr)
     print(f'selective scan check passed (max error {err:.1e})')
 _check_scan()

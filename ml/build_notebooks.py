@@ -59,8 +59,8 @@ for stage in ('pastis', 'yieldsat'):
 """
 
 NOTEBOOKS = {
-    '01_UMamba_PASTIS-R_to_YieldSAT.ipynb': ('umamba', ['00_setup', '01_mamba', '02_data_pastis', '03_data_yieldsat', '04_model_common', '05_model_umamba', '06_train', '07_stage_pastis', '08_stage_yieldsat', SUMMARY]),
-    '02_SITSMamba_PASTIS-R_to_YieldSAT.ipynb': ('sitsmamba', ['00_setup', '01_mamba', '02_data_pastis', '03_data_yieldsat', '04_model_common', '05_model_sitsmamba', '06_train', '07_stage_pastis', '08_stage_yieldsat', SUMMARY]),
+    '01_UMamba_PASTIS-R_to_YieldSAT.ipynb': ('umamba', ['00_setup', '01_mamba', '02_data_pastis', '03_data_yieldsat', '04_model_common', '05_model_umamba', '06_train', '07_stage_pastis', '08_stage_yieldsat', SUMMARY, '09_export_web']),
+    '02_SITSMamba_PASTIS-R_to_YieldSAT.ipynb': ('sitsmamba', ['00_setup', '01_mamba', '02_data_pastis', '03_data_yieldsat', '04_model_common', '05_model_sitsmamba', '06_train', '07_stage_pastis', '08_stage_yieldsat', SUMMARY, '09_export_web']),
     '03_UTAE_pretrained_PASTIS-R_to_YieldSAT.ipynb': ('utae', ['00_setup', '02_data_pastis', '03_data_yieldsat', '04_model_common', '05_model_utae', '06_train', '07_stage_pastis', '08_stage_yieldsat', SUMMARY]),
     '04_Compare_models.ipynb': ('compare', ['00_setup', '02_data_pastis', '10_compare']),
 }
@@ -94,6 +94,11 @@ def build():
         nb.cells.append(nbf.v4.new_markdown_cell(INTRO[intro]))
         for part in parts:
             src = part if '\n' in part else (CELLS / f'{part}.py').read_text()
+            if '__EMBEDDED_FILES__' in src:
+                emb = {'export_mamba_onnx.py': (HERE / 'export_mamba_onnx.py').read_text()}
+                for c in ('01_mamba.py', '04_model_common.py', f'05_model_{intro}.py'):
+                    emb[f'cells/{c}'] = (CELLS / c).read_text()
+                src = src.replace('__EMBEDDED_FILES__', repr(emb))
             for kind, text in split_cells(src):
                 if text.strip():
                     nb.cells.append(nbf.v4.new_markdown_cell(text) if kind == 'md' else nbf.v4.new_code_cell(text))

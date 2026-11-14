@@ -296,3 +296,24 @@ table.cal tr.me td { box-shadow: inset 0 -3px 0 #ffb300; }
 .thumbs { display: flex; gap: 6px; flex-wrap: wrap; }
 .thumbs a { display: flex; flex-direction: column; align-items: center; font-size: 10px; color: var(--muted); text-decoration: none; }
 .thumbs img { width: 64px; height: 64px; object-fit: cover; border-radius: 4px; background: #07090b; border: 1px solid var(--border); }
+/* ---- map legend (bottom right, one section per active layer) ---- */
+.map-legend { position: absolute; right: 16px; bottom: 62px; z-index: 6; width: 290px; max-height: 58vh; overflow: auto; background: rgba(14,17,22,0.92); border: 1px solid var(--border); border-radius: 10px; font-size: 11.5px; backdrop-filter: blur(6px); }
+.map-legend .lg-head { width: 100%; text-align: left; background: none; border: 0; color: var(--text); font-weight: 600; padding: 8px 12px; cursor: pointer; font-size: 12px; }
+.map-legend .lg-head::after { content: '▾'; float: right; color: var(--muted); }
+.map-legend.collapsed .lg-head::after { content: '▸'; }
+.map-legend.collapsed .lg-body { display: none; }
+.map-legend .lg-body { padding: 0 12px 10px; display: flex; flex-direction: column; gap: 10px; }
+.map-legend section { border-top: 1px solid var(--border); padding-top: 8px; }
+.map-legend section b { display: block; margin-bottom: 5px; font-weight: 600; }
+.map-legend .lg-row { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 5px; }
+.map-legend .lg-grid { display: grid; grid-template-columns: 1fr; gap: 3px; }
+.map-legend .lg-item { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); }
+.map-legend .lg-item i { width: 12px; height: 12px; border-radius: 3px; flex: none; display: inline-block; }
+.map-legend .lg-note { color: var(--muted); font-size: 11px; font-weight: 400; }
+.map-legend .lg-bar { height: 8px; border-radius: 4px; margin: 2px 0; }
+.map-legend .lg-ends { justify-content: space-between; color: var(--muted); }
+body.sheet-open .map-legend { display: none; }
+.credits { right: 320px; }
+@media (max-width: 700px) { .map-legend { width: auto; left: 16px; max-height: 40vh; } }
+.map-legend .lg-ramp { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 8px; margin: 3px 0; color: var(--muted); }
+.map-legend .lg-ramp .lg-bar { margin: 0; }

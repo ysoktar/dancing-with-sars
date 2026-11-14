@@ -245,11 +245,14 @@ def _weight(alpha, mode, feather_px):
     m = alpha > 0
     d = ndimage.distance_transform_edt(np.pad(m, 1))[1:-1, 1:-1]
     w = np.clip(d / feather_px, 0, 1) ** 1.5
+    # the outermost ~2 pixels of every swath are dim (antenna pattern, resampling): almost no weight, so
+    # wherever another frame overlaps it wins and no dark seam line is left; alone, the pixel still shows
+    w[d <= 4.5] = 1e-6
     dual = mode.startswith("DH") or mode.startswith("QP")
     return (w * (1.0 if dual else 0.03)).astype(np.float32)
 
 
-def blend(patches, Hc, Wc, row0, land, feather_px, gains=None):
+def blend(patches, Hc, Wc, row0, land, feather_px, gains=None, match=False):
     """Seamless mosaic: feathered weighted mean of all frames, then every frame's brightness is matched
     (per channel gain/offset) to the consensus of its neighbours and the frames are blended again.
     If `gains` is given (from a coarser pass) the matching step is skipped and those gains are applied."""
@@ -277,6 +280,10 @@ def blend(patches, Hc, Wc, row0, land, feather_px, gains=None):
             wsum[ix] += w
         return acc, wsum
 
+    # raw values: by default no frame is rescaled; overlaps are only weight-averaged (feathered).
+    # match=True restores per-frame gain/offset matching to the neighbour consensus (seamless but altered values).
+    if gains is None and not match:
+        gains = {}
     if gains is None:
         acc, wsum = accumulate(lambda g: None)
         ref = (acc / np.maximum(wsum, 1e-6)[..., None]).astype(np.uint8)
@@ -301,7 +308,18 @@ def blend(patches, Hc, Wc, row0, land, feather_px, gains=None):
     out = np.zeros((Hc, Wc, 4), np.uint8)
     out[..., :3] = np.clip(acc / np.maximum(wsum, 1e-6)[..., None], 0, 255).astype(np.uint8)
     del acc
-    out[..., 3] = ((wsum > 1e-4) & land).astype(np.uint8) * 255
+    good = wsum > 1e-4
+    # seams 1-3 px wide where only the dim swath rims met (frames that abut along track): fill them from the
+    # nearest good pixel, so there is neither a dark line nor a hole
+    seam = (wsum > 0) & ~good & land
+    if seam.any():
+        from scipy import ndimage
+        dist, (iy, ix) = ndimage.distance_transform_edt(~good, return_indices=True)
+        fill = seam & (dist <= 6)
+        out[fill, :3] = out[iy[fill], ix[fill], :3]
+        good = good | fill
+        del dist, iy, ix
+    out[..., 3] = (good & land).astype(np.uint8) * 255
     return out, gains
 
 

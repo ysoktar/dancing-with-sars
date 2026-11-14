@@ -211,7 +211,7 @@ There are no predefined places: any point covered by NISAR can be analysed. The 
 | Inundation history 1999–2020 | Google Flood Forecasting (GLAD-derived), CC-BY-4.0 | flood-history tool | public bucket |
 | Land polygons | Natural Earth 1:50m | mosaic land mask | public |
 | Flood Hub LSTM weights, Caravan, MultiMet | Google Research, Caravan | notebook 05 | public |
-| PASTIS-R, YieldSAT | academic datasets | notebooks 01–04 | public download |
+| PASTIS-R | academic dataset | notebooks 01–04 | public download |
 
 **Data history.**
 
@@ -329,7 +329,7 @@ GUNW and GOFF granules on the site's track are cropped the same way and paired b
 * Both are converted to percentile ranks within the window and combined (0.6 · area + 0.4 · peak) into an index from 0 (weakest crop in the window) to 1 (strongest), shown in five classes.
 * Per field: mean index and spread over each field segment; fields are ranked.
 * Management zones: pixels more than 0.2 below / above their own field's mean.
-* It is **relative**: it ranks fields against their neighbours under the same season and similar crops, and does not give tonnes per hectare. Converting it needs harvest records (the YieldSAT models in `ml/`).
+* It is **relative**: it ranks fields against their neighbours under the same season and similar crops, and does not give tonnes per hectare. Converting it needs harvest records, which are not available; the region's typical yields (SPAM 2010) are shown for scale.
 
 ### 5.11 Deep learning in the browser (`web/src/dlWorker.js`, `ml/export_utae_onnx.py`)
 * **Model.** U-TAE (Garnot & Landrieu, ICCV 2021): a U-Net whose skip connections are aggregated over time by a lightweight temporal attention encoder (L-TAE). Published PASTIS weights, fold 2 (test mIoU 65.0 %, OA 84.1 %).
@@ -370,8 +370,8 @@ A port of the team's desktop analyzer (`Nasa.py`):
 
 | Notebook | What it does |
 |---|---|
-| `01_UMamba_PASTIS-R_to_YieldSAT` | U-Mamba (CNN encoder–decoder with Mamba blocks) trained on PASTIS-R (Sentinel-1 + 2 crop parcels), then transferred to YieldSAT. Transfer maps band names and re-initialises heads; a yield head is added. |
-| `02_SITSMamba_PASTIS-R_to_YieldSAT` | SITSMamba (CNN spatial encoder + Mamba temporal encoder + reconstruction branch), same two stages. |
+| `01_UMamba_PASTIS-R_to_YieldSAT` | U-Mamba (CNN encoder–decoder with Mamba blocks) trained on PASTIS-R (Sentinel-1 + 2 crop parcels). A second stage on YieldSAT (yield) is in the notebook but skipped: access to the YieldSAT data was not available. The 'Export for the website' cell writes the trained model as ONNX for the Crop types tool. |
+| `02_SITSMamba_PASTIS-R_to_YieldSAT` | SITSMamba (CNN spatial encoder + Mamba temporal encoder + reconstruction branch), same PASTIS-R stage and export; the YieldSAT stage is skipped likewise. |
 | `03_UTAE_pretrained_PASTIS-R_to_YieldSAT` | Published U-TAE weights, fine-tuned. The fold-k weights are tested on a fold they were not trained on, so there is no leakage. |
 | `04_Compare_models` | One table and plots for all runs; old runs are cleaned up. |
 | `05_Google_FloodHub_LSTM` | Google's open-sourced Flood Hub river model (Mean-Embedding Forecast LSTM, pretrained 110 epochs). It runs on the Caravan gauges nearest to each site, **only after the model's training window** (from Oct 2023), and exports hydrographs and NSE/KGE as `flood_lstm.json`. |

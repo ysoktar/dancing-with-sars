@@ -1,0 +1,5 @@
+{
+ "models": [
+  {"id": "utae_pastis", "label": "U-TAE (PASTIS, published weights)", "meta": "utae_pastis.json"}
+ ]
+}

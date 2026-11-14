@@ -10,7 +10,6 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks(id) {
-          if (id.includes('@tensorflow')) return 'tfjs';
           if (id.includes('three') || id.includes('globe')) return 'globe';
           if (id.includes('chart.js')) return 'charts';
         },

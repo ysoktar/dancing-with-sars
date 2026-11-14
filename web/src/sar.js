@@ -234,7 +234,7 @@ function stretch(a, mask, pLo = 0.02, pHi = 0.98) {
   return [v[Math.floor(v.length * pLo)] ?? 0, v[Math.floor(v.length * pHi)] ?? 255];
 }
 
-/** Render a frame into ImageData. mode: rgb | hh | hv | ratio | change | clusters | anomaly */
+/** Render a frame into ImageData. mode: rgb | hh | hv | ratio | tstd | change | confidence | clusters */
 export function render(stack, t, mode, extra = {}) {
   const img = new ImageData(SIZE, SIZE);
   const d = img.data;
@@ -278,13 +278,6 @@ export function render(stack, t, mode, extra = {}) {
   } else if (mode === 'clusters' && extra.labels) {
     const cols = CLUSTER_COLORS.map((h) => [1, 3, 5].map((k) => parseInt(h.slice(k, k + 2), 16)));
     for (let i = 0; i < N; i++) { const c = cols[extra.labels[i] % cols.length]; put(i, c[0], c[1], c[2]); }
-  } else if (mode === 'anomaly' && extra.anomaly) {
-    const L = lut('inferno');
-    const [lo, hi] = stretch(extra.anomaly, valid, 0.02, 0.995);
-    for (let i = 0; i < N; i++) {
-      const k = Math.round(255 * Math.max(0, Math.min(1, (extra.anomaly[i] - lo) / (hi - lo))));
-      put(i, L[k * 3], L[k * 3 + 1], L[k * 3 + 2]);
-    }
   } else if (mode === 'tstd') {
     const ts = stack._tstd || (stack._tstd = temporalStd(stack));
     const L = lut('inferno');

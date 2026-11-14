@@ -6,7 +6,7 @@ import { $, $$, DAY, tOf, fmtDate, fmtShort, esc, pct } from '../util.js';
 import { drawTo, SIZE, CLUSTER_COLORS, loadDem, renderElevation } from '../sar.js';
 import { call, renderImage } from '../sarClient.js';
 import { Terrain3D } from '../terrain3d.js';
-import { describeCluster, trainAutoencoder } from '../ml.js';
+import { describeCluster } from '../ml.js';
 import { forecast, FORECASTABILITY, MIN_POINTS } from '../forecast.js';
 
 const TABS = [
@@ -493,7 +493,6 @@ function motion(el) {
 const TOOLS = [
   ['change', 'Change between two dates', 'Log-ratio + automatic threshold'],
   ['classes', 'Surface types', 'Unsupervised k-means clustering'],
-  ['anomaly', 'Unusual behaviour', 'Neural-network autoencoder'],
 ];
 
 function analysis(el) {
@@ -512,7 +511,7 @@ function analysis(el) {
 
 function showTool() {
   destroyCharts();
-  ({ change: toolChange, classes: toolClasses, anomaly: toolAnomaly }[S.tool])($('#tool'));
+  ({ change: toolChange, classes: toolClasses }[S.tool] || toolChange)($('#tool'));
 }
 
 function toolChange(el) {
@@ -602,117 +601,6 @@ function toolClasses(el) {
   $('#kDate').addEventListener('change', run);
   $$('#kShow button').forEach((b) => b.addEventListener('click', () => { show = b.dataset.s; $$('#kShow button').forEach((x) => x.classList.toggle('on', x === b)); run(); }));
   run();
-}
-
-function toolAnomaly(el) {
-  el.innerHTML = `
-    <div class="panel">
-      <p class="muted" style="max-width:860px">A small neural network learns to squeeze each pixel's full history (HH and HV on every pass) into two numbers and rebuild it. It learns the typical rhythms of the scene. Pixels it cannot rebuild behaved unusually: new clearings, new water, fresh lava, burn scars. Training runs in your browser with TensorFlow.js and takes a few seconds to a minute.</p>
-      <div class="controls">
-        <label>Training rounds <input type="range" id="aE" min="10" max="100" value="40"> <span class="mono" id="aEv">40</span></label>
-        <button class="btn primary" id="aGo">Train network</button>
-        <span class="small muted" id="aStatus"></span>
-      </div>
-      <div class="grid g-3">
-        <div><h3 class="small muted" style="font-weight:500;margin-bottom:6px">Training error</h3><div class="chart sm"><canvas id="aLoss"></canvas></div></div>
-        <div><h3 class="small muted" style="font-weight:500;margin-bottom:6px">How unusual each pixel is</h3><canvas class="map" id="aMap" width="512" height="512" style="width:100%;aspect-ratio:1;border-radius:8px;border:1px solid var(--border);background:#07090b;cursor:crosshair"></canvas></div>
-        <div><h3 class="small muted" style="font-weight:500;margin-bottom:6px">What the network learned (2-D summary, colour = surface type)</h3><div class="chart lg"><canvas id="aLatent"></canvas></div></div>
-      </div>
-      <p class="note" id="aHint">After training, click the map to compare a pixel's observed history with what the network expected.</p>
-      <div class="chart sm"><canvas id="aRecon"></canvas></div>
-    </div>`;
-  $('#aE').addEventListener('input', (e) => ($('#aEv').textContent = e.target.value));
-  $('#aGo').addEventListener('click', trainAE);
-  $('#aMap').addEventListener('click', (e) => {
-    if (!S.ml.ae) return;
-    const r = e.target.getBoundingClientRect();
-    const x = Math.floor(((e.clientX - r.left) / r.width) * SIZE), y = Math.floor(((e.clientY - r.top) / r.height) * SIZE);
-    reconChart(y * SIZE + x);
-  });
-  if (S.ml.ae) showAE();
-}
-
-async function trainAE() {
-  const btn = $('#aGo'), status = $('#aStatus');
-  btn.disabled = true;
-  status.textContent = 'Loading TensorFlow.js…';
-  const loss = chart('aLoss', {
-    type: 'line',
-    data: { labels: [], datasets: [{ label: 'training', data: [], borderColor: '#8cc4ff', pointRadius: 0 }, { label: 'held-out', data: [], borderColor: '#e8b04a', borderDash: [4, 3], pointRadius: 0 }] },
-    options: { maintainAspectRatio: false, animation: false, scales: { y: { type: 'logarithmic' }, x: { title: { display: true, text: 'round' } } }, plugins: { legend: { labels: { boxWidth: 10 } } } },
-  });
-  const site = S.site, epochs = +$('#aE').value, t0 = performance.now();
-  try {
-    status.textContent = 'Preparing pixel histories…';
-    const sig = await call('signatures', { id: S.stack.id });
-    const res = await trainAutoencoder(sig, {
-      epochs,
-      onEpoch: ({ epoch, loss: l, valLoss }) => {
-        if (S.site !== site || !S.charts.aLoss) return;
-        status.textContent = `round ${epoch} of ${epochs}`;
-        loss.data.labels.push(epoch); loss.data.datasets[0].data.push(l); loss.data.datasets[1].data.push(valLoss); loss.update('none');
-      },
-    });
-    if (S.site !== site) return;
-    await call('setAnomaly', { id: site.id, err: res.err });
-    S.ml.ae = res;
-    S.ml.aeLoss = loss.data;
-    status.textContent = `Done in ${((performance.now() - t0) / 1000).toFixed(0)} s · ${res.params.toLocaleString()} weights · ${res.backend.toUpperCase()}`;
-    if (S.tool === 'anomaly') showAE();
-  } catch (e) {
-    console.error(e);
-    status.textContent = 'Training failed: ' + e.message;
-  } finally {
-    if ($('#aGo')) $('#aGo').disabled = false;
-  }
-}
-
-async function showAE() {
-  const ae = S.ml.ae, st = S.stack;
-  if (S.ml.aeLoss && !S.charts.aLoss) {
-    chart('aLoss', { type: 'line', data: S.ml.aeLoss, options: { maintainAspectRatio: false, animation: false, scales: { y: { type: 'logarithmic' } }, plugins: { legend: { labels: { boxWidth: 10 } } } } });
-  }
-  drawTo($('#aMap'), await renderImage(st.id, S.t, 'anomaly'));
-  if (!S.ml.km) S.ml.km = await call('kmeans', { id: st.id, t: S.t, k: 5 });
-  const km = S.ml.km;
-  const { labels } = await call('labels', { id: st.id });
-  if (!$('#aLatent')) return;
-  const groups = Array.from({ length: km.k }, () => []);
-  for (let i = 0; i < SIZE * SIZE; i += 17) if (ae.valid[i] && labels && labels[i] !== 255) groups[labels[i]].push({ x: ae.latent[i * 2], y: ae.latent[i * 2 + 1], i });
-  chart('aLatent', {
-    type: 'scatter',
-    data: { datasets: groups.map((g, c) => ({ data: g, pointRadius: 1.5, backgroundColor: CLUSTER_COLORS[c] + 'bb', borderWidth: 0 })) },
-    options: { maintainAspectRatio: false, animation: false, plugins: { legend: { display: false }, tooltip: { enabled: false } }, scales: { x: { title: { display: true, text: 'learned axis 1' } }, y: { title: { display: true, text: 'learned axis 2' } } },
-      onClick: (_e, els) => { if (els.length) reconChart(els[0].element.$context.raw.i); } },
-  });
-  let best = 0;
-  for (let i = 0; i < ae.err.length; i++) if (ae.err[i] > ae.err[best]) best = i;
-  reconChart(best);
-}
-
-async function reconChart(i) {
-  const ae = S.ml.ae, st = S.stack, T = ae.T, D = ae.D, ts = times();
-  const x = i % SIZE, y = Math.floor(i / SIZE);
-  const real = ae.X.subarray(i * D, i * D + D), rec = ae.recon.subarray(i * D, i * D + D);
-  let below = 0;
-  for (let j = 0; j < ae.err.length; j++) if (ae.err[j] < ae.err[i]) below++;
-  $('#aHint').innerHTML = `Pixel ${x}, ${y} is more unusual than <b>${pct(below / ae.err.length)}</b> of the scene. Solid lines: what NISAR observed. Dashed: what the network expected.`;
-  const im = await renderImage(st.id, S.t, 'anomaly');
-  if (!$('#aMap')) return;
-  drawTo($('#aMap'), im);
-  const cv = $('#aMap'), ctx = cv.getContext('2d'), sx = cv.width / SIZE;
-  ctx.strokeStyle = '#8cc4ff'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc((x + 0.5) * sx, (y + 0.5) * sx, 12, 0, 7); ctx.stroke();
-  const pts = (arr, off) => ts.map((t, k) => ({ x: t, y: arr[off + k] * 255 }));
-  chart('aRecon', {
-    type: 'line',
-    data: { datasets: [
-      { label: 'HH observed', data: pts(real, 0), borderColor: '#ff5bd6', backgroundColor: '#ff5bd6', pointRadius: 2 },
-      { label: 'HH expected', data: pts(rec, 0), borderColor: 'rgba(255,91,214,0.55)', borderDash: [5, 4], pointRadius: 0 },
-      { label: 'HV observed', data: pts(real, T), borderColor: '#44e07a', backgroundColor: '#44e07a', pointRadius: 2 },
-      { label: 'HV expected', data: pts(rec, T), borderColor: 'rgba(68,224,122,0.55)', borderDash: [5, 4], pointRadius: 0 },
-    ] },
-    options: { maintainAspectRatio: false, animation: false, parsing: false, scales: { x: timeAxis(), y: { suggestedMin: 0, suggestedMax: 255 } }, plugins: { legend: { labels: { boxWidth: 10 } } } },
-  });
 }
 
 // ================================================================== FORECAST

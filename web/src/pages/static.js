@@ -160,7 +160,6 @@ export function renderData(sheet) {
             <tr><td>Speckle reduction</td><td>Lee adaptive filter, 5×5</td><td>cleaner images</td></tr>
             <tr><td>Change detection</td><td>log-ratio, Otsu threshold</td><td>change map, km², per-pixel confidence</td></tr>
             <tr><td>Surface types</td><td>k-means++ on 6 features</td><td>groups, physical reading, confidence</td></tr>
-            <tr><td>Unusual behaviour</td><td>dense autoencoder (TensorFlow.js)</td><td>anomaly map, 2-D latent space</td></tr>
             <tr><td>Forecast</td><td>Theil–Sen trend + residual bootstrap</td><td>80 / 95% ranges, backtest vs. persistence</td></tr>
           </table>
         </div>

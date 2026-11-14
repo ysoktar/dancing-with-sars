@@ -1,6 +1,4 @@
-// Machine-learning lab: unsupervised k-means scattering classes and a
-// TensorFlow.js deep autoencoder that learns "normal" temporal radar behaviour
-// so that unusual change shows up as reconstruction error.
+// Machine-learning helpers: per-pixel features and unsupervised k-means scattering classes.
 
 import { SIZE, temporalStd } from './sar.js';
 
@@ -116,13 +114,6 @@ export function describeCluster(c, theme) {
   return { name: 'Moderate mixed', why: 'Intermediate scattering: mixed land cover, moderate roughness and moisture.' };
 }
 
-// ---------------------------------------------------------------- deep autoencoder
-let tfPromise = null;
-export function loadTF() {
-  if (!tfPromise) tfPromise = import('@tensorflow/tfjs');
-  return tfPromise;
-}
-
 /** Build per-pixel temporal signature vectors [HH_1..HH_T, HV_1..HV_T] / 255. */
 export function temporalSignatures(stack) {
   const T = stack.T, D = 2 * T;
@@ -134,68 +125,3 @@ export function temporalSignatures(stack) {
   return { X, D };
 }
 
-/**
- * Train a dense autoencoder D → 48 → 16 → 2 → 16 → 48 → D in the browser.
- * Calls onEpoch({epoch, loss, valLoss}) after every epoch.
- */
-export async function trainAutoencoder(stack, { epochs = 40, samples = 8000, latent = 2, onEpoch, signal } = {}) {
-  const tf = await loadTF();
-  const want = new URLSearchParams(location.search).get('tf');
-  if (want) await tf.setBackend(want);
-  await tf.ready();
-  const { X, D } = stack.X ? stack : temporalSignatures(stack);   // precomputed by the worker, or built here
-  const rnd = mulberry32(7);
-  const idx = [];
-  for (let i = 0; i < N; i++) if (stack.valid[i]) idx.push(i);
-  const pick = Array.from({ length: Math.min(samples, idx.length) }, () => idx[Math.floor(rnd() * idx.length)]);
-  const train = new Float32Array(pick.length * D);
-  pick.forEach((p, r) => train.set(X.subarray(p * D, p * D + D), r * D));
-
-  const input = tf.input({ shape: [D] });
-  const e1 = tf.layers.dense({ units: 48, activation: 'relu' }).apply(input);
-  const e2 = tf.layers.dense({ units: 16, activation: 'relu' }).apply(e1);
-  const z = tf.layers.dense({ units: latent, activation: 'linear', name: 'latent' }).apply(e2);
-  const d1 = tf.layers.dense({ units: 16, activation: 'relu' }).apply(z);
-  const d2 = tf.layers.dense({ units: 48, activation: 'relu' }).apply(d1);
-  const out = tf.layers.dense({ units: D, activation: 'sigmoid' }).apply(d2);
-  const model = tf.model({ inputs: input, outputs: out });
-  const encoder = tf.model({ inputs: input, outputs: z });
-  model.compile({ optimizer: tf.train.adam(0.004), loss: 'meanSquaredError' });
-
-  const xs = tf.tensor2d(train, [pick.length, D]);
-  await model.fit(xs, xs, {
-    epochs, batchSize: 256, shuffle: true, validationSplit: 0.15, verbose: 0,
-    callbacks: {
-      onEpochEnd: async (epoch, logs) => {
-        onEpoch && onEpoch({ epoch: epoch + 1, loss: logs.loss, valLoss: logs.val_loss });
-        if (signal && signal.aborted) model.stopTraining = true;
-        await tf.nextFrame();
-      },
-    },
-  });
-  xs.dispose();
-
-  // Inference over all pixels in chunks
-  const err = new Float32Array(N);
-  const lat = new Float32Array(N * latent);
-  const recon = new Float32Array(N * D);
-  const chunk = 8192;
-  for (let s = 0; s < N; s += chunk) {
-    const n = Math.min(chunk, N - s);
-    const xb = tf.tensor2d(X.subarray(s * D, (s + n) * D), [n, D]);
-    const [yb, zb] = tf.tidy(() => [model.predict(xb), encoder.predict(xb)]);
-    const y = await yb.data(), zz = await zb.data();
-    recon.set(y, s * D);
-    lat.set(zz, s * latent);
-    for (let i = 0; i < n; i++) {
-      let e = 0;
-      for (let d = 0; d < D; d++) { const u = y[i * D + d] - X[(s + i) * D + d]; e += u * u; }
-      err[s + i] = stack.valid[s + i] ? Math.sqrt(e / D) : 0;
-    }
-    xb.dispose(); yb.dispose(); zb.dispose();
-    await tf.nextFrame();
-  }
-  const params = model.countParams();
-  model.dispose();
-  return { err, latent: lat, latentDim: latent, recon, X, D, T: stack.T, valid: stack.valid, params, backend: tf.getBackend() };
-}

@@ -1,6 +1,48 @@
 {
  "cycles": [
   {
+   "id": "20251018_20251123",
+   "start": "2025-10-18",
+   "end": "2025-11-22",
+   "granules": 3528,
+   "failed": 0,
+   "modes": {
+    "DHDH": 2790,
+    "NADV": 310,
+    "SHSH": 141,
+    "SHNA": 114,
+    "QPDH": 99,
+    "NASV": 53
+   },
+   "coverage": 0.0727,
+   "resolutionDeg": 0.025,
+   "betaFrames": 3122,
+   "img8k": "mosaic/20251018_20251123_8k.webp",
+   "img4k": "mosaic/20251018_20251123_4k.webp",
+   "generated": "2026-11-14T09:23:23Z"
+  },
+  {
+   "id": "20251123_20251229",
+   "start": "2025-11-23",
+   "end": "2025-12-28",
+   "granules": 5395,
+   "failed": 0,
+   "modes": {
+    "DHDH": 4109,
+    "NADV": 473,
+    "SHNA": 227,
+    "QPDH": 210,
+    "SHSH": 186,
+    "NASV": 103
+   },
+   "coverage": 0.0793,
+   "resolutionDeg": 0.025,
+   "betaFrames": 4566,
+   "img8k": "mosaic/20251123_20251229_8k.webp",
+   "img4k": "mosaic/20251123_20251229_4k.webp",
+   "generated": "2026-11-14T09:27:15Z"
+  },
+  {
    "id": "20260627_20260709",
    "start": "2026-06-27",
    "end": "2026-07-08",

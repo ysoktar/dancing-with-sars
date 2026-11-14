@@ -2,11 +2,11 @@
 // (speckle filtering, render modes, change detection, k-means, pixel series)
 // off the main thread, so switching filters and dates never freezes the page.
 import { SIZE, leeFilter, render, logRatio, maskedMean, darkSeries } from './sar.js';
-import { pixelFeatures, kmeans, temporalSignatures } from './ml.js';
+import { pixelFeatures, kmeans } from './ml.js';
 
 const N = SIZE * SIZE;
 const stacks = new Map();      // site id -> stack
-const results = new Map();     // site id -> { change, km, anomaly }
+const results = new Map();     // site id -> { change, km }
 
 async function decode(url) {
   const blob = await (await fetch(url)).blob();
@@ -62,7 +62,6 @@ const ops = {
     if (mode === 'change') extra.change = r.change;
     if (mode === 'clusters') extra.labels = r.km?.labels;
     if (mode === 'confidence') extra.conf = src === 'kmeans' ? r.km?.conf : r.change?.conf;
-    if (mode === 'anomaly') extra.anomaly = r.anomaly;
     const img = render(st, t, mode, extra);
     return { data: img.data.buffer, w: img.width, h: img.height, transfer: [img.data.buffer] };
   },
@@ -95,16 +94,8 @@ const ops = {
     };
     return { hh: st.hhF.map(avg), hv: st.hvF.map(avg) };
   },
-  signatures({ id }) {
-    const st = stacks.get(id);
-    const { X, D } = temporalSignatures(st);
-    const valid = st.valid.slice();
-    return { X, D, T: st.T, valid, transfer: [X.buffer, valid.buffer] };
-  },
-  setAnomaly({ id, err }) {
-    results.get(id).anomaly = err;
-    return {};
-  },
+
+
 };
 
 self.onmessage = async (e) => {

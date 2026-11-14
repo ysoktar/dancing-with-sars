@@ -1,0 +1,21 @@
+{
+ "id": "20260122_20260615",
+ "start": "2026-01-22",
+ "end": "2026-06-14",
+ "granules": 3650,
+ "failed": 0,
+ "modes": {
+  "DHDH": 2237,
+  "SHNA": 809,
+  "SHSH": 201,
+  "QPDH": 186,
+  "NASV": 132,
+  "NADV": 52
+ },
+ "coverage": 0.019,
+ "resolutionDeg": 0.025,
+ "betaFrames": 0,
+ "img8k": "mosaic/20260122_20260615_8k.webp",
+ "img4k": "mosaic/20260122_20260615_4k.webp",
+ "generated": "2026-11-14T09:35:08Z"
+}

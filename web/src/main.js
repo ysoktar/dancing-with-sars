@@ -4,7 +4,7 @@ import { GlobeView, latestBefore } from './globe.js';
 import { themeOf, THEMES } from './sites.js';
 import { $, $$, DAY, tOf, fmtDate, fmtShort, esc, ICON } from './util.js';
 import { openSitePage, closeSitePage } from './pages/site.js';
-import { renderSites, renderMethod, renderData } from './pages/static.js';
+import { renderSites, renderMethod, renderData, renderAgriculture } from './pages/static.js';
 
 const BASE = import.meta.env.BASE_URL;
 
@@ -95,6 +95,7 @@ function route() {
   openSheet();
   if (page === 'sites') renderSites(sheet);
   else if (page === 'method') renderMethod(sheet);
+  else if (page === 'agriculture') renderAgriculture(sheet);
   else if (page === 'data') renderData(sheet);
   else return go('#/');
   current = page;

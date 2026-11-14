@@ -307,7 +307,7 @@ def build_tiles(gs, gains, cid, workers, out):
     heights = {id(p): _height(p[3]) for p in patches}
     Wt, Ht = int(360 / TILE_RES), int(180 / TILE_RES)
     n = int(TILE_DEG / TILE_RES)
-    land_lo = land_mask()
+    land_lo = keep_mask()
     tdir = out / "tiles" / cid
     tdir.mkdir(parents=True, exist_ok=True)
     tiles = []
@@ -328,14 +328,59 @@ def build_tiles(gs, gains, cid, workers, out):
     return {"deg": TILE_DEG, "px": n, "path": f"mosaic/tiles/{cid}", "list": tiles}
 
 
+POLAR_LAT = 55   # beyond this latitude sea ice is kept too (it is real NISAR data); open ocean nearer the equator is masked
+
+
+def keep_mask():
+    """Where mosaic pixels are kept: land + ice shelves everywhere, and everything poleward of POLAR_LAT."""
+    m = land_mask().copy()
+    lat = 90 - (np.arange(H) + 0.5) * RES
+    m[np.abs(lat) > POLAR_LAT] = True
+    return m
+
+
+def fill_gaps():
+    """Fill pixels a period has no data for from the nearest period (in time) that has data there.
+    Runs over every cycle listed in mosaic.json, at both 8k and 4k. Records the filled share per cycle."""
+    out = OUT / "mosaic"
+    idx = json.loads((OUT / "mosaic.json").read_text())["cycles"]
+    mid = lambda c: (date.fromisoformat(c["start"]).toordinal() + date.fromisoformat(c["end"]).toordinal()) / 2
+    for size in ("4k", "8k"):
+        imgs = {c["id"]: np.asarray(Image.open(out / f"{c['id']}_{size}.webp").convert("RGBA")).copy() for c in idx}
+        orig_alpha = {k: v[..., 3] > 0 for k, v in imgs.items()}
+        for c in idx:
+            im = imgs[c["id"]]
+            hole = ~orig_alpha[c["id"]]
+            total = int((~hole).sum())
+            filled = 0
+            for o in sorted(idx, key=lambda o: abs(mid(o) - mid(c))):
+                if o["id"] == c["id"] or not hole.any(): continue
+                take = hole & orig_alpha[o["id"]]
+                if take.any():
+                    im[take] = imgs[o["id"]][take]
+                    hole &= ~take
+                    filled += int(take.sum())
+            Image.fromarray(im, "RGBA").save(out / f"{c['id']}_{size}.webp", quality=80, method=6)
+            if size == "8k":
+                e = json.loads((out / f"{c['id']}.json").read_text())
+                e["gapFilledPct"] = round(filled / max(1, total + filled) * 100, 1)
+                (out / f"{c['id']}.json").write_text(json.dumps(e, indent=1))
+                print(f"   {c['id']}: filled {e['gapFilledPct']} % of its pixels from neighbouring periods")
+    cycles = sorted((json.loads(f.read_text()) for f in out.glob("*.json")), key=lambda c: c["start"])
+    (OUT / "mosaic.json").write_text(json.dumps({"cycles": cycles}, indent=1))
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--start", default="2026-10-01")
     ap.add_argument("--days", type=int, default=12)
     ap.add_argument("--workers", type=int, default=16)
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--fill-gaps", action="store_true", help="only fill holes in all existing cycles from neighbouring periods")
     ap.add_argument("--tiles", action="store_true", help=f"also write {TILE_DEG}° tiles at {TILE_RES}° per pixel for zoomed-in viewing")
     args = ap.parse_args()
+    if args.fill_gaps:
+        fill_gaps(); return
     d0 = date.fromisoformat(args.start)
     d1 = d0 + timedelta(days=args.days)
     cid = f"{d0:%Y%m%d}_{d1:%Y%m%d}"
@@ -350,7 +395,7 @@ def main():
     t0 = time.time()
     patches, fails = fetch_all(gs, args.workers, RES, CACHE)
     print(f"   {len(patches)} frames ready, {fails} failed · {(time.time() - t0) / 60:.1f} min", flush=True)
-    land = land_mask()
+    land = keep_mask()
     canvas, gains = blend(patches, H, W, 0, land, feather_px=16)
     done = len(patches)
     covered = canvas[..., 3] > 0

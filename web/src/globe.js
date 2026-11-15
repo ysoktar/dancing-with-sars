@@ -78,7 +78,7 @@ export class GlobeView {
     this.base = base;
     this.onSiteClick = onSiteClick;
     this.layers = { mosaic: true, mtc: true, frames: true, density: false, footprints: false, satellite: true, night: false, events: false,
-      change: false, water: false, variability: false, melt: false, maincrop: false, landslides: false };
+      change: false, water: false, variability: false, melt: false, maincrop: false, landslides: false, s1: false };
     this.events = [];
     this.texCache = new Map();
     this.frameMeshes = new Map();
@@ -318,6 +318,7 @@ export class GlobeView {
     if (name === 'mtc') this._showMtc(this.currentCycle);
     if (name === 'mtc' || name === 'mosaic') this._showCaps(this.currentCycle);
     if (OVERLAYS[name]) this._overlay(name, on);
+    if (name === 's1') this._showS1(this.date || new Date());
     if (name === 'change' || name === 'water') this._showMetric(this.currentCycle);
     this.update(this.date, true);
   }
@@ -338,6 +339,7 @@ export class GlobeView {
     if (this.satGroup) this.satGroup.visible = this.layers.satellite && date.getTime() >= Date.UTC(2025, 6, 30);
     this._setSatDay(date);
     this._showMosaic(date);
+    if (this.layers.s1) this._showS1(date);
     const month = date.toISOString().slice(0, 7);
     if (this.coverage && (force || month !== this._month)) {
       this._month = month;
@@ -627,6 +629,39 @@ export class GlobeView {
   _sphere(order, scale) {
     const r = this.globe.getGlobeRadius() * scale;
     return new THREE.SphereGeometry(r, 256, 128, (90 - 180) * DEG, 2 * Math.PI, 0, Math.PI);
+  }
+
+  /**
+   * Sentinel-1 C-band (ESA WorldCover S1 composites, pipeline/build_s1_mosaic.py): the year follows the timeline,
+   * 2020 for dates up to the end of 2020, 2021 afterwards (the only two years published). Drawn under the NISAR
+   * layers, so with NISAR on it fills what NISAR has not imaged; before NISAR's launch it is the radar view.
+   */
+  _showS1(date) {
+    const on = this.layers.s1;
+    if (!on) { if (this.s1Mesh) this.s1Mesh.visible = false; return; }
+    if (!this.s1Index) {
+      if (!this._s1Loading) {
+        this._s1Loading = fetch(this.base + 'data/s1/s1.json').then((r) => r.json()).then((j) => { this.s1Index = j; this._showS1(this.date || new Date()); }).catch(() => {});
+      }
+      return;
+    }
+    const y = date && date.getUTCFullYear() <= 2020 ? 2020 : 2021;
+    const e = this.s1Index.years.find((x) => x.year === y) || this.s1Index.years[this.s1Index.years.length - 1];
+    this.s1Year = e.year;
+    if (!this.s1Mesh) {
+      this.s1Mesh = new THREE.Mesh(this._sphere(0, 1.0004), new THREE.MeshBasicMaterial({ transparent: true, depthWrite: false }));
+      this.s1Mesh.renderOrder = 0.5;
+      this.s1Mesh.visible = false;
+      this.globe.scene().add(this.s1Mesh);
+    }
+    const url = this.base + 'data/' + e.img4k;
+    if (this.s1Mesh.userData.url === url) { this.s1Mesh.visible = !!this.s1Mesh.material.map; return; }
+    this.s1Mesh.userData.url = url;
+    this._texture(url, (tex) => {
+      if (this.s1Mesh.userData.url !== url) return;
+      this.s1Mesh.material.map = tex; this.s1Mesh.material.needsUpdate = true; this.s1Mesh.visible = this.layers.s1;
+      this.onMtc?.(this.mtcInfo || null);
+    });
   }
 
   /** Precomputed global metric texture on its own sphere shell. */

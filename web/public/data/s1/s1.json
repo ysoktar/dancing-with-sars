@@ -1,0 +1,29 @@
+{
+ "source": "ESA WorldCover Sentinel-1 median backscatter composites (CC BY 4.0, contains modified Copernicus Sentinel data)",
+ "ranges": {
+  "VV": [
+   -22,
+   0
+  ],
+  "VH": [
+   -28,
+   -8
+  ],
+  "VVminusVH": [
+   2,
+   14
+  ]
+ },
+ "years": [
+  {
+   "year": 2020,
+   "img4k": "s1/s1_2020_4k.webp",
+   "tiles": 17373
+  },
+  {
+   "year": 2021,
+   "img4k": "s1/s1_2021_4k.webp",
+   "tiles": 17446
+  }
+ ]
+}

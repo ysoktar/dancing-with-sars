@@ -100,7 +100,7 @@ no preferred direction, so there are no spokes. The filled area is recorded in e
 
 ### 3.3 Distilled layers
 
-Six layers summarise what the radar shows; 19 candidates were considered and 13 rejected (single channels, a "best
+Six layers summarise what the radar shows, plus a Sentinel-1 context layer; 19 candidates were considered and 13 rejected (single channels, a "best
 crop" map, global drought or soil moisture without a live global grid…):
 
 | Layer | How it is computed | Read it as |
@@ -111,6 +111,7 @@ crop" map, global drought or soil moisture without a live global grid…):
 | Snow and ice melt | deepest HH drop below each pixel's own 80th percentile, cold land only | where snow and ice got wet |
 | Main crop | dominant crop of each 0.25° cell, SPAM 2010 | which crop is grown where |
 | Landslide history | NASA Global Landslide Catalog, 11,033 events | where slopes have failed before |
+| Sentinel-1 C-band 2020 · 2021 | ESA WorldCover yearly median VV and VH (Sentinel-1), year follows the timeline | radar context before NISAR; C-band sees mostly leaves, L-band goes deeper |
 
 ---
 

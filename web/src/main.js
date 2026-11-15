@@ -3,7 +3,7 @@ import Chart from 'chart.js/auto';
 import { GlobeView, latestBefore } from './globe.js';
 import { themeOf, THEMES } from './sites.js';
 import { $, $$, DAY, tOf, fmtDate, fmtShort, esc, ICON } from './util.js';
-import { openSitePage, closeSitePage, hrefOf } from './pages/site.js';
+import { openSitePage, closeSitePage, hrefOf, rerenderSite } from './pages/site.js';
 import { call } from './sarClient.js';
 import { updateLegend } from './legend.js';
 import { renderMethod, renderData } from './pages/static.js';
@@ -27,6 +27,13 @@ export const app = {
 // ===================================================================== boot
 async function boot() {
   initUX();
+  window.addEventListener('dws:lang', () => {
+    const sheet = $('#sheet');
+    if (current === 'method') renderMethod(sheet);
+    else if (current === 'data') renderData(sheet);
+    rerenderSite();
+    if (app.globe) updateLegend(app.globe, $('#mapLegend'));
+  });
   const get = (f, fallback) => fetch(BASE + 'data/' + f).then((r) => (r.ok ? r.json() : fallback)).catch(() => fallback);
   const [catalog, coverage, motion, events, dem, mosaic, tle] = await Promise.all([
     get('catalog.json', null), get('coverage.json', { months: [] }), get('motion.json', { sites: {} }), get('events.json', { sites: {} }), get('dem.json', {}), get('mosaic.json', { cycles: [] }), get('nisar_tle.json', null),

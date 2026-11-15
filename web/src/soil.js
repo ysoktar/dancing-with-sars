@@ -1,3 +1,4 @@
+import { T } from './ux.js';
 // Soil moisture of a region, fetched live in the browser (both APIs are public and CORS-enabled):
 //  - ERA5-Land (ECMWF / Copernicus, ~9 km) volumetric soil water in four layers, daily, via the Open-Meteo archive API
 //  - NASA POWER (MERRA-2 based, ~0.5 x 0.625 deg) soil wetness: surface (GWETTOP), root zone (GWETROOT), profile (GWETPROF)
@@ -19,7 +20,7 @@ export async function era5Soil(lat, lon) {
   const end = iso(Date.now() - 6 * 864e5);
   const url = `https://archive-api.open-meteo.com/v1/archive?latitude=${lat.toFixed(4)}&longitude=${lon.toFixed(4)}`
     + `&start_date=2019-01-01&end_date=${end}&daily=${ERA5_LAYERS.map((l) => l[0]).join(',')}&timezone=GMT`;
-  const p = fetch(url).then((r) => { if (!r.ok) throw new Error(r.status === 429 ? 'the free Open-Meteo API is rate-limited right now; try again in a minute' : `Open-Meteo ${r.status}`); return r.json(); }).then((j) => {
+  const p = fetch(url).then((r) => { if (!r.ok) throw new Error(r.status === 429 ? T('the free Open-Meteo API is rate-limited right now; try again in a minute', 'ücretsiz Open-Meteo API\'si şu an istek sınırında; bir dakika sonra tekrar deneyin') : `Open-Meteo ${r.status}`); return r.json(); }).then((j) => {
     const d = j.daily, dates = d.time;
     const layers = ERA5_LAYERS.map(([k, label, color]) => {
       const v = d[k];

@@ -378,7 +378,7 @@ Rejected: single channels (already in the mosaic display), a "best crop" map (mi
 
 ### 5.19 Interface (`web/src/ux.js`)
 * Theme: CSS variables for light and dark, default from the system, remembered.
-* Language: English / Turkish. Interface strings are translated in place by exact match (a MutationObserver keeps new content translated), paragraphs with markup by key; longer method notes stay in English.
+* Language: English / Turkish. Short interface strings are translated in place by exact match (a MutationObserver keeps new content translated); explanations with live values are written in both languages (`T(en, tr)`) and the open view is redrawn on a switch, without reloading data.
 * Glossary: 25 terms are underlined (first occurrence per paragraph) and explained in a tooltip, in the current language.
 
 ### 5.20 Parcel report (`web/src/pages/report.js`)
@@ -446,7 +446,7 @@ Details: [ml/README.md](ml/README.md).
 * **Drought.** Area-wide reanalysis and gridded rain (~10–50 km): irrigated fields can stay green in a drought; ERA5-Land requests can be rate-limited (the page says so).
 * **Glaciers.** Fresh dry snow, crevasse fields and radar shadow on steep faces can mimic or hide melt; ice speed and thickness are not computed.
 * **Globe layers.** Built from 8-bit browse mosaics at ~5–10 km; change patches with straight edges follow satellite swaths (the change happened between two passes).
-* **Translation.** The interface and short labels are in Turkish; long method notes remain in English.
+* **Translation.** The interface, tool explanations, legend and static pages are in English and Turkish; the README and code comments are in English.
 * **Landslide outlook.** A LHASA-style indicator from slope and rainfall percentiles, not an official warning; detection candidates also come from logging, fire or terrace harvest, and steep slopes facing away from the radar can be in shadow.
 * **U-TAE.** Trained on French farmland; outside that domain, read it as field delineation plus a crop-group hint.
 * **Polar caps.** The filled caps beyond NISAR's reach are a smooth extrapolation, not observations.

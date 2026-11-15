@@ -7,6 +7,7 @@
 // cropland (not a curve modelled from climate); elevation is sampled over the whole window from
 // Terrarium tiles (AWS Open Data) instead of 9 points; weather covers the last 12 months.
 import Chart from 'chart.js/auto';
+import { T } from '../ux.js';
 import { esc } from '../util.js';
 
 export const SAR_REFERENCES = [
@@ -141,28 +142,28 @@ export async function renderReport(el, ctx) {
   el.innerHTML = `
     <div class="stack">
       <div class="panel">
-        <h3>1 · Parcel geometry and elevation range</h3>
+        <h3>${T(`1 · Parcel geometry and elevation range`, `1 · Parsel geometrisi ve yükseklik aralığı`)}</h3>
         <p class="small" style="color:var(--accent);margin:4px 0 10px">Centre (${site.lat.toFixed(4)}°, ${site.lon.toFixed(4)}°) · box lat [${s.toFixed(3)}° … ${n.toFixed(3)}°], lon [${w.toFixed(3)}° … ${e.toFixed(3)}°]<br>
           Area ${wKm.toFixed(1)} × ${hKm.toFixed(1)} km = ${area.toFixed(0)} km² (${Math.round(area * 100).toLocaleString()} ha)${frost != null ? ` · frost days ${frost} /yr · rain ${rain} mm /yr` : ''}</p>
         <div class="chart sm"><canvas id="rp1"></canvas></div>
-        <p class="note">${elev ? `Elevation sampled at ${elev.n.toLocaleString()} points over the window (Terrarium tiles, zoom ${elev.zoom}; 1st–99th percentile): lowest ${elev.min} m, mean ${elev.mean} m, highest ${elev.max} m.` : 'Elevation could not be fetched.'} Benchmarks are typical landscapes for comparison.</p>
+        <p class="note">${T(`${elev ? `Elevation sampled at ${elev.n.toLocaleString()} points over the window (Terrarium tiles, zoom ${elev.zoom}; 1st–99th percentile): lowest ${elev.min} m, mean ${elev.mean} m, highest ${elev.max} m.` : 'Elevation could not be fetched.'} Benchmarks are typical landscapes for comparison.`, `${elev ? `Yükseklik pencere üzerinde ${elev.n.toLocaleString()} noktada örneklendi (Terrarium karoları, yakınlık ${elev.zoom}; 1.–99. yüzdelik): en düşük ${elev.min} m, ortalama ${elev.mean} m, en yüksek ${elev.max} m.` : 'Yükseklik alınamadı.'} Karşılaştırma için tipik arazi örnekleri verilmiştir.`)}</p>
       </div>
       <div class="panel">
-        <h3>2 · Radar vegetation index signatures: crops and forest</h3>
-        <p class="small muted" style="margin:4px 0 10px">L-band pulses interact with plant structure (HV volume scattering) and soil moisture [1, 2, 6]. Reference curves are adapted to this window's climate (${frost ?? '–'} frost days, ${rain ?? '–'} mm rain, elevation ${elev?.mean ?? '–'} m). <b>Black dots: this window, measured by NISAR</b> (rescaled to the reference range). Climate-based expectation: ${esc(expect)}.</p>
+        <h3>${T(`2 · Radar vegetation index signatures: crops and forest`, `2 · Radar bitki indeksi imzaları: ürünler ve orman`)}</h3>
+        <p class="small muted" style="margin:4px 0 10px">${T(`L-band pulses interact with plant structure (HV volume scattering) and soil moisture [1, 2, 6]. Reference curves are adapted to this window's climate (${frost ?? '–'} frost days, ${rain ?? '–'} mm rain, elevation ${elev?.mean ?? '–'} m). <b>Black dots: this window, measured by NISAR</b> (rescaled to the reference range). Climate-based expectation: ${esc(expect)}.`, `L-band sinyalleri bitki yapısıyla (HV hacim saçılımı) ve toprak nemiyle etkileşir [1, 2, 6]. Referans eğriler bu pencerenin iklimine uyarlandı (${frost ?? '–'} don günü, ${rain ?? '–'} mm yağış, yükseklik ${elev?.mean ?? '–'} m). <b>Siyah noktalar: bu pencere, NISAR ölçümü</b> (referans aralığına ölçeklendi). İklime dayalı beklenti: ${esc(expect)}.`)}</p>
         <div class="chart lg"><canvas id="rp2"></canvas></div>
       </div>
       <div class="panel">
-        <h3>3 · Multi-temporal SAR ecosystem calendar: crops vs forest</h3>
-        <p class="small muted" style="margin:4px 0 10px">Repeat-pass SAR follows phenology across agriculture, wetlands and forestry [1, 4, 5]. Row 1 is this window (NISAR, months without a pass shown as –); the rows below are the climate-adapted reference profiles.</p>
+        <h3>${T(`3 · Multi-temporal SAR ecosystem calendar: crops vs forest`, `3 · Çok zamanlı SAR ekosistem takvimi: ürünler ve orman`)}</h3>
+        <p class="small muted" style="margin:4px 0 10px">${T(`Repeat-pass SAR follows phenology across agriculture, wetlands and forestry [1, 4, 5]. Row 1 is this window (NISAR, months without a pass shown as –); the rows below are the climate-adapted reference profiles.`, `Tekrarlı geçiş SAR, tarım, sulak alan ve ormancılıkta fenolojiyi izler [1, 4, 5]. 1. satır bu penceredir (NISAR; geçiş olmayan aylar – ile gösterilir); alttaki satırlar iklime uyarlanmış referans profilleridir.`)}</p>
         <div style="overflow-x:auto"><table class="t cal" id="rp3"></table></div>
       </div>
       <div class="panel">
-        <h3>4 · Satellite weather data (NASA POWER), last 12 months</h3>
-        <p class="small muted" style="margin:4px 0 10px">NASA POWER agroclimatology API at (${site.lat.toFixed(4)}°, ${site.lon.toFixed(4)}°) · annual rain ${rain ?? '–'} mm · freezing nights (&lt; 0 °C) ${frost ?? '–'}. Below the red frost line crops stop growing; with spring rain and temperatures above ~10 °C the radar vegetation index climbs.</p>
+        <h3>${T(`4 · Satellite weather data (NASA POWER), last 12 months`, `4 · Uydu hava verisi (NASA POWER), son 12 ay`)}</h3>
+        <p class="small muted" style="margin:4px 0 10px">${T(`NASA POWER agroclimatology API at (${site.lat.toFixed(4)}°, ${site.lon.toFixed(4)}°) · annual rain ${rain ?? '–'} mm · freezing nights (&lt; 0 °C) ${frost ?? '–'}. Below the red frost line crops stop growing; with spring rain and temperatures above ~10 °C the radar vegetation index climbs.`, `NASA POWER tarımsal iklim API'si, (${site.lat.toFixed(4)}°, ${site.lon.toFixed(4)}°) · yıllık yağış ${rain ?? '–'} mm · donlu geceler (&lt; 0 °C) ${frost ?? '–'}. Kırmızı don çizgisinin altında ürünler büyümeyi durdurur; ilkbahar yağışı ve ~10 °C üstü sıcaklıkla radar bitki indeksi yükselir.`)}</p>
         <div class="chart lg"><canvas id="rp4"></canvas></div>
       </div>
-      <div class="panel"><h3>References</h3><ol class="small">${SAR_REFERENCES.map(([t, u]) => `<li>${esc(t)} · <a href="${u}" target="_blank" rel="noopener">${u.replace(/^https?:\/\//, '')}</a></li>`).join('')}</ol></div>
+      <div class="panel"><h3>${T('References', 'Kaynaklar')}</h3><ol class="small">${SAR_REFERENCES.map(([t, u]) => `<li>${esc(t)} · <a href="${u}" target="_blank" rel="noopener">${u.replace(/^https?:\/\//, '')}</a></li>`).join('')}</ol></div>
     </div>`;
   const C = (id, cfg) => { ctx.charts[id]?.destroy(); ctx.charts[id] = new Chart(el.querySelector('#' + id), cfg); };
   // 1. elevation ranges (floating bars)

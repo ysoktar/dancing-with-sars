@@ -26,6 +26,8 @@ function applyTheme(t) {
 // ------------------------------------------------------------------ language
 let lang = 'en';
 export const getLang = () => lang;
+/** Text in the current language: T('English', 'Türkçe'). Views are redrawn on a language switch (event 'dws:lang'). */
+export const T = (en, tr) => (lang === 'tr' && tr ? tr : en);
 const TR = {
   // navigation and global
   'Globe': 'Küre', 'Select region': 'Bölge seç', 'What radar can tell': 'Radar neyi söyler', 'Data & methods': 'Veri ve yöntem',
@@ -80,6 +82,48 @@ const TR = {
   'D3 extreme drought': 'D3 aşırı kuraklık', 'D4 exceptional drought': 'D4 istisnai kuraklık', 'wetter than usual': 'normalden ıslak',
   'Structural class': 'Yapısal sınıf', 'Through the year': 'Yıl boyunca', 'Area B at': 'B alanı:', 'or a recent area': 'ya da son bir alan', 'or a reference': 'ya da bir referans',
   'shift B by 6 months (other hemisphere)': "B'yi 6 ay kaydır (diğer yarım küre)", 'Event between the passes before and': 'Olay, şu geçişten önceki geçişlerle arasında:',
+  'Choose a window and press “Run U-TAE here”. The first run downloads the model (4.5 MB) and about 10 MB of Sentinel-2 data per date.': 'Bir pencere seçip “Run U-TAE here”a basın. İlk çalıştırma modeli (4,5 MB) ve tarih başına yaklaşık 10 MB Sentinel-2 verisini indirir.',
+  'Enter "lat, lon" or pick an area.': '"enlem, boylam" girin ya da bir alan seçin.',
+  'Fetching ERA5-Land soil moisture (4 layers), NASA POWER soil wetness and computing NISAR surface wetness…': 'ERA5-Land toprak nemi (4 katman), NASA POWER toprak ıslaklığı çekiliyor ve NISAR yüzey ıslaklığı hesaplanıyor…',
+  'Fetching NASA POWER weather and MODIS NDVI for this window…': 'Bu pencere için NASA POWER hava ve MODIS NDVI verisi çekiliyor…',
+  'GAEZ rates no crop here (no current cropland in these cells, or outside the land mask).': 'GAEZ burada hiçbir ürünü puanlamıyor (bu hücrelerde tarım alanı yok ya da kara maskesinin dışında).',
+  'Loading elevation (slope), the NASA landslide catalog and rainfall since 2001…': "Yükseklik (eğim), NASA heyelan kataloğu ve 2001'den beri yağış yükleniyor…",
+  'Loading elevation and finding snow and ice…': 'Yükseklik yükleniyor, kar ve buz aranıyor…',
+  'Loading flood history…': 'Sel geçmişi yükleniyor…',
+  'Loading radar images…': 'Radar görüntüleri yükleniyor…',
+  'Loading weather and NDVI…': 'Hava ve NDVI yükleniyor…',
+  'NISAR has not yet published interferograms or offset maps covering this site.': 'NISAR bu alanı kapsayan interferogram ya da kayma haritası henüz yayımlamadı.',
+  'Nothing recorded for this filter.': 'Bu süzgeç için kayıt yok.',
+  'Reading 25 years of rainfall and temperature (NASA POWER) and soil moisture (ERA5-Land)…': '25 yıllık yağış ve sıcaklık (NASA POWER) ile toprak nemi (ERA5-Land) okunuyor…',
+  'Reading FAO GAEZ suitability, the SPAM crop mix and ERA5-Land soil moisture for this area…': 'Bu alan için FAO GAEZ uygunluğu, SPAM ürün karışımı ve ERA5-Land toprak nemi okunuyor…',
+  'Searching the ASF archive for every radar mission over this window (Seasat 1978 → NISAR)…': 'ASF arşivinde bu pencere üzerindeki tüm radar görevleri aranıyor (Seasat 1978 → NISAR)…',
+  'Separating cropland from forest…': 'Tarım alanı ormandan ayrılıyor…',
+  'This site lies outside the flood-history dataset (latitude −39° to 43°, longitude −125° to 170°).': 'Bu alan sel geçmişi veri setinin dışında (enlem −39° – 43°, boylam −125° – 170°).',
+  'Searching the ASF archive…': 'ASF arşivi aranıyor…',
+  'Comparing land cover, crop mix, climate, soil water and terrain…': 'Arazi örtüsü, ürün karışımı, iklim, toprak suyu ve arazi yapısı karşılaştırılıyor…',
+  'How alike are the two places?': 'İki yer ne kadar benzer?',
+  'Closest specific Brazilian example (a hint)': 'En yakın Brezilya örneği (ipucu)',
+  'Landslides reported nearby (NASA Global Landslide Catalog)': 'Yakında bildirilen heyelanlar (NASA Küresel Heyelan Kataloğu)',
+  'NASA POWER soil wetness, monthly since 2016': "NASA POWER toprak ıslaklığı, 2016'dan beri aylık",
+  'Crops grown here': 'Burada ekilen ürünler',
+  'Ground labels nearby': 'Yakındaki arazi etiketleri',
+  'Looking for NASA Harvest field labels…': 'NASA Harvest arazi etiketleri aranıyor…',
+  'Loading SPAM 2010 crop statistics…': 'SPAM 2010 ürün istatistikleri yükleniyor…',
+  'Recorded on the ground': 'Arazide kaydedilen',
+  'labels': 'etiket',
+  'Crop types and calendar': 'Ürün türleri ve takvim',
+  'Date': 'Tarih',
+  'Where': 'Yer',
+  'Type': 'Tür',
+  'Trigger': 'Tetikleyici',
+  'Size': 'Boyut',
+  'Deaths': 'Ölüm',
+  'rain, mm': 'yağış, mm',
+  'level': 'seviye',
+  'rain-fed OK': 'yağmurla olur',
+  'Wet-snow line on that pass': 'O geçişte ıslak kar çizgisi',
+  'Closest Brazilian example': 'En yakın Brezilya örneği',
+  'Structural shifts': 'Yapısal değişimler',
   'wheat': 'buğday', 'rice': 'pirinç', 'maize': 'mısır', 'soybean': 'soya', 'sugarcane': 'şeker kamışı', 'barley': 'arpa', 'cotton': 'pamuk', 'sorghum': 'sorgum',
   'millet': 'darı', 'cassava': 'manyok', 'oil palm': 'yağ palmiyesi', 'vegetables': 'sebze', 'reported': 'bildirilen', '1–9 deaths': '1–9 ölüm', '10+ deaths': '10+ ölüm',
 };
@@ -124,6 +168,7 @@ export function initLang() {
     b.addEventListener('click', () => {
       lang = lang === 'tr' ? 'en' : 'tr'; LS('dws.lang', lang); document.documentElement.lang = lang;
       b.textContent = lang === 'tr' ? 'EN' : 'TR'; b.title = lang === 'tr' ? 'Switch to English' : 'Türkçeye geç';
+      window.dispatchEvent(new Event('dws:lang'));
       refresh(document.body);
       applyTheme(document.documentElement.dataset.theme || 'dark');
     });

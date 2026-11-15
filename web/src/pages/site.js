@@ -524,6 +524,7 @@ const TOOLS = [
   ['compare', 'Compare two areas', 'How alike two places behave'],
   ['change', 'Change between two dates', 'Log-ratio + automatic threshold'],
   ['floodhist', 'Flood history', 'NISAR water vs 20 years of floods'],
+  ['quake', 'Earthquakes & damage', 'Nearby quakes + building-damage proxy'],
   ['landslide', 'Landslides', 'Detect slides + rain-triggered hazard'],
   ['spill', 'Mine spill / mudflow', 'Spread of tailings and farmland reached'],
   ['glacier', 'Glaciers & snow', 'When and where ice melts'],
@@ -545,7 +546,7 @@ function analysis(el) {
 
 function showTool() {
   destroyCharts();
-  ({ change: toolChange, classes: toolClasses, landcover: toolLandcover, floodhist: toolFloodHist, landslide: toolLandslide, spill: toolSpill, fingerprint: toolFingerprint, compare: toolCompare, glacier: toolGlacier }[S.tool] || toolChange)($('#tool'));
+  ({ change: toolChange, classes: toolClasses, landcover: toolLandcover, floodhist: toolFloodHist, landslide: toolLandslide, spill: toolSpill, fingerprint: toolFingerprint, compare: toolCompare, glacier: toolGlacier, quake: toolQuake }[S.tool] || toolChange)($('#tool'));
 }
 
 // ---------------------------------------------------------------- cropland vs forest
@@ -878,6 +879,7 @@ const AG_TOOLS = [
   ['suggest', 'What could grow here', 'Suitable crops vs crops grown now'],
   ['moisture', 'Soil moisture', 'Four soil layers + NISAR surface wetness'],
   ['drought', 'Drought', 'Drier than usual? Rain, soil, heat'],
+  ['indices', 'Radar indices', 'RVI, RFDI, HV/HH from calibrated γ⁰'],
   ['context', 'Weather & NDVI', 'Rain, temperature, optical greenness'],
 ];
 const MODE_LABEL = { sos: 'Start of season', pos: 'Peak of season', eos: 'End of season', harvest: 'Harvest date', flood: 'Flooding date' };
@@ -906,7 +908,7 @@ function agriTab(el) {
 
 function showAgTool() {
   destroyCharts();
-  ({ calendar: agCalendar, harvest: agHarvest, patterns: agPatterns, fields: agFields, context: agContext, landcover: toolLandcover, deep: agDeep, suggest: agSuggest, moisture: agMoisture, drought: agDrought }[S.agTool] || agDeep)($('#agTool'));
+  ({ calendar: agCalendar, harvest: agHarvest, patterns: agPatterns, fields: agFields, context: agContext, landcover: toolLandcover, deep: agDeep, suggest: agSuggest, moisture: agMoisture, drought: agDrought, indices: agIndices }[S.agTool] || agDeep)($('#agTool'));
 }
 
 async function agMap(canvas, mode, opts = {}) {
@@ -1364,7 +1366,7 @@ function toolSpill(el) {
       <div class="legend" style="margin-bottom:10px"><span><i style="background:#ff781e"></i>vegetation buried / stripped (HV drop)</span><span><i style="background:#28c8ff"></i>dark after: water or wet mud (HH drop)</span><span><i style="background:#ff28a0"></i>on cropland</span></div>
       ${r.byClass.length ? `<table class="t"><tr><th>Land cover reached (WorldCover 2021)</th><th style="text-align:right">km²</th></tr>${r.byClass.map(([c, v]) => `<tr><td>${esc(c)}</td><td class="num">${v.toFixed(2)}</td></tr>`).join('')}</table>` : ''}
       ${r.patches.length ? `<table class="t" style="margin-top:8px"><tr><th>Patch</th><th style="text-align:right">km²</th><th style="text-align:right">cropland ha</th><th style="text-align:right">wet / dark</th><th>Location</th></tr>
-      ${r.patches.slice(0, 8).map((p, i) => `<tr><td>${i + 1}</td><td class="num">${p.km2.toFixed(2)}</td><td class="num">${(p.cropKm2 * 100).toFixed(0)}</td><td class="num">${Math.round(p.wet * 100)} %</td><td class="small">${latOf(p.y).toFixed(4)}, ${lonOf(p.x).toFixed(4)}</td></tr>`).join('')}</table>` : '<p class="muted">${T(`Nothing changed like a spill between these passes.`, `Bu geçişler arasında dökülmeye benzer bir değişim yok.`)}</p>'}
+      ${r.patches.slice(0, 8).map((p, i) => `<tr><td>${i + 1}</td><td class="num">${p.km2.toFixed(2)}</td><td class="num">${(p.cropKm2 * 100).toFixed(0)}</td><td class="num">${Math.round(p.wet * 100)} %</td><td class="small">${latOf(p.y).toFixed(4)}, ${lonOf(p.x).toFixed(4)}</td></tr>`).join('')}</table>` : `<p class="muted">${T(`Nothing changed like a spill between these passes.`, `Bu geçişler arasında dökülmeye benzer bir değişim yok.`)}</p>`}
       <p class="note">${T(`<b>Filtered out:</b> ${r.drop.single.toFixed(2)} km² changed in HV only (seasonal canopy, harvest), ${r.drop.transient.toFixed(2)} km² came back on the next pass (moisture, temporary water)${r.hasNext ? '' : ' (no later pass yet, so persistence could not be checked)'}, ${r.drop.small.toFixed(2)} km² in patches too small or too weak.`, `<b>Elenen:</b> ${r.drop.single.toFixed(2)} km² yalnızca HV'de değişti (mevsimsel örtü, hasat), ${r.drop.transient.toFixed(2)} km² sonraki geçişte eski haline döndü (nem, geçici su)${r.hasNext ? '' : ' (henüz sonraki geçiş yok, kalıcılık denetlenemedi)'}, ${r.drop.small.toFixed(2)} km² çok küçük ya da zayıf parçalardaydı.`)}</p>
       <p class="note">${T(`Before = mean of ${A[r.before[0]].date}–${A[r.before[1]].date}, after = ${A[bb].date}${r.hasNext ? `, checked on ${A[bb + 1].date}` : ''}. A pixel counts when its change exceeds ${$('#spK').value}σ, σ being the larger of the window's robust spread (HV ${r.sigmaHV.toFixed(1)}, HH ${r.sigmaHH.toFixed(1)} browse units) and the pixel's own pass-to-pass variability before the event, when HV and HH change together (or HH turns water-dark), and when the change persists; patches ≥ 6 radar pixels. Pixels that were water before are left out. New open-pit work, fire and large floods can still pass these tests: check the patches against the Optical view and local reports. Contamination (heavy metals, acidity) needs soil / water samples and laboratory analysis; hyperspectral imagery (EnMAP, PRISMA) can help target them.`, `Önce = ${A[r.before[0]].date}–${A[r.before[1]].date} ortalaması, sonra = ${A[bb].date}${r.hasNext ? `, ${A[bb + 1].date} geçişinde denetlendi` : ''}. Bir piksel şu durumda sayılır: değişimi ${$('#spK').value}σ'yı aşıyorsa (σ, pencerenin dayanıklı yayılımı (HV ${r.sigmaHV.toFixed(1)}, HH ${r.sigmaHH.toFixed(1)} birim) ile pikselin olaydan önceki kendi geçişten geçişe değişkenliğinin büyüğü), HV ve HH birlikte değişiyorsa (ya da HH su gibi koyulaşıyorsa) ve değişim kalıcıysa; parçalar ≥ 6 radar pikseli. Önceden su olan pikseller dışarıda tutulur. Yeni açık ocak çalışması, yangın ve büyük seller bu testleri yine geçebilir: parçaları Optik görünüm ve yerel haberlerle karşılaştırın. Kirlilik (ağır metal, asitlik) için toprak / su örneği ve laboratuvar analizi gerekir; hiperspektral görüntüler (EnMAP, PRISMA) örnek noktalarını seçmeye yardım edebilir.`)}</p>`;
   };
@@ -1377,12 +1379,12 @@ async function toolGlacier(el) {
   el.innerHTML = '<div class="empty">Loading elevation and finding snow and ice…</div>';
   const b = aoiBounds(), box = [b.W, b.S, b.E, b.N], key = box.join(',');
   if (!terrains.has(key)) terrains.set(key, terrain(box));
-  const T = await terrains.get(key).catch(() => null);
+  const TR = await terrains.get(key).catch(() => null);
   if (S.tab !== 'analysis' || S.tool !== 'glacier') return;
   const A = acqs(), ts = times();
   let t = A.length - 1;
   const run = async () => {
-    const r = await call('glacier', { id: S.stack.id, t, elev: T ? T.elev.slice().buffer : null });
+    const r = await call('glacier', { id: S.stack.id, t, elev: TR ? TR.elev.slice().buffer : null });
     if (!$('#glOut') && !el.isConnected) return;
     if (r.none) {
       el.innerHTML = `<div class="panel"><p class="muted">${T(`No glacier or permanent snow here (${r.iceKm2.toFixed(1)} km² of snow / ice in ESA WorldCover). Draw an area over a glaciated mountain range or an ice sheet margin, for example the Alps, the Karakoram, Patagonia, Alaska or Svalbard.`, `Burada buzul ya da kalıcı kar yok (ESA WorldCover'da ${r.iceKm2.toFixed(1)} km² kar / buz). Buzullu bir dağ silsilesi ya da buz örtüsü kenarı üzerinde alan çizin: örneğin Alpler, Karakurum, Patagonya, Alaska ya da Svalbard.`)}</p></div>`;
@@ -1428,18 +1430,81 @@ async function toolGlacier(el) {
 
 // ---------------------------------------------------------------- landslides
 const terrains = new Map();
+async function quakesNear(lat, lon, since) {
+  const q = new URLSearchParams({ format: 'geojson', latitude: lat, longitude: lon, maxradiuskm: 300, minmagnitude: 4.5, starttime: since, orderby: 'magnitude', limit: 30 });
+  const j = await (await fetch(`https://earthquake.usgs.gov/fdsnws/event/1/query?${q}`)).json();
+  const R = 6371, rad = Math.PI / 180;
+  return j.features.map((f) => {
+    const [x, y, depth] = f.geometry.coordinates;
+    const a = Math.sin(((y - lat) * rad) / 2) ** 2 + Math.cos(lat * rad) * Math.cos(y * rad) * Math.sin(((x - lon) * rad) / 2) ** 2;
+    return { mag: f.properties.mag, place: f.properties.place, time: f.properties.time, date: new Date(f.properties.time).toISOString().slice(0, 10), depth, km: 2 * R * Math.asin(Math.sqrt(a)), url: f.properties.url };
+  });
+}
+
+async function toolQuake(el) {
+  el.innerHTML = `<div class="empty">${T('Loading earthquakes near this area (USGS)…', 'Bu alanın yakınındaki depremler yükleniyor (USGS)…')}</div>`;
+  const A = acqs(), b = aoiBounds();
+  const qs = await quakesNear(S.site.lat, S.site.lon, A[0].date).catch(() => null);
+  if (S.tab !== 'analysis' || S.tool !== 'quake') return;
+  const firstAfter = (date) => A.findIndex((a) => a.date > date);
+  const usable = (qs || []).filter((q) => firstAfter(q.date) >= 1);
+  const def = usable.length ? firstAfter(usable[0].date) : Math.max(1, A.length - 2);
+  el.innerHTML = `
+    <div class="panel">
+      <p class="muted" style="max-width:880px">${T(`An intact building reflects the radar twice, off a wall and then the ground, back to the satellite (a strong HH “double bounce”). When it collapses that corner disappears and HH drops. The map compares the passes before and after an earthquake over built-up land and flags drops well beyond the normal pass-to-pass variation of the same buildings.`, `Sağlam bir bina radarı iki kez yansıtır: önce duvardan, sonra zeminden uyduya (güçlü HH “çift sekme”). Bina çökünce bu köşe kaybolur ve HH düşer. Harita, bir depremden önceki ve sonraki geçişleri yerleşim alanlarında karşılaştırır ve aynı binaların olağan geçişten geçişe değişiminin çok ötesindeki düşüşleri işaretler.`)}</p>
+      ${qs == null ? `<p class="note">${T('The USGS earthquake catalogue could not be reached; pick the date by hand.', 'USGS deprem kataloğuna ulaşılamadı; tarihi elle seçin.')}</p>` : qs.length ? `
+      <h3 class="small muted" style="font-weight:500;margin:8px 0 4px">${T(`Earthquakes M ≥ 4.5 within 300 km since ${A[0].date} (USGS)`, `${A[0].date} tarihinden beri 300 km içinde M ≥ 4,5 depremler (USGS)`)}</h3>
+      <table class="t"><tr><th>${T('Date', 'Tarih')}</th><th>M</th><th>${T('Where', 'Yer')}</th><th style="text-align:right">${T('depth', 'derinlik')}</th><th style="text-align:right">km</th><th></th></tr>
+      ${qs.slice(0, 10).map((q) => `<tr><td>${q.date}</td><td><b>${q.mag.toFixed(1)}</b></td><td class="small"><a href="${esc(q.url)}" target="_blank" rel="noopener">${esc(q.place || '')}</a></td><td class="num">${q.depth.toFixed(0)} km</td><td class="num">${q.km.toFixed(0)}</td><td>${firstAfter(q.date) >= 1 ? `<button class="btn btn-sm" data-qt="${firstAfter(q.date)}">${T('Map damage', 'Hasarı haritala')}</button>` : `<span class="small muted">${T('no pass before', 'öncesinde geçiş yok')}</span>`}</td></tr>`).join('')}</table>` : `<p class="note">${T(`No earthquake of magnitude 4.5 or more within 300 km since ${A[0].date} (USGS). You can still test any date.`, `${A[0].date} tarihinden beri 300 km içinde 4,5 ve üzeri deprem yok (USGS). Yine de herhangi bir tarihi deneyebilirsiniz.`)}</p>`}
+      <div class="controls">
+        <label>${T('First pass after the event', 'Olaydan sonraki ilk geçiş')} <select id="eqT">${A.map((a, i) => `<option value="${i}" ${i === def ? 'selected' : ''} ${i === 0 ? 'disabled' : ''}>${a.date}</option>`).join('')}</select></label>
+        <label>${T('Sensitivity', 'Duyarlılık')} <select id="eqK"><option value="2">${T('high', 'yüksek')} (2σ)</option><option value="2.5" selected>normal (2.5σ)</option><option value="3">${T('strict', 'katı')} (3σ)</option></select></label>
+      </div>
+      <div class="result">
+        <canvas class="map" id="eqMap" width="512" height="512"></canvas>
+        <div id="eqOut"><div class="empty">${T('Mapping…', 'Haritalanıyor…')}</div></div>
+      </div>
+      <p class="note">${T(`Amplitude change only: a screening map, not a building-by-building assessment. Look-alikes: construction and demolition, wet roofs after rain, a different viewing geometry. Ground deformation from the fault itself needs interferometry (NISAR GUNW products) and is not computed here. In Türkiye official damage and event information comes from AFAD.`, `Yalnızca genlik değişimi: bir tarama haritası, bina bina değerlendirme değil. Benzer görünenler: inşaat ve yıkım, yağmur sonrası ıslak çatılar, farklı bakış geometrisi. Fayın kendisinden kaynaklanan yer değiştirme interferometri (NISAR GUNW ürünleri) gerektirir ve burada hesaplanmaz. Türkiye'de resmi hasar ve olay bilgisi AFAD'dan gelir.`)}</p>
+    </div>`;
+  const run = async () => {
+    const t = +$('#eqT').value, tok = ++viewToken;
+    $('#eqOut').innerHTML = `<div class="empty">${T('Mapping…', 'Haritalanıyor…')}</div>`;
+    const r = await call('quake', { id: S.stack.id, t, k: +$('#eqK').value });
+    const base = await renderImage(S.stack.id, t, 'rgb');
+    if (tok !== viewToken || !$('#eqMap')) return;
+    if (r.error) { drawTo($('#eqMap'), base); $('#eqOut').innerHTML = `<div class="empty">${esc(r.error)}</div>`; return; }
+    const ov = new Uint8ClampedArray(r.data), d = base.data;
+    for (let i = 0; i < ov.length; i += 4) { const a = ov[i + 3] / 255; if (!a) continue; for (let c = 0; c < 3; c++) d[i + c] = d[i + c] * (1 - a) + ov[i + c] * a; }
+    drawTo($('#eqMap'), base);
+    const lonOf = (x) => b.W + ((x + 0.5) / SIZE) * (b.E - b.W), latOf = (y) => b.N - ((y + 0.5) / SIZE) * (b.N - b.S);
+    $('#eqOut').innerHTML = `
+      <div class="stats" style="margin-bottom:10px">
+        <div class="stat"><b>${r.builtKm2.toFixed(1)} km²</b><span>${T(`built-up land${r.worldcover ? ' (ESA WorldCover)' : ' (brightest HH)'}`, `yerleşim alanı${r.worldcover ? ' (ESA WorldCover)' : ' (en parlak HH)'}`)}</span></div>
+        <div class="stat"><b style="color:#ff4d4d">${(r.downShare * 100).toFixed(1)} %</b><span>${T(`possible damage · ${r.downKm2.toFixed(2)} km² (HH drop)`, `olası hasar · ${r.downKm2.toFixed(2)} km² (HH düşüşü)`)}</span></div>
+        <div class="stat"><b style="color:#3cdcff">${r.upKm2.toFixed(2)} km²</b><span>${T('brighter (rubble, new structures)', 'parlaklaşan (moloz, yeni yapı)')}</span></div>
+      </div>
+      <div class="legend"><span><i style="background:#ff2828"></i>${T('possible damage', 'olası hasar')}</span><span><i style="background:#3cdcff"></i>${T('brighter', 'parlaklaşan')}</span><span><i style="background:rgba(255,255,255,.35)"></i>${T('built-up, no clear change', 'yerleşim, belirgin değişim yok')}</span></div>
+      ${r.hotspots.length ? `<table class="t" style="margin-top:8px"><tr><th>${T('Hotspot', 'Odak')}</th><th style="text-align:right">${T('damage share', 'hasar payı')}</th><th style="text-align:right">${T('built km²', 'yerleşim km²')}</th></tr>
+      ${r.hotspots.map((h) => `<tr><td class="small">${latOf(h.y).toFixed(4)}, ${lonOf(h.x).toFixed(4)}</td><td class="num">${(h.share * 100).toFixed(0)} %</td><td class="num">${h.builtKm2.toFixed(2)}</td></tr>`).join('')}</table>` : `<p class="note">${T('No cluster of possible damage.', 'Olası hasar kümesi yok.')}</p>`}
+      <p class="note">${T(`Before = mean of ${A[r.before[0]].date}–${A[r.before[1]].date}, after = ${A[r.after[0]].date}–${A[r.after[1]].date}. σ = ${r.sigma.toFixed(1)} units, from ${r.noiseFrom}.`, `Önce = ${A[r.before[0]].date}–${A[r.before[1]].date} ortalaması, sonra = ${A[r.after[0]].date}–${A[r.after[1]].date}. σ = ${r.sigma.toFixed(1)} birim (${r.noiseFrom}).`)}</p>`;
+  };
+  $('#eqT').addEventListener('change', run); $('#eqK').addEventListener('change', run);
+  $$('[data-qt]').forEach((bt) => bt.addEventListener('click', () => { $('#eqT').value = bt.dataset.qt; run(); }));
+  run();
+}
+
 async function toolLandslide(el) {
   el.innerHTML = '<div class="empty">Loading elevation (slope), the NASA landslide catalog and rainfall since 2001…</div>';
   const b = aoiBounds(), box = [b.W, b.S, b.E, b.N], key = box.join(',');
   if (!terrains.has(key)) terrains.set(key, terrain(box));
   const radius = Math.max(25, ((b.E - b.W) * 111 * Math.cos((S.site.lat * Math.PI) / 180)) / 2 + 15);
-  const [T, cat, rain] = await Promise.all([
+  const [TR, cat, rain] = await Promise.all([
     terrains.get(key),
     catalogNear(app.base, S.site.lat, S.site.lon, radius).catch(() => ({ events: [] })),
     rainTrigger(S.site.lat, S.site.lon).catch((e) => ({ error: String(e) })),
   ]);
   if (S.tab !== 'analysis' || S.tool !== 'landslide') return;
-  const sus = susceptibility(T, cat.events.length);
+  const sus = susceptibility(TR, cat.events.length);
   const last = rain.obs?.[rain.obs.length - 1];
   const now = last ? hazard(sus.k, last.pct) : null;
   const A = acqs(), def = Math.max(1, Math.min(A.length - 1, A.length - 3));
@@ -1448,14 +1513,14 @@ async function toolLandslide(el) {
       <h3 style="margin:0 0 6px">Hazard: now and the next 7 days</h3>
       <p class="muted" style="max-width:880px">${T(`Rain-triggered landslide hazard in the spirit of NASA's LHASA model: susceptible terrain (steep slopes, past landslides) combined with heavy recent rainfall compared with this place's own record. It says when conditions favour landslides, not where one will happen.`, `NASA'nın LHASA modelindeki yaklaşımla yağışa bağlı heyelan tehlikesi: yatkın arazi (dik yamaçlar, geçmiş heyelanlar) ile bu yerin kendi kaydına göre yoğun son yağışın birleşimi. Koşulların ne zaman heyelana elverişli olduğunu söyler, nerede heyelan olacağını değil.`)}</p>
       <div class="stats" style="margin:10px 0">
-        <div class="stat"><b>${sus.label}</b><span>${T(`terrain susceptibility · slope p90 ${T.p90.toFixed(0)}°, ${Math.round(T.steepFrac * 100)} % of area ≥ 15°`, `arazi yatkınlığı · eğim p90 ${T.p90.toFixed(0)}°, alanın %${Math.round(T.steepFrac * 100)}'i ≥ 15°`)}</span></div>
+        <div class="stat"><b>${sus.label}</b><span>${T(`terrain susceptibility · slope p90 ${TR.p90.toFixed(0)}°, ${Math.round(TR.steepFrac * 100)} % of area ≥ 15°`, `arazi yatkınlığı · eğim p90 ${TR.p90.toFixed(0)}°, alanın %${Math.round(TR.steepFrac * 100)}'i ≥ 15°`)}</span></div>
         <div class="stat"><b>${cat.events.length}</b><span>${T(`catalogued landslides within ${Math.round(radius)} km (1988–2017)`, `${Math.round(radius)} km içinde kayıtlı heyelan (1988–2017)`)}</span></div>
         ${last ? `<div class="stat"><b>${Math.round(last.pct * 100)}th</b><span>${T(`percentile of 7-day rain index on ${last.date}`, `${last.date} tarihinde 7 günlük yağış indeksinin yüzdeliği`)}</span></div>
         <div class="stat"><b style="color:${HAZARD_COLORS[now.k]}">${now.label}</b><span>${T(`hazard on ${last.date}`, `${last.date} tarihinde tehlike`)}</span></div>` : `<div class="stat"><b>–</b><span>${T(`rainfall unavailable${rain.error ? `: ${esc(rain.error)}` : ''}`, `yağış verisi yok${rain.error ? `: ${esc(rain.error)}` : ''}`)}</span></div>`}
       </div>
       ${rain.fc?.length ? `<div class="ls-days">${rain.fc.map((d) => { const h = hazard(sus.k, d.pct); return `<div style="--c:${HAZARD_COLORS[h.k]}"><b>${new Date(d.date + 'T12:00:00Z').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}</b><span>${h.label}</span><small>${d.rain.toFixed(0)} mm · ${Math.round(d.pct * 100)}th pct</small></div>`; }).join('')}</div>` : ''}
       ${rain.obs ? '<div class="chart sm" style="margin-top:10px"><canvas id="lsRain"></canvas></div>' : ''}
-      <p class="note">${T(`7-day antecedent rainfall index (weights 1/(k+1)², as LHASA 1.0) against its 90th / 95th / 99th percentiles over ${rain.years || '–'} years at this point. Hazard table: rain above the 90th / 95th / 99th percentile gives moderate / high / very high on high-susceptibility terrain, one level lower on moderate terrain, two lower on low terrain, nothing on flat ground. ${esc(rain.source || '')}. Slope from Terrarium elevation tiles (zoom ${T.zoom}, ~${Math.round(T.pxM)} m grid). Not an official warning: check the national geological survey or civil protection agency.`, `7 günlük öncül yağış indeksi (ağırlıklar 1/(k+1)², LHASA 1.0'daki gibi), bu noktada ${rain.years || '–'} yıllık kayıttaki 90. / 95. / 99. yüzdelikleriyle karşılaştırılır. Tehlike tablosu: yüksek yatkınlıklı arazide 90. / 95. / 99. yüzdeliğin üstündeki yağış orta / yüksek / çok yüksek tehlike verir; orta arazide bir, düşük arazide iki seviye aşağı; düz arazide hiçbir şey. ${esc(rain.source || '')}. Eğim Terrarium yükseklik karolarından (yakınlık ${T.zoom}, ~${Math.round(T.pxM)} m ızgara). Resmi uyarı değildir: ulusal jeoloji kurumunu ya da AFAD'ı takip edin.`)}</p>
+      <p class="note">${T(`7-day antecedent rainfall index (weights 1/(k+1)², as LHASA 1.0) against its 90th / 95th / 99th percentiles over ${rain.years || '–'} years at this point. Hazard table: rain above the 90th / 95th / 99th percentile gives moderate / high / very high on high-susceptibility terrain, one level lower on moderate terrain, two lower on low terrain, nothing on flat ground. ${esc(rain.source || '')}. Slope from Terrarium elevation tiles (zoom ${TR.zoom}, ~${Math.round(TR.pxM)} m grid). Not an official warning: check the national geological survey or civil protection agency.`, `7 günlük öncül yağış indeksi (ağırlıklar 1/(k+1)², LHASA 1.0'daki gibi), bu noktada ${rain.years || '–'} yıllık kayıttaki 90. / 95. / 99. yüzdelikleriyle karşılaştırılır. Tehlike tablosu: yüksek yatkınlıklı arazide 90. / 95. / 99. yüzdeliğin üstündeki yağış orta / yüksek / çok yüksek tehlike verir; orta arazide bir, düşük arazide iki seviye aşağı; düz arazide hiçbir şey. ${esc(rain.source || '')}. Eğim Terrarium yükseklik karolarından (yakınlık ${TR.zoom}, ~${Math.round(TR.pxM)} m ızgara). Resmi uyarı değildir: ulusal jeoloji kurumunu ya da AFAD'ı takip edin.`)}</p>
 
       <h3 style="margin:18px 0 6px">Detection with NISAR</h3>
       <p class="muted" style="max-width:880px">${T(`A landslide strips vegetation and exposes soil and rock: L-band HV (volume scattering from plants) drops sharply on a steep slope and stays low. Candidates are pixels on slopes ≥ 15° whose HV fell more than 2.5× the change seen on flat ground (where no landslide can happen) between the passes before and after the chosen date, and stayed low afterwards.`, `Heyelan bitki örtüsünü söker, toprağı ve kayayı açığa çıkarır: L-band HV (bitkilerden hacim saçılımı) dik yamaçta keskin biçimde düşer ve düşük kalır. Adaylar: eğimi ≥ 15° olan, HV'si seçili tarihten önceki ve sonraki geçişler arasında düz arazide (heyelan olamayacak yerde) görülen değişimin 2,5 katından fazla düşen ve sonra da düşük kalan pikseller.`)}</p>
@@ -1489,7 +1554,7 @@ async function toolLandslide(el) {
   const run = async () => {
     const t = +$('#lsT').value, tok = ++viewToken;
     $('#lsOut').innerHTML = '<div class="empty">Detecting…</div>';
-    const r = await call('landslide', { id: S.stack.id, t, slope: T.slope.slice().buffer, minSlope: +$('#lsSlope').value, k: +$('#lsK').value });
+    const r = await call('landslide', { id: S.stack.id, t, slope: TR.slope.slice().buffer, minSlope: +$('#lsSlope').value, k: +$('#lsK').value });
     const base = await renderImage(S.stack.id, t, 'rgb');
     if (tok !== viewToken || !$('#lsMap')) return;
     if (r.error) { $('#lsOut').innerHTML = `<div class="empty">${esc(r.error)}</div>`; return; }
@@ -1508,7 +1573,7 @@ async function toolLandslide(el) {
       </div>
       <div class="legend" style="margin-bottom:10px"><span><i style="background:#ff3c28"></i>HV drop (vegetation lost)</span><span><i style="background:#ffd60a"></i>HV drop + HH change (new bare surface)</span><span><i style="background:rgba(255,255,255,0.3)"></i>slope ≥ ${$('#lsSlope').value}°</span></div>
       ${r.patches.length ? `<table class="t"><tr><th>Patch</th><th style="text-align:right">km²</th><th style="text-align:right">slope</th><th style="text-align:right">HV drop</th><th>Location</th></tr>
-      ${r.patches.slice(0, 10).map((p, i) => `<tr><td>${i + 1}</td><td class="num">${p.km2.toFixed(3)}</td><td class="num">${p.slope.toFixed(0)}°</td><td class="num">${(-p.z).toFixed(1)}σ</td><td class="small">${latOf(p.y).toFixed(4)}, ${lonOf(p.x).toFixed(4)}</td></tr>`).join('')}</table>` : '<p class="muted">${T(`No candidate on steep ground between these passes.`, `Bu geçişler arasında dik arazide aday yok.`)}</p>'}
+      ${r.patches.slice(0, 10).map((p, i) => `<tr><td>${i + 1}</td><td class="num">${p.km2.toFixed(3)}</td><td class="num">${p.slope.toFixed(0)}°</td><td class="num">${(-p.z).toFixed(1)}σ</td><td class="small">${latOf(p.y).toFixed(4)}, ${lonOf(p.x).toFixed(4)}</td></tr>`).join('')}</table>` : `<p class="muted">${T(`No candidate on steep ground between these passes.`, `Bu geçişler arasında dik arazide aday yok.`)}</p>`}
       <p class="note">${T(`Before = passes ${A[r.before[0]].date}–${A[r.before[1]].date}, after = ${A[r.after[0]].date}–${A[r.after[1]].date}${r.persist ? ', checked against the later passes' : ' (no later passes to check persistence)'}; noise σ = ${r.sigma.toFixed(1)} browse units from ${r.noiseFrom}. Background: the radar colour image (HH/HV) of the chosen date. Candidates also come from logging, fire, harvest of terrace fields or snow; check them against optical images (Optical view) before calling them landslides. Steep slopes facing away from the radar can be in shadow, and slopes facing it are compressed (layover): browse pixels there are less reliable.`, `Önce = ${A[r.before[0]].date}–${A[r.before[1]].date} geçişleri, sonra = ${A[r.after[0]].date}–${A[r.after[1]].date}${r.persist ? ', sonraki geçişlerle denetlendi' : ' (kalıcılığı denetleyecek sonraki geçiş yok)'}; gürültü σ = ${r.sigma.toFixed(1)} birim, kaynak: ${r.noiseFrom}. Arka plan: seçili tarihin radar renk görüntüsü (HH/HV). Adaylar ağaç kesimi, yangın, teras tarlası hasadı ya da kardan da gelebilir; heyelan demeden önce optik görüntüyle (Optik görünüm) karşılaştırın. Radara sırtını dönen dik yamaçlar gölgede kalabilir, radara bakanlar sıkışır (layover): oradaki pikseller daha az güvenilirdir.`)}</p>`;
   };
   ['lsT', 'lsSlope', 'lsK'].forEach((id) => $('#' + id).addEventListener('change', run));
@@ -1562,7 +1627,7 @@ async function agSuggest(el) {
         <div class="stat"><b>${root.mean.toFixed(2)}</b><span>${T(`root-zone water, m³/m³ (normal ${root.normal.toFixed(2)})`, `kök bölgesi suyu, m³/m³ (normal ${root.normal.toFixed(2)})`)}</span></div></div>` : ''}
       <div class="chart" style="height:440px"><canvas id="sgBar"></canvas></div>
       <h3 class="small muted" style="font-weight:500;margin-top:14px">Options: suitable here but not grown in this area</h3>
-      ${options.length ? `<table class="t">${head('Grown now')}${options.map((r) => row(r, (x) => `<td>${x.share == null ? '–' : x.share > 0 ? '< 2 %' : 'no'}</td>`)).join('')}</table>` : '<p class="muted">${T(`No crop rated medium or better that is not already grown.`, `Orta ya da daha iyi puan alıp henüz ekilmeyen ürün yok.`)}</p>'}
+      ${options.length ? `<table class="t">${head('Grown now')}${options.map((r) => row(r, (x) => `<td>${x.share == null ? '–' : x.share > 0 ? '< 2 %' : 'no'}</td>`)).join('')}</table>` : `<p class="muted">${T(`No crop rated medium or better that is not already grown.`, `Orta ya da daha iyi puan alıp henüz ekilmeyen ürün yok.`)}</p>`}
       <h3 class="small muted" style="font-weight:500;margin-top:14px">Grown here now (SPAM) and how suitable they are</h3>
       ${grown.length ? `<table class="t">${head('Share of crop area')}${grown.map((r) => row(r, (x) => `<td class="num">${Math.round(x.share * 100)} %</td>`)).join('')}</table>` : '<p class="muted">No SPAM crop data for this area.</p>'}
       ${misfit.length ? `<p class="note">${T(`<b>Grown but rated below "moderate":</b> ${misfit.map((r) => esc(r.name)).join(', ')}, which probably depends on irrigation beyond GAEZ's assumptions, a microclimate, or is at risk in dry years.`, `<b>Ekiliyor ama "vasat"ın altında puan alıyor:</b> ${misfit.map((r) => esc(r.name)).join(', ')}; muhtemelen GAEZ varsayımlarının ötesinde sulamaya, bir mikroklimaya bağlı ya da kurak yıllarda risk altında.`)}</p>` : ''}
@@ -1631,6 +1696,42 @@ async function agDrought(el) {
 }
 
 // ---------------------------------------------------------------- soil moisture
+async function agIndices(el) {
+  el.innerHTML = `<div class="empty">${T('Computing…', 'Hesaplanıyor…')}</div>`;
+  const r = await call('indices', { id: S.stack.id });
+  if (r.error) {
+    el.innerHTML = `<div class="panel"><p class="muted">${T('Radar indices need <b>calibrated</b> backscatter (γ⁰ in dB): browse images are stretched separately per image, so ratios of their brightness have no physical meaning. Open a ready area or switch this area to calibrated data in the Summary tab.', 'Radar indisleri <b>kalibre</b> geri saçılım (dB cinsinden γ⁰) gerektirir: önizleme görüntüleri her biri ayrı gerildiği için parlaklık oranlarının fiziksel anlamı yoktur. Hazır bir alan açın ya da Özet sekmesinde bu alanı kalibre veriye geçirin.')}</p></div>`;
+    return;
+  }
+  const ts = times(), last = r.rvi.length - 1;
+  const f2 = (v) => (v == null ? '–' : v.toFixed(2));
+  el.innerHTML = `<div class="panel">
+    <p class="muted" style="max-width:860px">${T('Standard dual-polarization indices from NISAR HH and HV, computed per pixel in linear power and summarised as the median over land pixels of each pass.', 'NISAR HH ve HV\'den standart çift polarizasyon indisleri; her piksel için doğrusal güçte hesaplanır, her geçişte kara piksellerinin medyanı olarak özetlenir.')}</p>
+    <div class="stats">
+      <div class="stat"><b>${f2(r.rvi[last])}</b><span>RVI ${T('latest', 'son')}</span></div>
+      <div class="stat"><b>${f2(r.rfdi[last])}</b><span>RFDI ${T('latest', 'son')}</span></div>
+      <div class="stat"><b>${r.ratio[last] == null ? '–' : r.ratio[last].toFixed(1)} dB</b><span>HV − HH ${T('latest', 'son')}</span></div>
+    </div>
+    <div class="chart"><canvas id="ixChart"></canvas></div>
+    <table class="t"><thead><tr><th>${T('Index', 'İndis')}</th><th>${T('Formula', 'Formül')}</th><th>${T('Reads as', 'Anlamı')}</th></tr></thead><tbody>
+      <tr><td>RVI</td><td><code>4·HV / (HH + HV)</code></td><td>${T('0 bare soil … ~1 dense canopy; rises as crops grow, drops at harvest', '0 çıplak toprak … ~1 yoğun örtü; ürün büyüdükçe artar, hasatta düşer')}</td></tr>
+      <tr><td>RFDI</td><td><code>(HH − HV) / (HH + HV)</code></td><td>${T('low (< 0.3) intact forest, high (> 0.6) cleared or bare land', 'düşük (< 0,3) sağlam orman, yüksek (> 0,6) açılmış ya da çıplak arazi')}</td></tr>
+      <tr><td>HV − HH</td><td><code>10·log10(HV / HH)</code></td><td>${T('canopy volume relative to surface scattering', 'yüzey saçılımına göre bitki hacmi')}</td></tr>
+      <tr><td>Span</td><td><code>10·log10(HH + HV)</code></td><td>${T('total returned power', 'toplam dönen güç')}</td></tr>
+    </tbody></table>
+    <p class="note">${T('RVI and RFDI are both functions of the HV/HH ratio, so they move in opposite directions; the dual-pol RVI can exceed 1 when HV comes close to HH (very dense or wet canopy, or rough wet ground). Not shown, on purpose: indices that need VV or full quad-pol (co-pol ratio HH/VV, quad-pol RVI, Freeman–Durden / H-α decompositions: NISAR images farmland in HH/HV only), interferometric coherence (needs complex SLC products, not GCOV), and biomass / LAI / vegetation-water formulas whose coefficients are site-specific and would need field calibration.', 'RVI ve RFDI ikisi de HV/HH oranının fonksiyonudur, bu yüzden ters yönde hareket ederler; çift-pol RVI, HV HH'ye yaklaştığında 1'i aşabilir (çok yoğun ya da ıslak örtü, pürüzlü ıslak zemin). Bilerek gösterilmeyenler: VV ya da tam dörtlü polarizasyon gerektiren indisler (HH/VV oranı, dörtlü-pol RVI, Freeman–Durden / H-α ayrışımları: NISAR tarım alanlarını yalnızca HH/HV ile görüntüler), interferometrik koherans (GCOV değil karmaşık SLC ürünleri gerekir) ve katsayıları yere özgü olup arazi kalibrasyonu gerektiren biyokütle / LAI / bitki suyu formülleri.')} ${r.px.toLocaleString()} ${T('land pixels per pass.', 'kara pikseli / geçiş.')}</p>
+  </div>`;
+  chart('ixChart', {
+    type: 'line',
+    data: { datasets: [
+      { label: 'RVI', data: ts.map((x, i) => ({ x, y: r.rvi[i] })), borderColor: '#22c55e', backgroundColor: '#22c55e', pointRadius: 3, tension: 0.2, yAxisID: 'y' },
+      { label: 'RFDI', data: ts.map((x, i) => ({ x, y: r.rfdi[i] })), borderColor: '#e8b04a', backgroundColor: '#e8b04a', pointRadius: 3, tension: 0.2, yAxisID: 'y' },
+      { label: 'HV − HH (dB)', data: ts.map((x, i) => ({ x, y: r.ratio[i] })), borderColor: '#3fb8ff', backgroundColor: '#3fb8ff', pointRadius: 2, borderDash: [4, 3], tension: 0.2, yAxisID: 'y1' },
+    ] },
+    options: { maintainAspectRatio: false, animation: false, parsing: false, scales: { x: { ...timeAxis(), min: ts[0] - 5 * DAY, max: ts[ts.length - 1] + 5 * DAY }, y: { min: 0, suggestedMax: 1, title: { display: true, text: 'RVI, RFDI' } }, y1: { position: 'right', grid: { display: false }, title: { display: true, text: 'dB' } } }, plugins: { legend: { labels: { boxWidth: 10 } } } },
+  });
+}
+
 async function agMoisture(el) {
   el.innerHTML = '<div class="empty">Fetching ERA5-Land soil moisture (4 layers), NASA POWER soil wetness and computing NISAR surface wetness…</div>';
   if (!S.stack) S.stack = await getStack();

@@ -337,6 +337,36 @@ const ops = {
    * volume at that date), because only then does L-band HH mostly follow the moisture of the top few centimetres of soil.
    * Driest / wettest are taken over the pixel's own bare passes; the mean over the bare pixels of each pass is returned.
    */
+  /**
+   * Dual-pol radar indices per pass, from calibrated gamma-naught only (browse brightness is stretched per image and
+   * cannot be turned into power). Per pixel the bytes go back to linear power, the indices are computed per pixel and
+   * the median over land pixels (HH above -20 dB: no open water / shadow) is returned per pass.
+   *   RVI  = 4 HV / (HH + HV)            dual-pol radar vegetation index (Kim & van Zyl form for HH/HV), 0 bare .. ~1 dense
+   *   RFDI = (HH - HV) / (HH + HV)       radar forest degradation index (Mitchard et al. 2012), low = forest, high = bare
+   *   HV - HH (dB)                       depolarisation ratio: canopy volume relative to surface scattering
+   *   span = HH + HV (dB)                total returned power
+   */
+  indices({ id }) {
+    const st = stacks.get(id), T = st.T, c = st.meta?.calibrated?.cal;
+    if (!c) return { error: 'calibrated' };
+    const db = (v, r) => r[0] + (v / 254) * (r[1] - r[0]);
+    const med = (a) => { if (!a.length) return null; a.sort((x, y) => x - y); return a[a.length >> 1]; };
+    const out = { rvi: [], rfdi: [], ratio: [], span: [], hh: [], hv: [], px: 0 };
+    for (let t = 0; t < T; t++) {
+      const R = [], F = [], Q = [], P = [], A = [], B = [];
+      for (let i = 0; i < N; i += 2) {
+        if (!st.valid[i]) continue;
+        const hd = db(st.hhF[t][i], c.hh), vd = db(st.hvF[t][i], c.hv);
+        if (hd < -20) continue;
+        const h = 10 ** (hd / 10), v = 10 ** (vd / 10);
+        R.push((4 * v) / (h + v)); F.push((h - v) / (h + v)); Q.push(vd - hd); P.push(10 * Math.log10(h + v)); A.push(hd); B.push(vd);
+      }
+      if (t === 0) out.px = R.length;
+      out.rvi.push(med(R)); out.rfdi.push(med(F)); out.ratio.push(med(Q)); out.span.push(med(P)); out.hh.push(med(A)); out.hv.push(med(B));
+    }
+    return out;
+  },
+
   wetness({ id }) {
     const st = stacks.get(id), T = st.T;
     if (T < 4) return { sm: [], px: 0 };
@@ -371,6 +401,73 @@ const ops = {
    * flat ground (slope < 5 degrees), where landslides cannot happen, so it adapts to the speckle and the season.
    * Water / radar shadow (dark HH) is excluded. Patches of >= minPx connected pixels are returned with their size.
    */
+  /**
+   * Earthquake damage proxy for built-up land (amplitude change, in the spirit of damage-proxy maps): an intact building
+   * returns a strong HH double bounce (wall + ground); a collapsed one scatters diffusely, so HH drops. Before = mean of
+   * up to two passes before pass t, after = mean of passes t and t+1. The change is scaled by the noise sigma of the same
+   * built-up pixels between two passes BEFORE the event (no earthquake in between), so normal pass-to-pass variation is
+   * calibrated out; without two earlier passes the robust spread of the change over non-built land is used.
+   * Candidates: built-up (WorldCover 50, or the brightest 8 % of HH when WorldCover is missing) with HH down by more than
+   * k sigma, kept only where at least 2 of the 8 neighbours agree (speckle). Increases (debris, rubble piles, new
+   * structures) are counted separately.
+   */
+  quake({ id, t, k = 2.5 }) {
+    const st = stacks.get(id), T = st.T;
+    if (t < 1 || t >= T) return { error: 'Pick a pass that has at least one pass before it.' };
+    const b0 = Math.max(0, t - 2), b1 = t - 1, a1 = Math.min(T - 1, t + 1);
+    const mean = (arr, i, x0, x1) => { let v = 0; for (let q = x0; q <= x1; q++) v += arr[q][i]; return v / (x1 - x0 + 1); };
+    let built = new Uint8Array(N), nb = 0;
+    if (st.wc) for (let i = 0; i < N; i++) built[i] = st.valid[i] && st.wc[i] === 50 ? 1 : 0;
+    else {
+      const v = []; for (let i = 0; i < N; i += 3) if (st.valid[i]) v.push(mean(st.hhF, i, b0, b1));
+      v.sort((x, y) => x - y); const cut = v[Math.floor(v.length * 0.92)] ?? 255;
+      for (let i = 0; i < N; i++) built[i] = st.valid[i] && mean(st.hhF, i, b0, b1) >= cut ? 1 : 0;
+    }
+    for (let i = 0; i < N; i++) nb += built[i];
+    if (nb < 30) return { error: 'Too little built-up land in this area for a damage map (needs towns or villages).', builtKm2: nb * st.pixelKm2 };
+    const d = new Float32Array(N);
+    for (let i = 0; i < N; i++) if (st.valid[i]) d[i] = mean(st.hhF, i, t, a1) - mean(st.hhF, i, b0, b1);
+    const robust = (v) => { v.sort((x, y) => x - y); const m = v[v.length >> 1]; const dv = v.map((x) => Math.abs(x - m)).sort((x, y) => x - y); return { m, s: Math.max(1.5, 1.4826 * dv[dv.length >> 1]) }; };
+    let ref, noiseFrom;
+    if (t >= 2) {   // same built-up pixels, two passes before the event
+      const v = []; for (let i = 0; i < N; i++) if (built[i]) v.push(st.hhF[t - 1][i] - st.hhF[t - 2][i]);
+      ref = robust(v); ref.m = robust(Array.from(built).flatMap((bb, i) => (bb ? [d[i]] : []))).m; noiseFrom = 'built-up pixels between the two passes before the event';
+    } else {
+      const v = []; for (let i = 0; i < N; i += 2) if (st.valid[i] && !built[i]) v.push(d[i]);
+      ref = robust(v); noiseFrom = 'non-built land across the event';
+    }
+    const z = new Float32Array(N), c0 = new Int8Array(N);
+    for (let i = 0; i < N; i++) if (built[i]) { z[i] = (d[i] - ref.m) / ref.s; c0[i] = z[i] < -k ? -1 : z[i] > k ? 1 : 0; }
+    const cand = new Int8Array(N);
+    let nDown = 0, nUp = 0;
+    for (let y = 0; y < SIZE; y++) for (let x = 0; x < SIZE; x++) {
+      const i = y * SIZE + x; if (!c0[i]) continue;
+      let agree = 0;
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+        if (!dx && !dy) continue; const xx = x + dx, yy = y + dy;
+        if (xx >= 0 && yy >= 0 && xx < SIZE && yy < SIZE && c0[yy * SIZE + xx] === c0[i]) agree++;
+      }
+      if (agree >= 2) { cand[i] = c0[i]; if (c0[i] < 0) nDown++; else nUp++; }
+    }
+    // hotspots: damage share per 16 x 16 cell of built-up land
+    const G = 16, cells = [];
+    for (let gy = 0; gy < SIZE; gy += G) for (let gx = 0; gx < SIZE; gx += G) {
+      let b = 0, dn = 0;
+      for (let y = gy; y < gy + G; y++) for (let x = gx; x < gx + G; x++) { const i = y * SIZE + x; b += built[i]; if (cand[i] < 0) dn++; }
+      if (b >= 20 && dn >= 5) cells.push({ x: gx + G / 2, y: gy + G / 2, builtKm2: b * st.pixelKm2, share: dn / b });
+    }
+    cells.sort((p, q) => q.share - p.share);
+    const img = new Uint8ClampedArray(N * 4);
+    for (let i = 0; i < N; i++) {
+      const o = i * 4;
+      if (cand[i] < 0) { const a = Math.min(1, (-z[i] - k) / 3 + 0.55); img[o] = 255; img[o + 1] = 40; img[o + 2] = 40; img[o + 3] = 255 * a; }
+      else if (cand[i] > 0) { img[o] = 60; img[o + 1] = 220; img[o + 2] = 255; img[o + 3] = 200; }
+      else if (built[i]) { img[o] = 255; img[o + 1] = 255; img[o + 2] = 255; img[o + 3] = 45; }
+    }
+    return { builtKm2: nb * st.pixelKm2, downKm2: nDown * st.pixelKm2, upKm2: nUp * st.pixelKm2, downShare: nDown / nb, sigma: ref.s, noiseFrom,
+      before: [b0, b1], after: [t, a1], hotspots: cells.slice(0, 8), worldcover: !!st.wc, data: img.buffer, w: SIZE, h: SIZE, transfer: [img.buffer] };
+  },
+
   landslide({ id, t, slope, minSlope = 15, k = 2.5, minPx = 3 }) {
     const st = stacks.get(id), T = st.T;
     const S = new Float32Array(slope);

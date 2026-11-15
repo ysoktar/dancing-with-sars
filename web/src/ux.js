@@ -26,6 +26,8 @@ function applyTheme(t) {
 // ------------------------------------------------------------------ language
 let lang = 'en';
 export const getLang = () => lang;
+/** Text in the current language: T('English', 'Türkçe'). Views are redrawn on a language switch (event 'dws:lang'). */
+export const T = (en, tr) => (lang === 'tr' && tr ? tr : en);
 const TR = {
   // navigation and global
   'Globe': 'Küre', 'Select region': 'Bölge seç', 'What radar can tell': 'Radar neyi söyler', 'Data & methods': 'Veri ve yöntem',
@@ -124,6 +126,7 @@ export function initLang() {
     b.addEventListener('click', () => {
       lang = lang === 'tr' ? 'en' : 'tr'; LS('dws.lang', lang); document.documentElement.lang = lang;
       b.textContent = lang === 'tr' ? 'EN' : 'TR'; b.title = lang === 'tr' ? 'Switch to English' : 'Türkçeye geç';
+      window.dispatchEvent(new Event('dws:lang'));
       refresh(document.body);
       applyTheme(document.documentElement.dataset.theme || 'dark');
     });

@@ -3,6 +3,10 @@ name: Build & deploy to GitHub Pages
 on:
   push:
     branches: [main]
+    # only changes to the website (or this workflow) rebuild it; docs, pipeline code and notebooks do not
+    paths:
+      - "web/**"
+      - ".github/workflows/deploy.yml"
   workflow_dispatch:
     inputs:
       refresh_data:
@@ -54,6 +58,8 @@ jobs:
           python pipeline/build_mosaic.py --start "${{ inputs.mosaic_start }}" --days 12 --workers 16
 
       - name: Refresh events and news (EONET, USGS, GDELT)
+        # weekly or on request only: a push deploys the committed data as it is
+        if: github.event_name != 'push'
         run: python3 pipeline/build_events.py || echo "event refresh failed, keeping committed events.json"
 
       - name: Set up Node

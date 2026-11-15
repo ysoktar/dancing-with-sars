@@ -49,7 +49,7 @@ const SECTIONS = {
       <div class="lg-grid">${sw('#ffd166', 'position (accelerated clock)')}${sw('rgba(255,209,102,0.5)', 'ground track')}${sw('rgba(56,189,248,0.45)', T('~242 km L-band swath (left-looking)', '~242 km L-band tarama şeridi (sola bakan)'))}</div>`),
   night: () => `<b>${T('Night lights', 'Gece ışıkları')}</b> <span class="lg-note">(NASA Black Marble)</span>`,
 };
-const ORDER = ['change', 'water', 'variability', 'melt', 'maincrop', 'landslides', 'mtc', 'mosaic', 'landcover', 'density', 'events', 'satellite', 'night'];
+const ORDER = ['change', 'water', 'variability', 'melt', 'maincrop', 'landslides', 'mtc', 'mosaic', 'density', 'events', 'satellite', 'night'];
 
 export function updateLegend(globe, el) {
   if (!el || !globe) return;

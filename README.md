@@ -1,12 +1,12 @@
 # ∿ Dancing with the SARs
 
-**A planetary surface fingerprint explorer for real NISAR L-band radar data: 3-D globe, timeline and in-browser analysis lab.**
+**A radar digital twin of how disasters reshape the Earth, and how people reshape disasters, built on real NASA–ISRO NISAR L-band data: 3-D globe, disaster explorer and in-browser analysis lab.**
 NASA Space Apps Challenge 2026 · challenge *“Dancing with the SARs”*.
 
 * **Live site:** <https://ysoktar.github.io/dancing-with-sars/>
 * **Code:** <https://github.com/ysoktar/dancing-with-sars>
 
-Earth's surface keeps changing under human hands. Fields are ploughed, sown, irrigated and harvested; forests are cleared; rivers flood; slopes fail; mines spill. The NASA–ISRO **NISAR** satellite images all of it every 12 days, day and night, through cloud. L-band radar does not see colour: it records how rough and wet the ground is (HH) and how much plant volume stands on it (HV). The rise and fall of those two numbers through a season is a **structural fingerprint** of what is happening on the ground. This project turns NISAR's public Level-2 products into a website where anyone can read those fingerprints, anywhere on Earth, and it is honest about what radar can and cannot tell you.
+Disasters are rarely only natural. Over-pumped groundwater opens sinkholes, cleared slopes slide, cities built on floodplains flood, careless fires burn forests, failed tailings dams bury valleys, and a warming climate lengthens the melt season. The NASA–ISRO **NISAR** satellite images every land surface every 12 days, day and night, through cloud. Its L-band radar records how rough and wet the ground is (HH), how much plant volume stands on it (HV) and, by interferometry, how the ground moves. Each disaster leaves its own fingerprint in those signals. This project turns NISAR's public products into a **digital twin of Earth's surface**: it shows what changed, explains the natural and human causes, and lets anyone run the same detection on any place on Earth, honest about what radar can and cannot tell.
 
 ---
 
@@ -32,28 +32,29 @@ Each block below answers one field of the Space Apps project form. A detailed, n
 ### Project Name
 
 ```
-Dancing with the SARs: a planetary surface fingerprint explorer
+Dancing with the SARs: a radar digital twin of how disasters reshape the Earth, and how we reshape disasters
 ```
 
 ### Summary (under 1,500 characters)
 
 ```
-How does Earth's surface physically transform under human land use, in different hemispheres? Our 3-D globe reads real NISAR L-band radar as a structural fingerprint: HH tracks roughness and soil moisture, HV tracks plant volume, and their rise and fall reveals what happens on the ground. Worldwide NISAR mosaics for every 12-day cycle since October 2025 cover the globe, with distilled layers for change, water, seasonal variability, snow melt, main crop and landslide history. Draw any area: every NISAR pass is fetched live from NASA's ASF archive and analysed in the browser. Compare two places, e.g. a Brazilian soybean belt and a Turkish plain, on radar behaviour, land cover, crops, climate, soil water and terrain, with seasons lined up across hemispheres. For farmland: deep-learning crop maps with per-crop NISAR curves and NASA Harvest ground labels, crop suggestions from FAO GAEZ, soil moisture in four depths and drought against each place's 25-year record. For ice and hazards: glacier melt, landslide detection and a rain-triggered outlook, and the spread of mine spills and the farmland they reach. Light or dark, English or Turkish, every term explained on hover, every result with its confidence and what SAR can and cannot measure.
+Disasters are rarely only natural: over-pumped groundwater opens sinkholes, cleared slopes slide, floodplain cities flood, most wildfires start with people, and warming lengthens glacier melt. Dancing with the SARs turns NASA-ISRO NISAR L-band radar, which sees all land every 12 days through cloud and at night, into a digital twin of Earth's surface. A 3-D globe shows worldwide NISAR mosaics for every cycle since October 2025, with layers for change, water, seasonal variability and snow melt, plus Sentinel-1 for the years before NISAR. A disaster explorer covers earthquakes, landslides, floods, drought, sinkholes, mine spills, glacier melt and wildfires as one chain: natural and human causes, what happens on the ground, the radar signature, and the tool that finds it. Click any place on Earth: every NISAR pass is fetched from NASA's archive and analysed in the browser, mapping earthquake building damage next to USGS quakes, landslide scars with a rain-triggered outlook, floods and fires, spill spread, glacier melt and drought against a 25-year record. Change twins, from a Mamba autoencoder, find fields elsewhere on Earth whose radar season changed the same way. English or Turkish, every term explained, every result with its source, confidence and limits.
 ```
 
-### Project Demonstration (slides ≤ 7 or video ≤ 30 s)
+### Project Demonstration (video ≤ 30 s)
 
-Suggested 7-slide deck. Each line is one slide, using screenshots from the live site:
+A 30-second screen recording of the live site (1920 × 1080, English voice-over of about 75 words, captions on screen):
 
-1. **Title.** "Dancing with the SARs: a planetary surface fingerprint explorer", the globe in HH · HV · HH/HV (forest green, fields blue).
-2. **The idea.** L-band radar = roughness, moisture and plant volume. Their rhythm over a season is a fingerprint of land use, visible through cloud and darkness.
-3. **Globe and timeline.** World mosaics per cycle, multi-date composite (colour = change), 48 years of radar missions on one timeline, live satellite and swath.
-4. **Brazil ↔ Turkey.** Two areas compared by their radar fingerprint: similarity, the map of where they look alike, and season curves lined up across hemispheres.
-5. **Farmland, water, ice.** Crop map with per-crop NISAR curves and NASA Harvest ground labels, crop suggestions (GAEZ), soil moisture, drought percentiles, glacier melt.
-6. **Hazards.** Landslide scars and the rain-triggered outlook; mine-spill extent and the farmland it reached, without pretending to measure contamination.
-7. **Honest and open.** What SAR can and cannot tell; confidence on every map; open code, no-login pipeline, everything computed in the browser.
+| Time | On screen | Voice-over | Caption |
+|---|---|---|---|
+| 0–4 s | Globe turning, NISAR world mosaic | "Every twelve days, NASA and ISRO's NISAR radar sees all of Earth's land, through cloud and at night." | Dancing with the SARs · a radar digital twin of Earth |
+| 4–9 s | Disasters page: the cards scroll by | "We turned it into a digital twin that shows how disasters reshape the surface…" | 8 disasters · cause → ground → radar → tool |
+| 9–14 s | Sinkhole card: the *human* badge "over-pumping groundwater", the radar curve drawing | "…and how we shape disasters: over-pumped groundwater opens sinkholes, cleared slopes slide." | Human causes, made visible |
+| 14–20 s | Earthquake → *map*: an area opens with the USGS quake list and the damage map | "Pick any place on Earth. The browser pulls every NISAR pass and finds earthquake damage, landslides, floods and fires." | Real NISAR data, analysed in your browser |
+| 20–25 s | Layers → Change twins: click a Konya field, its twins in France | "Change twins match fields that changed the same way, anywhere in the world." | AI fingerprints of change |
+| 25–30 s | Back to the globe, end card | "See the change. Understand the cause. Dancing with the SARs." | ysoktar.github.io/dancing-with-sars |
 
-The deck (PDF) or a 30-second screen recording goes on a public host; the form takes its link.
+The video goes on a public host; the form takes its link.
 
 ### Project (public link)
 
@@ -67,38 +68,39 @@ Headings are plain capitals so they survive the form's rich-text editor.
 
 ```
 WHAT IT DOES
-Dancing with the SARs is a planetary surface fingerprint explorer built on the NASA–ISRO NISAR L-band radar, for any place on Earth.
+Dancing with the SARs is a digital twin of Earth's surface, built on the NASA-ISRO NISAR L-band radar, that explains how disasters change the land, why they happen, and how human activity causes or worsens them.
 
-• The globe. Worldwide NISAR mosaics for every 12-day cycle since the first products (12 Oct 2025), shown as R = HH, G = HV, B = HH/HV (the L-band convention of the JAXA PALSAR mosaics: forest green, fields and bare soil blue, water black) or as a multi-date composite (three cycles in R, G, B: grey = stable, colour = change). Full-resolution NISAR frames stream from ASF when you zoom in. A modular legend explains every active layer. The timeline runs from Seasat (1978) to today.
+• Disaster explorer. Eight disasters, each told as one chain: cause (natural and human) → what happens on the ground → what the radar sees → the tool that finds it. Animated radar signatures show how HH, HV and ground height move at the event. Filters separate "natural, made worse by people" from "mainly caused by people". One click opens the detection tool on a real example: Harran, Karapınar (Konya), İliç (Erzincan), the Eastern Black Sea, Muğla, the Mekong Delta, the Aletsch Glacier.
 
-• Any region, live. Draw a rectangle anywhere (3–200 km). The browser searches NASA's ASF archive, downloads every NISAR pass, mosaics frames, aligns the dates by phase correlation and filters speckle. Nothing is precomputed or installed.
+• The twin globe. Worldwide NISAR mosaics for every 12-day cycle since the first products (12 Oct 2025): one radar view at a time, either the world mosaic (R = HH, G = HV, B = HH/HV: forest green, fields blue, water black), a change composite of three cycles, or Sentinel-1 C-band 2020-2021 for the years before NISAR. Layers for change since the last cycle, water and wet surfaces, seasonal variability and snow melt, polar caps in a polar projection, and the satellite shown only where it really was.
 
-• Compare two areas. Not pixel by pixel but place by place: radar behaviour, land cover, crop mix, climate, soil water regime and terrain are each scored and shown on a radar chart. Area B (coordinates, a recent area, or one of ten Brazilian reference landscapes: soybean, sugarcane, irrigated rice, coffee, centre pivots, pasture, rainforest, eucalyptus, Pantanal, cerrado) is fetched live like A. Both get the same fingerprint per ~300 m block (mean HH and HV, their pass-to-pass variability, HV range, RVI). The site reports the overlap of the two fingerprints, maps which parts of A behave like B, and lines up the season curves, optionally shifted by six months for the other hemisphere.
+• Any place, live. Click the globe to place a 5-50 km area, or search a place. The browser fetches every NISAR pass from NASA's ASF archive (calibrated γ0 read from the HDF5 files by HTTP range requests: about 30 MB instead of 2 GB per pass), aligns the dates and runs the disaster checks:
+  - earthquake damage, with USGS quakes nearby: a collapsed building loses its HH "double bounce";
+  - landslides: a lasting HV drop on steep slopes, plus a rain-triggered outlook against the local 25-year record;
+  - floods, fires and any change between two dates;
+  - mine spill and mudflow spread, and the farmland reached;
+  - glacier melt season and the wet-snow line;
+  - drought and soil moisture against each place's own record;
+  - comparison of two places on six aspects.
 
-• Farmland. Crop types from a deep network in the browser (U-TAE on Sentinel-2, with the team's U-Mamba / SITSMamba when their weights are loaded), cleaned with ESA WorldCover and the SPAM crop mix, with a crop calendar and the NISAR L-band curve of each crop; crop suggestions (FAO GAEZ v4 suitability of 50 crops, rain-fed and irrigated, against the crops grown now and the current root-zone moisture); soil moisture in four depths (ERA5-Land), NASA POWER soil wetness and a NISAR bare-soil wetness index.
+• Change twins. A Mamba variational autoencoder turns every farm field's NISAR season into a 32-number fingerprint. Click a field on the globe to see the fields elsewhere on Earth that changed the same way, most similar first: a twin that is further along shows what may come next.
 
-• Drought and ice. Drought: rain over 30 / 90 / 180 days and root-zone soil moisture as percentiles of the same weeks in every year on record (SPI), heat, US Drought Monitor classes D0–D4. Glaciers and snow: wet-snow mapping (melting snow swallows L-band), melt season and the wet-snow line from elevation.
-
-• Globe layers. Change since the previous cycle and water / wet surfaces computed on the GPU; seasonal variability (fields vs steady land), snow and ice melt, main crop (SPAM) and NASA landslide history precomputed.
-
-• Easy to read. Light / dark mode, English / Turkish, plain wording, technical terms underlined with a definition on hover, a legend for every layer.
-
-• Hazards. Landslides: scars detected as a lasting HV drop on steep slopes, a rain-triggered hazard nowcast and 7-day outlook (terrain susceptibility × rainfall against the local 25-year record), and the NASA Global Landslide Catalog nearby. Mine spill / mudflow: the physical spread between two passes and the farmland it reached. Change detection, flood history, archive back to 1978 and a parcel report complete the lab.
+• Easy to read. English and Turkish, light and dark themes, plain wording, technical terms underlined with a definition on hover, a legend for every layer.
 
 HOW IT WORKS
-Region analysis happens entirely in the browser: the ASF search API, NISAR browse images, NASA POWER, NASA GIBS, Sentinel-2 Cloud-Optimized GeoTIFFs, ESA WorldCover, ERA5-Land (Open-Meteo) and elevation tiles are all public and CORS-enabled, so Web Workers download, co-register, filter and analyse the radar series and run the deep network with ONNX Runtime (WebAssembly). A Python pipeline without login builds the world mosaics (about 16,000 frames per 12-day cycle, raw browse values, feathered blending, temporal gap filling, polar caps), the Brazilian reference library, the GAEZ suitability tiles, the crop-mix prior and the landslide catalog; GitHub Actions publishes the site.
+All analysis runs in the browser. Web Workers download, co-register, speckle-filter and analyse the radar series, and ONNX Runtime runs the deep crop model, using public, CORS-enabled sources: the ASF search API and NISAR products, NASA POWER, NASA GIBS, USGS, Sentinel-2 COGs, ESA WorldCover, ERA5-Land and elevation tiles. Python pipelines in GitHub Actions build the world mosaics (about 16,000 frames per cycle, raw values, feathered blending, polar caps), the calibrated ready areas every week, the Sentinel-1 layer and the change-twin index.
 
 BENEFITS AND IMPACT
-Radar works through cloud and at night. Scientists get a way to read unlabelled surface change against known land uses; farmers and agencies can see which crops a district grows, which it could grow, how wet its soil is, and which slopes are primed by rain; responders can map a spill's spread and the fields it reached. Every result states its confidence and whether SAR measures it directly, estimates it with other data, or cannot see it.
+Radar sees through cloud and at night, exactly when responders, farmers and water managers need information. The twin turns NISAR's measurements into answers people can act on: where buildings collapsed, which slopes are primed by rain, where a spill reached farmland, which fields are drying out. It also makes the human share of disasters visible, from groundwater over-use under Konya's sinkholes to deforestation behind landslides, so that prevention can target causes, not only damage.
 
 TOOLS
-JavaScript (Vite, globe.gl / three.js, Chart.js, satellite.js, geotiff.js, ONNX Runtime Web, Web Workers), Python (numpy, Pillow, scipy, PyTorch for the ONNX export), GitHub Actions and Pages, Google Colab and PyTorch for the deep-learning notebooks (U-Mamba, SITSMamba, U-TAE; Google's Flood Hub LSTM).
+JavaScript (Vite, globe.gl / three.js, Chart.js, satellite.js, geotiff.js, h5wasm, ONNX Runtime Web, Web Workers), Python (numpy, scipy, Pillow, h5py, PyTorch), GitHub Actions and Pages, a Cloudflare Worker byte-range proxy, Google Colab for the deep-learning notebooks (SITSMamba, U-Mamba, U-TAE, Mamba VAE).
 
 WHAT MAKES IT CREATIVE
-Radar as a fingerprint, not a picture: two places on different continents compared by how their surfaces behave. Any region on Earth, analysed live from the public archive in the browser. One timeline spans 48 years of spaceborne radar. Every page carries an explicit honesty layer: confidence, look-alikes, and the limits of what radar can see.
+Disasters as fingerprints in radar, not as pictures: the same physics explains why a collapsed building, a buried field or a melting glacier looks the way it does. Each disaster is linked to its human causes. Any place on Earth is analysed live from the public archive, in the browser. Change twins compare places by how their surfaces behave. Every page carries an honesty layer: confidence, look-alikes, and what radar cannot see.
 
 WHAT WE CONSIDERED
-Data volume: the full NISAR archive is petabytes, so we use browse products (8-bit, ~165 m) and document the route to calibrated data. Values are never altered for looks: the mosaics are raw browse values, display stretches are fixed and the same everywhere. We tried automatic matching to a library of Brazilian landscapes: in a leave-one-area-out test it found the right structural class for only 48 % of cells (25 % by chance), and public NISAR data over Brazil only starts in June 2026 (Brazil's dry season, when its crops are bare), so we show a transparent two-area comparison instead; a full-year library becomes possible in 2027. Radar does not measure crop species, yield or soil chemistry directly: crop types come from a trained optical network, suitability from FAO GAEZ, and the spill tool maps physical spread, not contamination. The deep model was trained in France and says so elsewhere.
+Data volume: NISAR products are about 2 GB each, so only the needed HDF5 chunks are read, and ready areas are precomputed. Values are never altered for looks: display stretches are fixed and the same everywhere. Amplitude change is a screening tool, not a building-by-building assessment, and construction, wet roofs or harvests can look alike; every tool says so. Ground deformation (sinkholes, fault slip) needs NISAR interferograms (GUNW), now public: our next step. Official warnings and damage figures in Türkiye come from AFAD; ours are indicators.
 ```
 
 ### Use of Super Intelligence (SI)

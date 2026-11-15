@@ -47,7 +47,8 @@ async function boot() {
   Object.assign(app, { catalog, coverage, motion, events, dem, mosaic });
   app.sites = [];        // no predefined places: the user picks any region on the globe
   const cyc0 = mosaic.cycles[mosaic.cycles.length - 1];
-  $('#barMeta').textContent = cyc0 ? `World mosaics: ${mosaic.cycles.length} cycles, ${mosaic.cycles.reduce((n, c) => n + c.granules, 0).toLocaleString()} NISAR frames · latest ${fmtDate(tOf(cyc0.end))}` : '';
+  const barMeta = () => { $('#barMeta').textContent = cyc0 ? T(`8 disasters · ${mosaic.cycles.reduce((n, c) => n + c.granules, 0).toLocaleString()} NISAR frames · latest ${fmtDate(tOf(cyc0.end))}`, `8 afet · ${mosaic.cycles.reduce((n, c) => n + c.granules, 0).toLocaleString('tr')} NISAR çerçevesi · son ${fmtDate(tOf(cyc0.end))}`) : ''; };
+  barMeta(); window.addEventListener('dws:lang', barMeta);
 
   app.globe = new GlobeView($('#globeViz'), { base: BASE, onSiteClick: () => {} });
   app.globe.setSites([]);
@@ -154,21 +155,51 @@ function remember(r) {
 function regionBox(lon, lat, h) { const hl = h / Math.max(Math.cos((lat * Math.PI) / 180), 0.05); return [lon - hl, lat - h, lon + hl, lat + h]; }
 const MAX_KM = 200, MIN_KM = 3;
 
+let pickSize = 10;                       // km, side of the square placed by a click
+const PICK_SIZES = [5, 10, 25, 50];
+let pending = null;                      // placed box waiting for "Analyse"
+function pickBar() {
+  const el = $('#pickBar');
+  if (!el) return;
+  if (!app.globe.picking) { el.hidden = true; return; }
+  el.hidden = false;
+  const [w, h] = pending ? boxKm(pending) : [pickSize, pickSize];
+  const bad = pending && (Math.max(w, h) > MAX_KM ? T(`too large (max ${MAX_KM} km)`, `çok büyük (en fazla ${MAX_KM} km)`) : Math.min(w, h) < MIN_KM ? T(`too small (min ${MIN_KM} km)`, `çok küçük (en az ${MIN_KM} km)`) : '');
+  el.innerHTML = `
+    <div class="pb-step">${pending
+      ? `<b>${w.toFixed(1)} × ${h.toFixed(1)} km</b><span>${bad ? `<em>${bad}</em>` : T(`${Math.round(w * h).toLocaleString()} km² · click elsewhere to move it`, `${Math.round(w * h).toLocaleString('tr')} km² · taşımak için başka yere tıklayın`)}</span>`
+      : `<b>${T('Click the globe to place the area', 'Alanı yerleştirmek için küreye tıklayın')}</b><span>${T('drag to rotate · scroll to zoom · Shift + drag for any rectangle · Esc to cancel', 'döndürmek için sürükleyin · yakınlaşmak için kaydırın · serbest dikdörtgen için Shift + sürükleyin · iptal: Esc')}</span>`}</div>
+    <div class="seg pb-size" role="group" aria-label="${T('Area size', 'Alan boyutu')}">${PICK_SIZES.map((k) => `<button data-km="${k}" class="${k === pickSize ? 'on' : ''}">${k} km</button>`).join('')}</div>
+    <div class="pb-act">
+      <button class="btn" id="pbCancel">${T('Cancel', 'İptal')}</button>
+      <button class="btn primary" id="pbGo" ${!pending || bad ? 'disabled' : ''}>${T('Analyse this area →', 'Bu alanı analiz et →')}</button>
+    </div>`;
+  el.querySelectorAll('[data-km]').forEach((b) => b.addEventListener('click', () => {
+    pickSize = +b.dataset.km;
+    if (pending) {   // resize around the same centre
+      const lat = (pending[1] + pending[3]) / 2, lng = (pending[0] + pending[2]) / 2;
+      pending = app.globe.squareAt(lat, lng); app.globe.placed = pending; app.globe.showBox(pending);
+    }
+    pickBar();
+  }));
+  $('#pbCancel').onclick = () => setPicking(false);
+  $('#pbGo').onclick = () => { const b = pending; setPicking(false); go(`#/region/${boxKey(b)}/overview`); };
+}
+
 export function setPicking(on) {
-  app.globe.onDrawMove = (b) => {
-    const [w, h] = boxKm(b);
-    $('#drawInfo').textContent = `${w.toFixed(1)} × ${h.toFixed(1)} km · ${Math.round(w * h).toLocaleString()} km²${Math.max(w, h) > MAX_KM ? ` · too large (max ${MAX_KM} km)` : ''}`;
-  };
-  app.globe.setDrawMode(on, (b) => {
-    const [w, h] = boxKm(b);
-    if (Math.max(w, h) > MAX_KM) { $('#drawInfo').textContent = `Too large: ${w.toFixed(0)} × ${h.toFixed(0)} km. Draw at most ${MAX_KM} km across (radar pixels are ~165 m).`; return; }
-    if (Math.min(w, h) < MIN_KM) { $('#drawInfo').textContent = `Too small: draw at least ${MIN_KM} km across.`; return; }
-    setPicking(false);
-    go(`#/region/${boxKey(b)}/overview`);
-  });
-  $('#pickBtn').classList.toggle('on', on);
-  $('#pickBtn').textContent = on ? 'Drag on the globe to draw… (click to cancel)' : 'Draw an area on the globe';
-  if (on) $('#drawInfo').textContent = 'Press and drag to draw a rectangle. Zoom in first for a field-scale area.';
+  pending = null;
+  app.globe.onDrawMove = (b) => { pending = b; pickBar(); };
+  app.globe.onPickCancel = () => setPicking(false);
+  app.globe.setDrawMode(on, (b) => { pending = b; pickBar(); }, () => pickSize);
+  $('#pickBtn')?.classList.toggle('on', on);
+  if ($('#pickBtn')) $('#pickBtn').textContent = on ? T('Selecting… (click to stop)', 'Seçiliyor… (durdurmak için tıklayın)') : T('Select an area on the globe', 'Kürede bir alan seçin');
+  if ($('#drawInfo')) $('#drawInfo').textContent = '';
+  pickBar();
+}
+/** Place a box of the current size at a point (search results) and show the confirm bar. */
+function placeAt(lat, lng) {
+  if (!app.globe.picking) setPicking(true);
+  pending = app.globe.squareAt(lat, lng); app.globe.placed = pending; app.globe.showBox(pending); pickBar();
 }
 
 function buildRegionPanel() {
@@ -176,9 +207,9 @@ function buildRegionPanel() {
     <div class="region-panel">
       <div id="dzChips"></div>
       <div class="rail-group">Or look at any place</div>
-      <button class="btn primary" id="pickBtn">Draw an area on the globe</button>
+      <button class="btn primary" id="pickBtn">Select an area on the globe</button>
       <span class="small muted mono" id="drawInfo"></span>
-      <form class="field" id="coordForm"><span class="small muted">Find a place first (then draw)</span>
+      <form class="field" id="coordForm"><span class="small muted">${T('Or search a place or coordinates', 'Ya da bir yer ya da koordinat arayın')}</span>
         <div style="display:flex;gap:6px"><input id="cQuery" placeholder="e.g. Polatlı, Ankara  or  39.58, 32.14" style="flex:1"><button class="btn">Go</button></div>
         <span class="small" id="cMsg" style="color:var(--warn)"></span></form>
       <div id="calList"></div>
@@ -204,7 +235,7 @@ function buildRegionPanel() {
     if (document.body.classList.contains('sheet-open')) go('#/');
     app.globe.globe.controls().autoRotate = false;
     app.globe.globe.pointOfView({ lat: la, lng: lo, altitude: 0.12 }, 1400);
-    setPicking(true);
+    placeAt(la, lo);
   });
   drawRecent();
   drawCal();

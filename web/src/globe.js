@@ -742,44 +742,62 @@ export class GlobeView {
 
   // ---------------------------------------------------------------- region picking
   /**
-   * Draw mode: press and drag on the globe to draw a rectangle (lat/lon box). The globe does not rotate
-   * while drawing; release to finish. cb([west, south, east, north]) gets the box.
+   * Area selection: a click (no drag) places a square of sizeKm() centred on the point; Shift + drag draws any
+   * rectangle; a plain drag rotates the globe as usual. While nothing is placed, a dashed square follows the cursor.
+   * onPlace([west, south, east, north]) gets every placed box (the caller confirms it).
    */
-  setDrawMode(on, cb) {
+  setDrawMode(on, onPlace, sizeKm = () => 10) {
     this.picking = on;
     document.body.classList.toggle('picking', on);
     const el = this.globe.renderer().domElement, controls = this.globe.controls();
     if (this._drawOff) { this._drawOff(); this._drawOff = null; }
-    if (!on) { controls.enabled = true; return; }
+    this.placed = null;
+    if (!on) { controls.enabled = true; this.showBox(null); return; }
     controls.autoRotate = false;
-    let start = null;
+    let start = null, downXY = null, raf = 0, last = null;
     const at = (e) => { const r = el.getBoundingClientRect(); return this.globe.toGlobeCoords(e.clientX - r.left, e.clientY - r.top); };
     const boxOf = (a, b) => {
       let w = Math.min(a.lng, b.lng), e = Math.max(a.lng, b.lng);
       if (e - w > 180) [w, e] = [e, w + 360];                     // across the antimeridian
       return [w, Math.min(a.lat, b.lat), e, Math.max(a.lat, b.lat)];
     };
+    const square = (c) => { const h = sizeKm() / 2 / 111.32, hl = h / Math.max(Math.cos(c.lat * DEG), 0.05); return [c.lng - hl, c.lat - h, c.lng + hl, c.lat + h]; };
+    this.squareAt = (lat, lng) => square({ lat, lng });
     const down = (e) => {
       const c = at(e);
       if (!c) return;                                              // pressed on space: rotate as usual
-      start = c; controls.enabled = false; e.preventDefault();
-      el.setPointerCapture?.(e.pointerId);
+      downXY = [e.clientX, e.clientY];
+      if (e.shiftKey) { start = c; controls.enabled = false; e.preventDefault(); el.setPointerCapture?.(e.pointerId); }
     };
-    const move = (e) => { if (!start) return; const c = at(e); if (c) { this._drawBox = boxOf(start, c); this.showBox(this._drawBox); this.onDrawMove?.(this._drawBox); } };
-    const up = () => {
-      if (!start) return;
-      const box = this._drawBox; start = null; controls.enabled = true;
-      if (box && (box[2] - box[0]) > 0.01 && (box[3] - box[1]) > 0.01) cb(box);
+    const move = (e) => {
+      if (start) { const c = at(e); if (c) { this._drawBox = boxOf(start, c); this.showBox(this._drawBox); this.onDrawMove?.(this._drawBox); } return; }
+      if (downXY || this.placed) return;                           // rotating, or a box is waiting for confirmation
+      last = e;
+      if (!raf) raf = requestAnimationFrame(() => { raf = 0; const c = last && at(last); this.showBox(c ? square(c) : null, true); });
     };
+    const up = (e) => {
+      if (start) {
+        const box = this._drawBox; start = null; downXY = null; controls.enabled = true;
+        if (box && (box[2] - box[0]) > 0.01 && (box[3] - box[1]) > 0.01) { this.placed = box; onPlace(box); }
+        return;
+      }
+      if (downXY && Math.hypot(e.clientX - downXY[0], e.clientY - downXY[1]) < 6) {
+        const c = at(e);
+        if (c) { const box = square(c); this.placed = box; this.showBox(box); onPlace(box); }
+      }
+      downXY = null;
+    };
+    const key = (e) => { if (e.key === 'Escape') this.onPickCancel?.(); };
     el.addEventListener('pointerdown', down, true);
     el.addEventListener('pointermove', move);
     window.addEventListener('pointerup', up);
-    this._drawOff = () => { el.removeEventListener('pointerdown', down, true); el.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); };
+    window.addEventListener('keydown', key);
+    this._drawOff = () => { el.removeEventListener('pointerdown', down, true); el.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); window.removeEventListener('keydown', key); };
   }
 
   /** Outline of the selected analysis window. */
-  showBox(box) {
-    this.boxShown = !!box;
+  showBox(box, preview = false) {
+    this.boxShown = !!box && !preview;
     if (!box) { this.globe.pathsData([]); return; }
     const [w, s, e, n] = box, ring = [];
     const k = 12;
@@ -788,7 +806,8 @@ export class GlobeView {
     for (let i = 0; i <= k; i++) ring.push([n, e - (e - w) * i / k]);
     for (let i = 0; i <= k; i++) ring.push([n - (n - s) * i / k, w]);
     this.globe.pathsData([ring]).pathPoints((d) => d).pathPointLat((p) => p[0]).pathPointLng((p) => p[1])
-      .pathColor(() => '#e8b04a').pathStroke(2).pathPointAlt(0.004).pathTransitionDuration(0);
+      .pathColor(() => (preview ? 'rgba(232,176,74,0.55)' : '#e8b04a')).pathStroke(preview ? 1.2 : 2.4)
+      .pathDashLength(preview ? 0.02 : 1).pathDashGap(preview ? 0.012 : 0).pathPointAlt(0.004).pathTransitionDuration(0);
   }
 
   // ---------------------------------------------------------------- cropland / forest layer

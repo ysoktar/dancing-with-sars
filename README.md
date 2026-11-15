@@ -154,6 +154,7 @@ SI tools were used to help write code and documentation. An AI coding assistant 
 | FAO / IIASA GAEZ v4 crop suitability | https://gaez.fao.org/ |
 | SPAM 2010 crop production (IFPRI, MapSPAM) | https://doi.org/10.7910/DVN/PRFF8V |
 | Sentinel-1, ERS-1/2 (ESA), JERS-1, ALOS PALSAR (JAXA), RADARSAT-1 (CSA) archives via ASF | https://search.asf.alaska.edu/ |
+| ESA WorldCover Sentinel-1 yearly median backscatter composites 2020 / 2021 (CC BY 4.0, contains modified Copernicus Sentinel data) | https://esa-worldcover.org |
 | Google Flood Forecasting (Flood Hub) | https://sites.research.google/gr/floodforecasting/ |
 | Google inundation history 1999–2020 (CC-BY-4.0) | https://console.cloud.google.com/storage/browser/flood-forecasting/inundation_history |
 | Google OpenHydroNet code and pretrained weights (Apache-2.0) | https://github.com/google-research/flood-forecasting |
@@ -413,6 +414,7 @@ A port of the team's desktop analyzer (`Nasa.py`):
 ### 5.22 Globe rendering
 * **Relief.** A tangent-space normal map is computed from global elevation (`build_normalmap.py`: Terrarium z5 → 8192 × 4096 equirectangular, true ground spacing, 12× vertical exaggeration). It lights the base globe only; the radar layers are drawn unlit, so their values are not shaded.
 * **Native frames.** When zoomed in, the 12 NISAR frames of the current cycle nearest the view centre are fetched from ASF, their dim swath rim is dropped and they are feathered over the mosaic, without any colour matching.
+* **Sentinel-1 C-band 2020 · 2021.** A layer from the ESA WorldCover Sentinel-1 composites (`pipeline/build_s1_mosaic.py`: ~17,400 1° tiles per year, averaged to 4320 × 2160; R = VV −22…0 dB, G = VH −28…−8 dB, B = VV − VH 2…14 dB). The year follows the timeline (2020 up to the end of 2020, 2021 after). Drawn under the NISAR layers, so it fills what NISAR has not imaged and is the radar view before NISAR's launch. C-band (5.6 cm) mainly sees leaves and the top of the canopy, L-band goes deeper.
 * **Legend.** One section per active layer, with colour ramps (not classes) for the radar layers and the fixed display ranges written out.
 * **Polar caps.** Poleward of 60° the globe draws separate caps in a pole-centred azimuthal-equidistant projection (`pipeline/build_polar.py`), so meridians do not converge into streaks. Beyond NISAR's reach (~77.7° N; ~86° S, where the source mosaic is also distorted) the cap is a plain disc: a ~1.5° soft transition from the observed rim, then the rim's mean value. Recorded as `polarCaps` in each period's JSON.
 

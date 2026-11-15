@@ -39,7 +39,7 @@ const TR = {
   'Seasonal variability (fields vs steady land)': 'Mevsimsel değişkenlik (tarla ve sabit arazi)', 'Snow & ice melt': 'Kar ve buz erimesi',
   'Cropland & forest (from the mosaics)': 'Tarım ve orman (mozaiklerden)', 'Acquisitions per month': 'Aylık çekim sayısı',
   'Natural events (EONET)': 'Doğal olaylar (EONET)', 'NISAR satellite, orbit & swath': 'NISAR uydusu, yörünge ve tarama şeridi',
-  'Night side lights': 'Gece ışıkları', 'Main crop (SPAM)': 'Ana ürün (SPAM)', 'Landslide history (NASA)': 'Heyelan geçmişi (NASA)',
+  'Night side lights': 'Gece ışıkları', 'Main crop (SPAM)': 'Ana ürün (SPAM)', 'Landslide history (NASA)': 'Heyelan geçmişi (NASA)', 'Sentinel-1 C-band (2020 · 2021)': 'Sentinel-1 C-band (2020 · 2021)',
   // region page tabs
   'Summary': 'Özet', 'Crops': 'Tarım', 'Parcel report': 'Parsel raporu', 'Archive 1978→': 'Arşiv 1978→', 'Radar images': 'Radar görüntüleri',
   'Change & ML': 'Değişim ve analiz', 'Forecast': 'Tahmin',

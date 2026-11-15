@@ -43,18 +43,7 @@ Disasters are rarely only natural: over-pumped groundwater opens sinkholes, clea
 
 ### Project Demonstration (video ≤ 30 s)
 
-A 30-second screen recording of the live site (1920 × 1080, English voice-over of about 75 words, captions on screen):
-
-| Time | On screen | Voice-over | Caption |
-|---|---|---|---|
-| 0–4 s | Globe turning, NISAR world mosaic | "Every twelve days, NASA and ISRO's NISAR radar sees all of Earth's land, through cloud and at night." | Dancing with the SARs · a radar digital twin of Earth |
-| 4–9 s | Disasters page: the cards scroll by | "We turned it into a digital twin that shows how disasters reshape the surface…" | 8 disasters · cause → ground → radar → tool |
-| 9–14 s | Sinkhole card: the *human* badge "over-pumping groundwater", the radar curve drawing | "…and how we shape disasters: over-pumped groundwater opens sinkholes, cleared slopes slide." | Human causes, made visible |
-| 14–20 s | Earthquake → *map*: an area opens with the USGS quake list and the damage map | "Pick any place on Earth. The browser pulls every NISAR pass and finds earthquake damage, landslides, floods and fires." | Real NISAR data, analysed in your browser |
-| 20–25 s | Layers → Change twins: click a Konya field, its twins in France | "Change twins match fields that changed the same way, anywhere in the world." | AI fingerprints of change |
-| 25–30 s | Back to the globe, end card | "See the change. Understand the cause. Dancing with the SARs." | ysoktar.github.io/dancing-with-sars |
-
-The video goes on a public host; the form takes its link.
+A 30-second screen recording of the live site goes on a public host; the form takes its link.
 
 ### Project (public link)
 

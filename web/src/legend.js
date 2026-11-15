@@ -52,7 +52,7 @@ const SECTIONS = {
   events: () => `<b>${T('Natural events (NASA EONET)', 'Doğal olaylar (NASA EONET)')}</b>
       <div class="lg-grid">${sw('#3fb8ff', T('flood', 'sel'))}${sw('#ff6a4d', T('wildfire', 'orman yangını'))}${sw('#ff3d6e', T('volcano', 'yanardağ'))}${sw('#b48cff', T('storm', 'fırtına'))}${sw('#c8f0ff', T('ice', 'buz'))}${sw('#e8b04a', T('other', 'diğer'))}</div>`,
   satellite: (g) => {
-    if (!g.date || g.date.getTime() < Date.UTC(2025, 6, 30)) return '';
+    if (!g.date || g.date.getTime() < Date.UTC(2025, 6, 30) || g.layers.s1) return '';
     const ep = g.tleEpoch ? new Date(g.tleEpoch).toISOString().slice(0, 10) : null;
     if (!g.satValid(g.date)) return `<b>NISAR satellite</b><div class="lg-note">${T(`Not shown on this date: its exact position is only known within two weeks of the latest orbit data${ep ? ` (${ep})` : ''}.`, `Bu tarihte gösterilmiyor: kesin konumu yalnızca son yörünge verisinin${ep ? ` (${ep})` : ''} iki hafta yakınında bilinir.`)}</div>`;
     return `<b>NISAR satellite</b>

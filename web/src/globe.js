@@ -77,7 +77,7 @@ export class GlobeView {
   constructor(el, { base, onSiteClick }) {
     this.base = base;
     this.onSiteClick = onSiteClick;
-    this.layers = { mosaic: true, mtc: true, frames: true, density: false, footprints: false, satellite: true, night: false, events: false,
+    this.layers = { mosaic: true, mtc: false, frames: true, density: false, footprints: false, satellite: true, night: false, events: false,
       change: false, water: false, variability: false, melt: false, maincrop: false, landslides: false, s1: false, twins: false };
     this.twinPoints = [];
     this.events = [];
@@ -315,7 +315,7 @@ export class GlobeView {
     if (name === 'night') this._night(on);
     if (name === 'frames') this.frameGroup.visible = on;
     if (name === 'mosaic' && this.mosaic) this._showMosaic(this.date || new Date());
-    if (name === 'satellite') this.satGroup.visible = on && this.satValid(this.date || new Date());
+    if (name === 'satellite' || name === 's1') this.satGroup.visible = this.layers.satellite && !this.layers.s1 && this.satValid(this.date || new Date());
     if (name === 'landcover') this.setLandcover(this.base + 'data/landcover_4k.webp', on);
     if (name === 'mtc') this._showMtc(this.currentCycle);
     if (name === 'mtc' || name === 'mosaic') this._showCaps(this.currentCycle);
@@ -339,7 +339,7 @@ export class GlobeView {
     if (!date) return;
     this.date = date;
     // NISAR only exists from its launch on 30 Jul 2025
-    if (this.satGroup) this.satGroup.visible = this.layers.satellite && this.satValid(date);
+    if (this.satGroup) this.satGroup.visible = this.layers.satellite && !this.layers.s1 && this.satValid(date);
     this._setSatDay(date);
     this._showMosaic(date);
     if (this.layers.s1) this._showS1(date);
@@ -608,7 +608,7 @@ export class GlobeView {
   /** Polar caps of the timeline's cycle, shown whenever a radar layer (mosaic or multi-date composite) is on. */
   _showCaps(c) {
     if (!this.caps) return;
-    const on = !!c?.polar && (this.layers.mosaic || this.layers.mtc);
+    const on = !!c?.polar && this.layers.mosaic && !this.layers.mtc;   // the caps are cut from the world mosaic
     for (const m of this.caps) {
       if (!on) { m.visible = false; continue; }
       const url = this.base + 'data/' + c.polar[m.userData.side];

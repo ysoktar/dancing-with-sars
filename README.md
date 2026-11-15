@@ -1,4 +1,4 @@
-# ∿ Dancing with the SARs
+# ∿ SARTwin
 
 **A radar digital twin of how disasters reshape the Earth, and how people reshape disasters, built on real NASA–ISRO NISAR L-band data: 3-D globe, disaster explorer and in-browser analysis lab.**
 NASA Space Apps Challenge 2026 · challenge *“Dancing with the SARs”*.
@@ -32,13 +32,13 @@ Each block below answers one field of the Space Apps project form. A detailed, n
 ### Project Name
 
 ```
-Dancing with the SARs: a radar digital twin of how disasters reshape the Earth, and how we reshape disasters
+SARTwin: a radar digital twin of how disasters reshape the Earth, and how we reshape disasters
 ```
 
 ### Summary (under 1,500 characters)
 
 ```
-Disasters are rarely only natural: over-pumped groundwater opens sinkholes, cleared slopes slide, floodplain cities flood, most wildfires start with people, and warming lengthens glacier melt. Dancing with the SARs turns NASA-ISRO NISAR L-band radar, which sees all land every 12 days through cloud and at night, into a digital twin of Earth's surface. A 3-D globe shows worldwide NISAR mosaics for every cycle since October 2025, with layers for change, water, seasonal variability and snow melt, plus Sentinel-1 for the years before NISAR. A disaster explorer covers earthquakes, landslides, floods, drought, sinkholes, mine spills, glacier melt and wildfires as one chain: natural and human causes, what happens on the ground, the radar signature, and the tool that finds it. Click any place on Earth: every NISAR pass is fetched from NASA's archive and analysed in the browser, mapping earthquake building damage next to USGS quakes, landslide scars with a rain-triggered outlook, floods and fires, spill spread, glacier melt and drought against a 25-year record. Change twins, from a Mamba autoencoder, find fields elsewhere on Earth whose radar season changed the same way. English or Turkish, every term explained, every result with its source, confidence and limits.
+Disasters are rarely only natural: over-pumped groundwater opens sinkholes, cleared slopes slide, floodplain cities flood, most wildfires start with people, and warming lengthens glacier melt. SARTwin turns NASA-ISRO NISAR L-band radar, which sees all land every 12 days through cloud and at night, into a digital twin of Earth's surface. A 3-D globe shows worldwide NISAR mosaics for every cycle since October 2025, with layers for change, water, seasonal variability and snow melt, plus Sentinel-1 for the years before NISAR. A disaster explorer covers earthquakes, landslides, floods, drought, sinkholes, mine spills, glacier melt and wildfires as one chain: natural and human causes, what happens on the ground, the radar signature, and the tool that finds it. Click any place on Earth: every NISAR pass is fetched from NASA's archive and analysed in the browser, mapping earthquake building damage next to USGS quakes, landslide scars with a rain-triggered outlook, floods and fires, spill spread, glacier melt and drought against a 25-year record. Change twins, from a Mamba autoencoder, find fields elsewhere on Earth whose radar season changed the same way. English or Turkish, every term explained, every result with its source, confidence and limits.
 ```
 
 ### Project Demonstration (video ≤ 30 s)
@@ -57,7 +57,7 @@ Headings are plain capitals so they survive the form's rich-text editor.
 
 ```
 WHAT IT DOES
-Dancing with the SARs is a digital twin of Earth's surface, built on the NASA-ISRO NISAR L-band radar, that explains how disasters change the land, why they happen, and how human activity causes or worsens them.
+SARTwin is a digital twin of Earth's surface, built on the NASA-ISRO NISAR L-band radar, that explains how disasters change the land, why they happen, and how human activity causes or worsens them.
 
 • Disaster explorer. Eight disasters, each told as one chain: cause (natural and human) → what happens on the ground → what the radar sees → the tool that finds it. Animated radar signatures show how HH, HV and ground height move at the event. Filters separate "natural, made worse by people" from "mainly caused by people". One click opens the detection tool on a real example: Harran, Karapınar (Konya), İliç (Erzincan), the Eastern Black Sea, Muğla, the Mekong Delta, the Aletsch Glacier.
 

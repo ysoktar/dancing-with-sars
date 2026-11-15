@@ -7,6 +7,7 @@ import { openSitePage, closeSitePage, hrefOf, rerenderSite } from './pages/site.
 import { call } from './sarClient.js';
 import { updateLegend } from './legend.js';
 import { renderMethod, renderData } from './pages/static.js';
+import { renderDisasters } from './pages/disasters.js';
 import { initUX } from './ux.js';
 
 const BASE = import.meta.env.BASE_URL;
@@ -29,6 +30,7 @@ async function boot() {
   initUX();
   window.addEventListener('dws:lang', () => {
     const sheet = $('#sheet');
+    if (current === 'disasters') renderDisasters(sheet);
     if (current === 'method') renderMethod(sheet);
     else if (current === 'data') renderData(sheet);
     rerenderSite();
@@ -106,6 +108,7 @@ function route() {
   closeSitePage();
   openSheet();
   if (page === 'method') renderMethod(sheet);
+  else if (page === 'disasters') renderDisasters(sheet);
   else if (page === 'data') renderData(sheet);
   else return go('#/');
   current = page;

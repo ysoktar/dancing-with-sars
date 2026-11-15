@@ -126,6 +126,11 @@ export function openSitePage(sheet, site, tab) {
 }
 
 /** Redraw the open tab (after a language switch); the radar stack and results stay in memory. */
+/** Pre-select a tool before a region opens (links from the Disasters page). */
+export function presetTool(tab, tool) {
+  if (tab === 'agri') S.agToolNext = tool; else S.tool = tool;
+}
+
 export function rerenderSite() {
   if (!S.site) return;
   const body = $('#tabBody');

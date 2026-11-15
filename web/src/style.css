@@ -344,3 +344,28 @@ abbr.term:hover, abbr.term:focus { color: var(--accent); border-bottom-color: va
 /* readable helpers */
 .help { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; border-radius: 50%; border: 1px solid var(--border-strong); color: var(--muted); font-size: 10px; cursor: help; margin-left: 4px; }
 .panel > p.muted:first-child { font-size: 14px; color: var(--text-2); }
+
+/* Disasters page */
+.dz-key { display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: center; }
+.dz-key i { display: inline-block; width: 18px; height: 3px; border-radius: 2px; vertical-align: middle; margin-right: 6px; }
+.dz-badge { display: inline-block; font-size: 10.5px; font-weight: 600; letter-spacing: .02em; padding: 1px 6px; border-radius: 999px; vertical-align: 1px; }
+.dz-badge.nat { background: rgba(34,197,94,.15); color: #16a34a; }
+.dz-badge.hum { background: rgba(249,115,22,.16); color: #ea580c; }
+.dz-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 520px), 1fr)); gap: 14px; }
+.dz-card { border-top: 3px solid var(--c); display: flex; flex-direction: column; }
+.dz-card h3 { display: flex; align-items: center; gap: 8px; margin: 0 0 10px; }
+.dz-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--c); box-shadow: 0 0 0 4px color-mix(in srgb, var(--c) 25%, transparent); }
+.dz-flow { display: grid; gap: 10px; }
+.dz-step { position: relative; padding-left: 14px; border-left: 2px solid color-mix(in srgb, var(--c) 55%, transparent); }
+.dz-step b { display: block; font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin-bottom: 4px; }
+.dz-step p { margin: 4px 0 0; }
+.dz-step ul { margin: 0; padding-left: 0; list-style: none; display: grid; gap: 4px; }
+.dz-sig { width: 100%; max-width: 420px; height: auto; display: block; margin: 2px 0; }
+.dz-ax { stroke: var(--border); stroke-width: 1; }
+.dz-t { font-size: 9px; fill: var(--muted); }
+.dz-ev { stroke-width: 1.5; stroke-dasharray: 3 3; }
+.dz-line { fill: none; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 1; stroke-dashoffset: 1; animation: dzdraw 2.2s ease forwards; }
+.dz-card:hover .dz-line { animation: none; stroke-dashoffset: 0; }
+@keyframes dzdraw { to { stroke-dashoffset: 0; } }
+@media (prefers-reduced-motion: reduce) { .dz-line { animation: none; stroke-dashoffset: 0; } }
+.dz-foot { margin-top: auto; padding-top: 12px; display: flex; flex-wrap: wrap; gap: 8px; justify-content: space-between; align-items: center; }

@@ -1598,7 +1598,7 @@ async function agDrought(el) {
   const parts = [last.p90, soilNow?.p].filter((v) => v != null);
   const blend = parts.reduce((a, b) => a + b, 0) / parts.length, cls = dClass(blend);
   const sm = wet.sm.filter((v) => v != null), wetNow = sm.length ? sm[sm.length - 1] : null;
-  const pctLabel = (p) => `${Math.round(p * 100)}th percentile`;
+  const pctLabel = (p) => T(`${Math.round(p * 100)}th percentile`, `${Math.round(p * 100)}. yüzdelik`);
   const spi = (p) => { const v = probit(p); return Math.abs(v) < 0.05 ? '0.0' : v.toFixed(1); };
   el.innerHTML = `
     <div class="panel">
@@ -1609,10 +1609,10 @@ async function agDrought(el) {
         <div class="stat"><b>${soilNow ? pctLabel(soilNow.p) : '–'}</b><span>${T(`root-zone soil moisture, 28–100 cm${soilNow ? ` (${soilNow.v.toFixed(2)} m³/m³)` : D.soil?.error ? `: ${esc(D.soil.error)}` : ''}`, `kök bölgesi toprak nemi, 28–100 cm${soilNow ? ` (${soilNow.v.toFixed(2)} m³/m³)` : D.soil?.error ? `: ${esc(D.soil.error)}` : ''}`)}</span></div>
         <div class="stat"><b>${D.heat.now != null ? `${(D.heat.now - D.heat.normal >= 0 ? '+' : '')}${(D.heat.now - D.heat.normal).toFixed(1)} °C` : '–'}</b><span>${T(`last 30 days vs normal temperature`, `son 30 gün, normal sıcaklığa göre`)}</span></div>
       </div>
-      <table class="t"><tr><th>Window</th><th style="text-align:right">rain, mm</th><th style="text-align:right">percentile</th><th style="text-align:right">SPI</th><th>level</th></tr>
-      ${[30, 90, 180].map((n) => { const c = dClass(last[`p${n}`]); return `<tr><td>last ${n} days</td><td class="num">${Math.round(last[`r${n}`])}</td><td class="num">${Math.round(last[`p${n}`] * 100)}</td><td class="num">${spi(last[`p${n}`])}</td><td><span class="tag" style="--c:${c.color}"><i></i>${esc(c.label)}</span></td></tr>`; }).join('')}</table>
+      <table class="t"><tr><th>Window</th><th style="text-align:right">rain, mm</th><th style="text-align:right">${T('percentile', 'yüzdelik')}</th><th style="text-align:right">SPI</th><th>level</th></tr>
+      ${[30, 90, 180].map((n) => { const c = dClass(last[`p${n}`]); return `<tr><td>${T(`last ${n} days`, `son ${n} gün`)}</td><td class="num">${Math.round(last[`r${n}`])}</td><td class="num">${Math.round(last[`p${n}`] * 100)}</td><td class="num">${spi(last[`p${n}`])}</td><td><span class="tag" style="--c:${c.color}"><i></i>${esc(c.label)}</span></td></tr>`; }).join('')}</table>
       <div class="chart" style="height:280px;margin-top:12px"><canvas id="drChart"></canvas></div>
-      ${wetNow != null ? `<p class="note">${T(`<b>NISAR:</b> on the latest pass the bare soil of this area was at ${Math.round(wetNow * 100)} % of its own wet–dry range (0 % = driest pass seen, 100 % = wettest). It is a relative radar measure of the top few centimetres.`, `<b>NISAR:</b> son geçişte bu alanın çıplak toprağı kendi ıslak–kuru aralığının %${Math.round(wetNow * 100)}'indeydi (%0 = görülen en kuru geçiş, %100 = en ıslak). Üstteki birkaç santimetrenin göreli bir radar ölçüsüdür.`)}</p>` : ''}
+      ${wetNow != null ? `<p class="note">${T(`<b>NISAR:</b> on the latest pass the bare soil of this area was at ${Math.round(wetNow * 100)} % of its own wet–dry range (0 % = driest pass seen, 100 % = wettest). It is a relative radar measure of the top few centimetres.`, `<b>NISAR:</b> son geçişte bu alanın çıplak toprağı kendi ıslak–kuru aralığının %${Math.round(wetNow * 100)} seviyesindeydi (%0 = görülen en kuru geçiş, %100 = en ıslak). Üstteki birkaç santimetrenin göreli bir radar ölçüsüdür.`)}</p>` : ''}
       <p class="note">${T(`Levels follow the US Drought Monitor percentiles: D0 ≤ 30th, D1 ≤ 20th, D2 ≤ 10th, D3 ≤ 5th, D4 ≤ 2nd. SPI = the percentile expressed as standard deviations (−1 moderately dry, −1.5 severely, −2 extremely). Rain percentiles compare the same calendar window (± 5 days) in ${D.years} years; soil moisture in ${D.soil?.years || '–'} years. ${esc(D.source)}. Area-wide values (~10–50 km grids): an irrigated field can be green in a drought.`, `Seviyeler ABD Kuraklık İzleyicisi yüzdeliklerini izler: D0 ≤ 30., D1 ≤ 20., D2 ≤ 10., D3 ≤ 5., D4 ≤ 2. SPI = yüzdeliğin standart sapma cinsinden ifadesi (−1 orta derecede kuru, −1,5 şiddetli, −2 aşırı). Yağış yüzdelikleri aynı takvim penceresini (± 5 gün) ${D.years} yılda, toprak nemi ${D.soil?.years || '–'} yılda karşılaştırır. ${esc(D.source)}. Alan geneli değerler (~10–50 km ızgaralar): sulanan bir tarla kuraklıkta yeşil kalabilir.`)}</p>
     </div>`;
   const tt = (d) => Date.parse(`${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6)}T12:00:00Z`);

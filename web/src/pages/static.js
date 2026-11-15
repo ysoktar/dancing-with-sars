@@ -1,6 +1,7 @@
 import { app, sheetHead } from '../main.js';
 import { STORIES, themeOf } from '../sites.js';
 import { $$, tOf, fmtDate, fmtShort, esc } from '../util.js';
+import { T } from '../ux.js';
 
 // ------------------------------------------------------------------ Sites
 export function renderSites(sheet) {
@@ -27,73 +28,73 @@ export function renderSites(sheet) {
 }
 
 // ------------------------------------------------------------------ What radar can tell
-const CAP = [
+const CAP = () => [
   {
-    c: 'var(--ok)', h: 'Measured directly', p: 'NISAR observes these itself, day or night, through cloud.',
+    c: 'var(--ok)', h: T('Measured directly', 'Doğrudan ölçülür'), p: T('NISAR observes these itself, day or night, through cloud.', 'NISAR bunları kendisi, gece gündüz, bulutun içinden gözler.'),
     items: [
-      ['Ground motion', 'Sinking, uplift, earthquake and volcanic deformation, to centimetres, along the line of sight (GUNW interferograms).'],
-      ['Ice motion', 'Glacier flow speed and direction from pixel offsets (GOFF).'],
-      ['Open water and floods', 'Calm water is dark; water under trees is bright (double bounce).'],
-      ['Vegetation structure', 'Forest loss, burn scars and crop growth change the HV (volume) signal.'],
-      ['Melt and freeze', 'Wet snow absorbs microwaves; refrozen firn scatters strongly.'],
-      ['Ships and slicks at sea', 'Ships are bright points, oil slicks dark patches (Sentinel-1 covers oceans better than NISAR).'],
+      [T('Ground motion', 'Yer hareketi'), T('Sinking, uplift, earthquake and volcanic deformation, to centimetres, along the line of sight (GUNW interferograms).', 'Çökme, yükselme, deprem ve volkanik deformasyon, santimetre düzeyinde, bakış doğrultusunda (GUNW interferogramları).')],
+      [T('Ice motion', 'Buz hareketi'), T('Glacier flow speed and direction from pixel offsets (GOFF).', 'Piksel kaymalarından buzul akış hızı ve yönü (GOFF).')],
+      [T('Open water and floods', 'Açık su ve seller'), T('Calm water is dark; water under trees is bright (double bounce).', 'Sakin su koyudur; ağaç altındaki su parlaktır (çift yansıma).')],
+      [T('Vegetation structure', 'Bitki yapısı'), T('Forest loss, burn scars and crop growth change the HV (volume) signal.', 'Orman kaybı, yangın izleri ve ürün büyümesi HV (hacim) sinyalini değiştirir.')],
+      [T('Melt and freeze', 'Erime ve donma'), T('Wet snow absorbs microwaves; refrozen firn scatters strongly.', 'Islak kar mikrodalgayı yutar; yeniden donmuş firn güçlü saçar.')],
+      [T('Ships and slicks at sea', 'Denizde gemi ve petrol lekesi'), T('Ships are bright points, oil slicks dark patches (Sentinel-1 covers oceans better than NISAR).', 'Gemiler parlak nokta, petrol lekeleri koyu alan (okyanusları Sentinel-1 NISAR\'dan iyi kapsar).')],
     ],
   },
   {
-    c: 'var(--warn)', h: 'Estimated with other data', p: 'Radar is one input; a model or another dataset does the rest.',
+    c: 'var(--warn)', h: T('Estimated with other data', 'Başka veriyle tahmin edilir'), p: T('Radar is one input; a model or another dataset does the rest.', 'Radar girdilerden biridir; gerisini bir model ya da başka bir veri seti yapar.'),
     items: [
-      ['Crop type and yield', 'Needs labelled fields, weather and harvest statistics.'],
-      ['Soil moisture', 'Needs vegetation correction; NISAR\'s validated soil-moisture product is not released yet.'],
-      ['Flood forecasting', 'Needs rainfall (GPM), terrain and a hydrological model.'],
-      ['Groundwater loss', 'Subsidence hints at it; wells or GRACE gravity confirm it.'],
-      ['Urban growth and population', 'Built-up area is visible; population needs census data.'],
-      ['Untracked fishing', 'Radar ships without an AIS signal are leads, not proof of illegal activity.'],
+      [T('Crop type', 'Ürün türü'), T('Here from a deep network on Sentinel-2, cleaned with WorldCover and SPAM; radar adds the calendar through cloud.', 'Burada Sentinel-2 üzerinde derin ağdan, WorldCover ve SPAM ile temizlenmiş; radar bulut altında takvimi ekler.')],
+      [T('Soil moisture', 'Toprak nemi'), T('Radar gives a relative wetness on bare soil; values in m³/m³ come from ERA5-Land. NISAR\'s validated soil-moisture product is not released yet.', 'Radar çıplak toprakta göreli ıslaklık verir; m³/m³ değerleri ERA5-Land\'den gelir. NISAR\'ın doğrulanmış toprak nemi ürünü henüz yayımlanmadı.')],
+      [T('Drought', 'Kuraklık'), T('Rain and soil-moisture records against each place\'s own history; radar wetness as a cross-check.', 'Yağış ve toprak nemi kayıtları her yerin kendi geçmişine göre; radar ıslaklığı çapraz kontrol.')],
+      [T('Landslide hazard', 'Heyelan tehlikesi'), T('Slope and rainfall percentiles (LHASA-style); radar detects scars afterwards.', 'Eğim ve yağış yüzdelikleri (LHASA tarzı); radar izleri sonradan tespit eder.')],
+      [T('Groundwater loss', 'Yeraltı suyu kaybı'), T('Subsidence hints at it; wells or GRACE gravity confirm it.', 'Çökme bunu işaret eder; kuyular ya da GRACE gravite ölçümleri doğrular.')],
+      [T('Crop suitability', 'Ürün uygunluğu'), T('From FAO GAEZ climate, soil and terrain models, not from radar.', 'Radardan değil, FAO GAEZ iklim, toprak ve arazi modellerinden.')],
     ],
   },
   {
-    c: 'var(--no)', h: 'Not measurable by radar', p: 'Better served by other instruments, and radar can still add context.',
+    c: 'var(--no)', h: T('Not measurable by radar', 'Radarla ölçülemez'), p: T('Better served by other instruments, and radar can still add context.', 'Başka aletler daha iyi ölçer; radar yine de bağlam ekleyebilir.'),
     items: [
-      ['Greenhouse gases, SO₂, NO₂', 'Atmospheric spectrometers such as Sentinel-5P / TROPOMI.'],
-      ['Acid rain, rainfall amount', 'Weather radar, GPM and chemistry models.'],
-      ['Mineral composition', 'Imaging spectrometers such as NASA EMIT.'],
-      ['Counting people or animals', 'Far below what a 3–10 m radar pixel resolves.'],
-      ['Exact earthquake or eruption time', 'Not reliably predictable by any method today.'],
-      ['Detailed 3-D city models', 'LiDAR and photogrammetry are far more detailed.'],
+      [T('Soil contamination, heavy metals', 'Toprak kirliliği, ağır metaller'), T('Needs samples and laboratory analysis; hyperspectral imagery (EnMAP, PRISMA) helps target them.', 'Örnek ve laboratuvar analizi gerekir; hiperspektral görüntüler (EnMAP, PRISMA) yer seçmeye yardım eder.')],
+      [T('Yield in t/ha', 'Verim (t/ha)'), T('Needs harvest records to calibrate; radar only ranks canopies.', 'Kalibrasyon için hasat kayıtları gerekir; radar yalnızca bitki örtülerini sıralar.')],
+      [T('Greenhouse gases, SO₂, NO₂', 'Sera gazları, SO₂, NO₂'), T('Atmospheric spectrometers such as Sentinel-5P / TROPOMI.', 'Sentinel-5P / TROPOMI gibi atmosfer spektrometreleri.')],
+      [T('Rainfall amount', 'Yağış miktarı'), T('Weather radar, GPM and weather models.', 'Hava radarı, GPM ve hava modelleri.')],
+      [T('Mineral composition', 'Mineral bileşimi'), T('Imaging spectrometers such as NASA EMIT.', 'NASA EMIT gibi görüntüleme spektrometreleri.')],
+      [T('Exact earthquake or eruption time', 'Depremin ya da patlamanın tam zamanı'), T('Not reliably predictable by any method today.', 'Bugün hiçbir yöntemle güvenilir biçimde öngörülemez.')],
     ],
   },
 ];
 
 export function renderMethod(sheet) {
-  sheet.innerHTML = sheetHead('What radar can tell', 'And where it needs help') + `
+  sheet.innerHTML = sheetHead(T('What radar can tell', 'Radar neyi söyler'), T('And where it needs help', 'Ve nerede yardıma ihtiyaç duyar')) + `
   <div class="sheet-body"><div class="page">
-    <p class="lead" style="margin-bottom:18px">NISAR sends microwave pulses and records the echo. The echo depends mostly on surface <b>roughness</b> and <b>wetness</b> (dielectric constant), and its phase records tiny <b>movements</b> between passes. That makes radar very good at some questions and blind to others.</p>
-    <div class="cap">${CAP.map((col) => `<div class="panel col" style="--c:${col.c}"><h3>${col.h}</h3><p>${col.p}</p><ul>${col.items.map(([b, t]) => `<li><b>${b}</b>${t}</li>`).join('')}</ul></div>`).join('')}</div>
+    <p class="lead" style="margin-bottom:18px">${T('NISAR sends microwave pulses and records the echo. The echo depends mostly on surface <b>roughness</b> and <b>wetness</b> (dielectric constant), and its phase records tiny <b>movements</b> between passes. That makes radar very good at some questions and blind to others.', 'NISAR mikrodalga sinyaller gönderip yankıyı kaydeder. Yankı çoğunlukla yüzeyin <b>pürüzlülüğüne</b> ve <b>ıslaklığına</b> (dielektrik sabiti) bağlıdır; fazı ise geçişler arasındaki küçük <b>hareketleri</b> kaydeder. Bu yüzden radar bazı sorularda çok iyi, bazılarında kördür.')}</p>
+    <div class="cap">${CAP().map((col) => `<div class="panel col" style="--c:${col.c}"><h3>${col.h}</h3><p>${col.p}</p><ul>${col.items.map(([b, t]) => `<li><b>${b}</b>${t}</li>`).join('')}</ul></div>`).join('')}</div>
 
     <div class="grid g-2" style="margin-top:16px">
       <div class="panel">
-        <h3>Wavelength decides what you see</h3>
+        <h3>${T('Wavelength decides what you see', 'Ne gördüğünüzü dalga boyu belirler')}</h3>
         <div class="seg" id="band" style="margin:6px 0 10px">
           <button data-b="X">X · 3 cm</button><button data-b="C">C · 5.6 cm</button><button data-b="S">S · 10 cm</button><button data-b="L" class="on">L · 24 cm</button>
         </div>
-        <svg class="diagram" id="canopy" viewBox="0 0 600 260" role="img" aria-label="How far radar waves reach into a forest"></svg>
+        <svg class="diagram" id="canopy" viewBox="0 0 600 260" role="img" aria-label="${T('How far radar waves reach into a forest', 'Radar dalgalarının ormana ne kadar girdiği')}"></svg>
         <p class="muted small" id="bandTxt" style="margin-top:8px"></p>
       </div>
       <div class="panel">
-        <h3>Three ways a surface sends the pulse back</h3>
+        <h3>${T('Three ways a surface sends the pulse back', 'Bir yüzeyin sinyali geri göndermesinin üç yolu')}</h3>
         <table class="t">
-          <tr><th>Mechanism</th><th>Example</th><th>Radar sees</th></tr>
-          <tr><td>Surface</td><td>Calm water, smooth soil</td><td>Dark (pulse reflected away); rough soil brighter. Mostly HH.</td></tr>
-          <tr><td>Double bounce</td><td>Buildings, flooded forest</td><td>Very bright HH: ground and wall act as a corner reflector.</td></tr>
-          <tr><td>Volume</td><td>Forest canopy, dry snow</td><td>Many scatterings scramble polarization: strong HV.</td></tr>
+          <tr><th>${T('Mechanism', 'Mekanizma')}</th><th>${T('Example', 'Örnek')}</th><th>${T('Radar sees', 'Radar ne görür')}</th></tr>
+          <tr><td>${T('Surface', 'Yüzey')}</td><td>${T('Calm water, smooth soil', 'Sakin su, düz toprak')}</td><td>${T('Dark (pulse reflected away); rough soil brighter. Mostly HH.', 'Koyu (sinyal başka yöne yansır); pürüzlü toprak daha parlak. Çoğunlukla HH.')}</td></tr>
+          <tr><td>${T('Double bounce', 'Çift yansıma')}</td><td>${T('Buildings, flooded forest', 'Binalar, su basmış orman')}</td><td>${T('Very bright HH: ground and wall act as a corner reflector.', 'Çok parlak HH: zemin ve duvar köşe yansıtıcı gibi davranır.')}</td></tr>
+          <tr><td>${T('Volume', 'Hacim')}</td><td>${T('Forest canopy, dry snow', 'Orman örtüsü, kuru kar')}</td><td>${T('Many scatterings scramble polarization: strong HV.', 'Çok sayıda saçılma polarizasyonu karıştırır: güçlü HV.')}</td></tr>
         </table>
-        <h3 style="margin-top:16px">NISAR in numbers</h3>
+        <h3 style="margin-top:16px">${T('NISAR in numbers', 'Rakamlarla NISAR')}</h3>
         <dl class="kv">
-          <dt>Launch</dt><dd>30 July 2025, GSLV-F16, Sriharikota</dd>
-          <dt>Orbit</dt><dd>747 km, sun-synchronous, 98.4°</dd>
-          <dt>Revisit</dt><dd>12 days, ascending and descending</dd>
-          <dt>Radars</dt><dd>L-band 24 cm (NASA), S-band 10 cm (ISRO)</dd>
-          <dt>Swath</dt><dd>~242 km, 12 m mesh reflector</dd>
-          <dt>Products</dt><dd>GCOV backscatter · GUNW interferograms · GOFF offsets · GSLC / RSLC</dd>
+          <dt>${T('Launch', 'Fırlatma')}</dt><dd>${T('30 July 2025, GSLV-F16, Sriharikota', '30 Temmuz 2025, GSLV-F16, Sriharikota')}</dd>
+          <dt>${T('Orbit', 'Yörünge')}</dt><dd>${T('747 km, sun-synchronous, 98.4°', '747 km, güneşe eşzamanlı, 98,4°')}</dd>
+          <dt>${T('Revisit', 'Tekrar geçiş')}</dt><dd>${T('12 days, ascending and descending', '12 gün, yükselen ve alçalan')}</dd>
+          <dt>${T('Radars', 'Radarlar')}</dt><dd>${T('L-band 24 cm (NASA), S-band 10 cm (ISRO)', 'L-band 24 cm (NASA), S-band 10 cm (ISRO)')}</dd>
+          <dt>${T('Swath', 'Tarama şeridi')}</dt><dd>${T('~242 km, 12 m mesh reflector', '~242 km, 12 m ağ yansıtıcı')}</dd>
+          <dt>${T('Products', 'Ürünler')}</dt><dd>${T('GCOV backscatter · GUNW interferograms · GOFF offsets · GSLC / RSLC', 'GCOV geri saçılım · GUNW interferogramları · GOFF kaymaları · GSLC / RSLC')}</dd>
         </dl>
       </div>
     </div>
@@ -102,14 +103,14 @@ export function renderMethod(sheet) {
   $$('#band button').forEach((b) => b.addEventListener('click', () => { $$('#band button').forEach((x) => x.classList.toggle('on', x === b)); band(b.dataset.b); }));
 }
 
-const BANDS = {
-  X: [0.1, 'X-band (3 cm) bounces off the top leaves. Fine detail, no view below the canopy.'],
-  C: [0.28, 'C-band (5.6 cm, Sentinel-1) reaches the upper canopy. The workhorse for floods over open land and for sea ice; it saturates over dense forest.'],
-  S: [0.55, 'S-band (10 cm, ISRO on NISAR) reaches into the branches. Sensitive to crops, young forest and soil moisture under light vegetation.'],
-  L: [1, 'L-band (24 cm, NASA on NISAR) passes through to trunks and ground. It detects water under the forest, tracks biomass, and stays coherent over vegetation for interferometry.'],
-};
+const BANDS = () => ({
+  X: [0.1, T('X-band (3 cm) bounces off the top leaves. Fine detail, no view below the canopy.', 'X-band (3 cm) üst yapraklardan geri döner. İnce ayrıntı, örtünün altını görmez.')],
+  C: [0.28, T('C-band (5.6 cm, Sentinel-1) reaches the upper canopy. The workhorse for floods over open land and for sea ice; it saturates over dense forest.', 'C-band (5,6 cm, Sentinel-1) üst örtüye ulaşır. Açık arazide sel ve deniz buzu için temel araç; yoğun ormanda doygunluğa ulaşır.')],
+  S: [0.55, T('S-band (10 cm, ISRO on NISAR) reaches into the branches. Sensitive to crops, young forest and soil moisture under light vegetation.', 'S-band (10 cm, NISAR üzerinde ISRO) dalların içine ulaşır. Ürünlere, genç ormana ve seyrek bitki altındaki toprak nemine duyarlı.')],
+  L: [1, T('L-band (24 cm, NASA on NISAR) passes through to trunks and ground. It detects water under the forest, tracks biomass, and stays coherent over vegetation for interferometry.', 'L-band (24 cm, NISAR üzerinde NASA) gövdelere ve zemine kadar geçer. Orman altındaki suyu tespit eder, biyokütleyi izler ve interferometri için bitki üzerinde tutarlı kalır.')],
+});
 function band(b) {
-  const [depth, txt] = BANDS[b];
+  const [depth, txt] = BANDS()[b];
   const top = 60, ground = 215, stop = top + (ground - top) * depth;
   let trees = '';
   for (let i = 0; i < 9; i++) {
@@ -126,87 +127,94 @@ function band(b) {
     if (b === 'L') waves += `<path d="M ${ex} ${stop} L ${ex + 16} ${stop} L ${ex + 16} ${stop - 70}" stroke="#ff6a4d" stroke-width="1.6" fill="none" stroke-dasharray="4 3"/>`;
   }
   document.getElementById('canopy').innerHTML = `<rect x="0" y="${ground}" width="600" height="45" fill="#2c2419"/><rect x="0" y="${ground}" width="600" height="4" fill="#3fb8ff" opacity="${b === 'L' ? 0.9 : 0.35}"/>${trees}${waves}
-    <text x="12" y="${ground + 30}" fill="#8a94a3" font-size="11" font-family="Inter">flooded forest floor${b === 'L' ? ': reached (red = double bounce back to the satellite)' : ''}</text>`;
+    <text x="12" y="${ground + 30}" fill="#8a94a3" font-size="11" font-family="Inter">${T('flooded forest floor', 'su basmış orman zemini')}${b === 'L' ? T(': reached (red = double bounce back to the satellite)', ': ulaşıldı (kırmızı = uyduya çift yansıma)') : ''}</text>`;
   document.getElementById('bandTxt').textContent = txt;
 }
 
 // ------------------------------------------------------------------ Data & methods
 export function renderData(sheet) {
   const c = app.catalog;
-  const nMo = Object.values(app.motion.sites || {}).reduce((n, m) => n + (m.GUNW?.length || 0) + (m.GOFF?.length || 0), 0);
-  sheet.innerHTML = sheetHead('Data & methods', `Catalog built ${fmtDate(Date.parse(c.generated))}`) + `
+  const cyc = app.mosaic?.cycles || [];
+  const frames = cyc.reduce((n, x) => n + (x.granules || 0), 0).toLocaleString();
+  const L = (href, text) => `<a href="${href}" target="_blank" rel="noopener">${text}</a>`;
+  sheet.innerHTML = sheetHead(T('Data & methods', 'Veri ve yöntem'), `${T('Catalog built', 'Katalog tarihi')} ${fmtDate(Date.parse(c.generated))}`) + `
   <div class="sheet-body"><div class="page">
     <div class="grid g-2">
       <div class="stack">
         <div class="panel">
-          <h3>Where the data comes from</h3>
+          <h3>${T('Where the data comes from', 'Veri nereden geliyor')}</h3>
           <ol class="steps">
-            <li><b>NISAR L2 GCOV</b> (backscatter, HH + HV): ${app.sites.reduce((n, s) => n + s.acquisitions.length, 0)} passes over ${app.sites.length} sites, found with the ASF DAAC search API. One orbit track per site keeps the viewing geometry identical on every date.</li>
-            <li><b>NISAR L2 GUNW and GOFF</b> (interferograms, pixel offsets): ${nMo} image pairs on the same tracks.</li>
-            <li>The images are the geocoded browse renderings ASF publishes with each product (<code>*_LATLON.png</code>), cropped to each site.</li>
-            <li>Provisional products ship without exact bounds, so every date is aligned to a reference pass by <b>FFT phase correlation</b> (residual ≤ 2 px).</li>
-            <li><b>World mosaics</b>: for each of ${app.mosaic?.cycles?.length || 0} complete 12-day repeat cycles, every GCOV frame (${(app.mosaic?.cycles || []).reduce((n, c) => n + c.granules, 0).toLocaleString()} frames in total, ~60 GB of browse images streamed per cycle) is georeferenced from its footprint and painted onto a 2.8 km global grid. The globe shows the cycle that matches the timeline date. Dual-pol HH/HV frames are painted last so they win in overlaps. Open ocean is masked (noise), polar seas are kept (sea ice). Each frame is contrast-stretched on its own, so brightness steps between neighbouring frames are visible.</li>
-            <li><b>Global acquisition density</b>: NASA CMR footprints, sampled four days per month on a 3° grid.</li>
-            <li><b>Context</b>: NASA EONET events, USGS earthquakes, GDELT news; optical images from NASA GIBS (MODIS Terra).</li>
-            <li><b>Elevation</b>: Copernicus DEM GLO-30 (30 m, AWS Open Data) cropped to each site, used for shaded relief and the 3-D view.</li>
-            <li>A GitHub Actions workflow refreshes everything weekly and redeploys the site.</li>
-            <li>Going global: see <a href="https://github.com/ysoktar/dancing-with-sars/blob/main/docs/GLOBAL_DATA.md" target="_blank" rel="noopener">docs/GLOBAL_DATA.md</a> for the size of the full NISAR archive and worldwide elevation, and how to process them.</li>
+            <li>${T(`<b>Any area, live.</b> When you draw an area, the browser asks NASA's ASF archive for every NISAR L2 GCOV pass over it, downloads the public browse images (R = HH, G = HV, ~165 m), mosaics the frames of each date, aligns the dates by <b>FFT phase correlation</b> and filters the speckle. Nothing is precomputed.`, `<b>Her alan, canlı.</b> Bir alan çizdiğinizde tarayıcı NASA'nın ASF arşivinden o alan üzerindeki her NISAR L2 GCOV geçişini ister, açık önizleme görüntülerini (R = HH, G = HV, ~165 m) indirir, her tarihin çerçevelerini birleştirir, tarihleri <b>FFT faz korelasyonu</b> ile hizalar ve karlanmayı süzer. Hiçbir şey önceden hesaplanmaz.`)}</li>
+            <li>${T(`<b>World mosaics</b>: ${cyc.length} periods (${frames} frames), raw browse values blended with feathered edges, gaps filled from the nearest period, polar caps closed. On the globe: R = HH, G = HV, B = HH/HV, or a multi-date composite. Values are never altered for looks.`, `<b>Dünya mozaikleri</b>: ${cyc.length} dönem (${frames} çerçeve), ham görüntü değerleri yumuşak kenarlarla birleştirildi, boşluklar en yakın dönemden dolduruldu, kutuplar kapatıldı. Kürede: R = HH, G = HV, B = HH/HV ya da çok tarihli kompozit. Değerler görsellik için asla değiştirilmez.`)}</li>
+            <li>${T('<b>Globe metric layers</b>: change, water, seasonal variability, snow melt (from the mosaics), main crop (SPAM 2010), landslide history (NASA Global Landslide Catalog).', '<b>Küre metrik katmanları</b>: değişim, su, mevsimsel değişkenlik, kar erimesi (mozaiklerden), ana ürün (SPAM 2010), heyelan geçmişi (NASA Küresel Heyelan Kataloğu).')}</li>
+            <li>${T('<b>Crops</b>: Sentinel-2 L2A Cloud-Optimized GeoTIFFs (Earth Search) for the U-TAE network; ESA WorldCover 10 m; SPAM 2010 crop areas; FAO GAEZ v4 suitability; NASA Harvest CropHarvest field labels.', '<b>Tarım</b>: U-TAE ağı için Sentinel-2 L2A Cloud-Optimized GeoTIFF\'ler (Earth Search); ESA WorldCover 10 m; SPAM 2010 ürün alanları; FAO GAEZ v4 uygunluğu; NASA Harvest CropHarvest arazi etiketleri.')}</li>
+            <li>${T('<b>Water, weather and soil</b>: NASA POWER (daily rain, temperature, soil wetness, climatology); ERA5-Land soil moisture in four depths and the rain forecast via Open-Meteo; MODIS NDVI from NASA GIBS.', '<b>Su, hava ve toprak</b>: NASA POWER (günlük yağış, sıcaklık, toprak ıslaklığı, iklim ortalamaları); Open-Meteo üzerinden ERA5-Land dört derinlikte toprak nemi ve yağış tahmini; NASA GIBS\'ten MODIS NDVI.')}</li>
+            <li>${T('<b>Terrain and hazards</b>: Terrarium elevation tiles (slope), NASA Global Landslide Catalog, NASA EONET events, USGS earthquakes.', '<b>Arazi ve afetler</b>: Terrarium yükseklik karoları (eğim), NASA Küresel Heyelan Kataloğu, NASA EONET olayları, USGS depremleri.')}</li>
+            <li>${T(`Going global: see ${L('https://github.com/ysoktar/dancing-with-sars/blob/main/docs/GLOBAL_DATA.md', 'docs/GLOBAL_DATA.md')} for the size of the full NISAR archive and how to process it.`, `Küresel ölçek: tüm NISAR arşivinin boyutu ve nasıl işleneceği için ${L('https://github.com/ysoktar/dancing-with-sars/blob/main/docs/GLOBAL_DATA.md', 'docs/GLOBAL_DATA.md')}.`)}</li>
           </ol>
         </div>
         <div class="panel">
-          <h3>Analysis methods</h3>
+          <h3>${T('Analysis methods', 'Analiz yöntemleri')}</h3>
           <table class="t">
-            <tr><th>Tool</th><th>Method</th><th>Output</th></tr>
-            <tr><td>Speckle reduction</td><td>Lee adaptive filter, 5×5</td><td>cleaner images</td></tr>
-            <tr><td>Change detection</td><td>log-ratio, Otsu threshold</td><td>change map, km², per-pixel confidence</td></tr>
-            <tr><td>Surface types</td><td>k-means++ on 6 features</td><td>groups, physical reading, confidence</td></tr>
-            <tr><td>Forecast</td><td>Theil–Sen trend + residual bootstrap</td><td>80 / 95% ranges, backtest vs. persistence</td></tr>
+            <tr><th>${T('Tool', 'Araç')}</th><th>${T('Method', 'Yöntem')}</th></tr>
+            ${[
+              [T('Speckle filter', 'Karlanma süzgeci'), T('multi-temporal Quegan filter + Lee 3×3', 'çok zamanlı Quegan süzgeci + Lee 3×3')],
+              [T('Change detection', 'Değişim tespiti'), T('log-ratio, Otsu threshold, per-pixel confidence', 'log-oran, Otsu eşiği, piksel başına güven')],
+              [T('Crop types', 'Ürün türleri'), T('U-TAE (PASTIS weights) in the browser, WorldCover + SPAM prior, field vote', 'tarayıcıda U-TAE (PASTIS ağırlıkları), WorldCover + SPAM ön bilgisi, tarla oylaması')],
+              [T('Crop suggestions', 'Ürün önerileri'), T('GAEZ suitability vs SPAM crops grown, root-zone moisture', 'GAEZ uygunluğu ve SPAM\'de ekilenler, kök bölgesi nemi')],
+              [T('Soil moisture', 'Toprak nemi'), T('ERA5-Land anomaly; NISAR bare-soil change detection (Wagner)', 'ERA5-Land sapması; NISAR çıplak toprakta değişim tespiti (Wagner)')],
+              [T('Drought', 'Kuraklık'), T('rain percentiles / SPI, soil-moisture percentile, D0–D4', 'yağış yüzdelikleri / SPI, toprak nemi yüzdeliği, D0–D4')],
+              [T('Compare two areas', 'İki alanı karşılaştır'), T('feature-distribution overlap + land cover, crops, climate, soil water, terrain', 'özellik dağılımı örtüşmesi + arazi örtüsü, ürün, iklim, toprak suyu, arazi yapısı')],
+              [T('Landslides', 'Heyelanlar'), T('HV drop on slopes ≥ 15° vs flat-ground noise; LHASA-style rain trigger', '≥ 15° eğimde düz arazi gürültüsüne göre HV düşüşü; LHASA tarzı yağış tetikleyicisi')],
+              [T('Mine spill', 'Maden atığı'), T('HV and HH change together, persistent, per-pixel threshold', 'HV ve HH birlikte, kalıcı değişim, piksel başına eşik')],
+              [T('Glaciers', 'Buzullar'), T('wet-snow mapping (Nagler & Rott), wet-snow line', 'ıslak kar haritalama (Nagler & Rott), ıslak kar çizgisi')],
+              [T('Surface types', 'Yüzey türleri'), T('k-means++ on 6 features', '6 özellik üzerinde k-means++')],
+              [T('Forecast', 'Tahmin'), T('damped trend + residual bootstrap, backtest', 'sönümlü eğilim + artık önyükleme, geriye dönük test')],
+            ].map(([a, b]) => `<tr><td>${a}</td><td>${b}</td></tr>`).join('')}
           </table>
         </div>
       </div>
       <div class="stack">
         <div class="panel">
-          <h3>Limitations</h3>
+          <h3>${T('Limitations', 'Sınırlamalar')}</h3>
           <ul class="plain">
-            <li>Browse images are 8-bit renderings (~150 m pixels), not calibrated γ⁰ at 10–20 m. Numbers here are <b>relative brightness</b>; <code>pipeline/fetch_hdf5.py</code> extracts calibrated values with a free Earthdata login.</li>
-            <li>Most products are labelled <i>provisional</i> by the NISAR project. Validated L-band products start from 21 October 2026, so the record is short and multi-year analysis needs Sentinel-1 or Landsat history.</li>
-            <li>Interferogram and offset images are pictures of the measurement. Motion values need the HDF5 files.</li>
-            <li>The ML results are unsupervised and point to places worth checking. They are not validated maps.</li>
-            <li>News and event matches are context, not validation.</li>
+            <li>${T('Browse images are 8-bit renderings (~165 m pixels), not calibrated γ⁰ at 10–20 m. Numbers here are <b>relative brightness</b>; <code>pipeline/fetch_hdf5.py</code> extracts calibrated values with a free Earthdata login.', 'Önizleme görüntüleri 8 bitlik görsellerdir (~165 m piksel), 10–20 m\'de kalibre γ⁰ değil. Buradaki sayılar <b>göreli parlaklıktır</b>; <code>pipeline/fetch_hdf5.py</code> ücretsiz Earthdata hesabıyla kalibre değerleri çıkarır.')}</li>
+            <li>${T('Most products are labelled <i>provisional</i> by the NISAR project; the record starts in October 2025 (June 2026 over much of the southern hemisphere), so multi-year trends need older missions.', 'Ürünlerin çoğu NISAR projesince <i>geçici</i> olarak etiketli; kayıt Ekim 2025\'te (güney yarım kürenin çoğunda Haziran 2026\'da) başlıyor, çok yıllık eğilimler için eski görevler gerekir.')}</li>
+            <li>${T('Radar does not measure crop species, yield or soil chemistry directly: those come from other data, and the pages say so.', 'Radar ürün türünü, verimi ya da toprak kimyasını doğrudan ölçmez: bunlar başka verilerden gelir ve sayfalar bunu belirtir.')}</li>
+            <li>${T('Global grids (GAEZ, SPAM, ERA5-Land, NASA POWER) describe areas of ~10–50 km, not single parcels.', 'Küresel ızgaralar (GAEZ, SPAM, ERA5-Land, NASA POWER) tek parselleri değil ~10–50 km\'lik alanları anlatır.')}</li>
+            <li>${T('Landslide and drought levels are indicators, not official warnings.', 'Heyelan ve kuraklık seviyeleri göstergedir, resmi uyarı değildir.')}</li>
           </ul>
         </div>
         <div class="panel">
-          <h3>Challenge resources</h3>
+          <h3>${T('Challenge resources', 'Yarışma kaynakları')}</h3>
           <table class="t">
-            <tr><th>Resource</th><th>What it gives you</th></tr>
-            <tr><td><a href="https://search.asf.alaska.edu/" target="_blank" rel="noopener">ASF Vertex</a></td><td>NASA's SAR archive; every NISAR product used here (GCOV, GUNW, GOFF).</td></tr>
-            <tr><td><a href="https://search.earthdata.nasa.gov/search" target="_blank" rel="noopener">NASA Earthdata Search</a></td><td>Search all NASA Earth data (NISAR, optical, GPM rainfall, SMAP soil moisture…).</td></tr>
-            <tr><td><a href="https://nisar-docs.asf.alaska.edu/" target="_blank" rel="noopener">NISAR Data User Guide</a></td><td>Product formats, access and processing for NISAR.</td></tr>
-            <tr><td><a href="https://www.earthdata.nasa.gov/learn/earth-observation-data-basics/sar" target="_blank" rel="noopener">Intro to SAR</a> · <a href="https://www.earthdata.nasa.gov/learn/earth-observation-data-basics/remote-sensing" target="_blank" rel="noopener">Intro to remote sensing</a></td><td>Wavelength, polarization, scattering, resolution.</td></tr>
-            <tr><td><a href="https://appliedsciences.nasa.gov/get-involved/training" target="_blank" rel="noopener">NASA ARSET trainings</a></td><td>Free courses on SAR and NISAR for disasters, agriculture, water and ecosystems.</td></tr>
-            <tr><td><a href="https://nisar.jpl.nasa.gov/applications/arcgis-storymaps/" target="_blank" rel="noopener">NISAR StoryMaps</a></td><td>Floods, wildfires, land subsidence, oil slicks and glacier motion, explained with SAR.</td></tr>
-            <tr><td><a href="https://nisar.jpl.nasa.gov/applications/societal-benefit/" target="_blank" rel="noopener">NISAR applications white papers</a></td><td>Two-page summaries of NISAR's societal applications.</td></tr>
-            <tr><td><a href="https://uavsar.jpl.nasa.gov/education/postcards.html" target="_blank" rel="noopener">UAVSAR postcards</a></td><td>Airborne L-band false-colour examples, the same colour logic as this site's radar images.</td></tr>
+            <tr><th>${T('Resource', 'Kaynak')}</th><th>${T('What it gives you', 'Ne sağlar')}</th></tr>
+            <tr><td>${L('https://search.asf.alaska.edu/', 'ASF Vertex')}</td><td>${T("NASA's SAR archive; every NISAR product used here (GCOV, GUNW, GOFF).", "NASA'nın SAR arşivi; burada kullanılan tüm NISAR ürünleri (GCOV, GUNW, GOFF).")}</td></tr>
+            <tr><td>${L('https://search.earthdata.nasa.gov/search', 'NASA Earthdata Search')}</td><td>${T('Search all NASA Earth data (NISAR, optical, GPM rainfall, SMAP soil moisture…).', 'Tüm NASA yer verisini arayın (NISAR, optik, GPM yağış, SMAP toprak nemi…).')}</td></tr>
+            <tr><td>${L('https://nisar-docs.asf.alaska.edu/', 'NISAR Data User Guide')}</td><td>${T('Product formats, access and processing for NISAR.', 'NISAR için ürün biçimleri, erişim ve işleme.')}</td></tr>
+            <tr><td>${L('https://www.earthdata.nasa.gov/learn/earth-observation-data-basics/sar', T('Intro to SAR', 'SAR\'a giriş'))} · ${L('https://www.earthdata.nasa.gov/learn/earth-observation-data-basics/remote-sensing', T('Intro to remote sensing', 'Uzaktan algılamaya giriş'))}</td><td>${T('Wavelength, polarization, scattering, resolution.', 'Dalga boyu, polarizasyon, saçılma, çözünürlük.')}</td></tr>
+            <tr><td>${L('https://appliedsciences.nasa.gov/get-involved/training', 'NASA ARSET')}</td><td>${T('Free courses on SAR and NISAR for disasters, agriculture, water and ecosystems.', 'Afet, tarım, su ve ekosistemler için ücretsiz SAR ve NISAR kursları.')}</td></tr>
+            <tr><td>${L('https://nisar.jpl.nasa.gov/applications/arcgis-storymaps/', 'NISAR StoryMaps')}</td><td>${T('Floods, wildfires, land subsidence, oil slicks and glacier motion, explained with SAR.', 'Sel, orman yangını, çökme, petrol lekesi ve buzul hareketi, SAR ile anlatılıyor.')}</td></tr>
+            <tr><td>${L('https://nisar.jpl.nasa.gov/applications/societal-benefit/', T('NISAR applications white papers', 'NISAR uygulama raporları'))}</td><td>${T("Two-page summaries of NISAR's societal applications.", "NISAR'ın toplumsal uygulamalarının iki sayfalık özetleri.")}</td></tr>
+            <tr><td>${L('https://uavsar.jpl.nasa.gov/education/postcards.html', T('UAVSAR postcards', 'UAVSAR kartpostalları'))}</td><td>${T('Airborne L-band false-colour examples.', 'Havadan L-band yanlış renk örnekleri.')}</td></tr>
           </table>
-          <h3 style="margin-top:14px">Other SAR missions (partner agencies)</h3>
+          <h3 style="margin-top:14px">${T('Other SAR missions (partner agencies)', 'Diğer SAR görevleri (ortak ajanslar)')}</h3>
           <table class="t">
-            <tr><th>Mission</th><th>Band</th><th>Access</th></tr>
-            <tr><td><a href="https://donnees-data.asc-csa.gc.ca/en/dataset/rcm" target="_blank" rel="noopener">RADARSAT Constellation (CSA)</a></td><td>C</td><td>maritime, ice, disasters, ecosystems; registration</td></tr>
-            <tr><td><a href="https://donnees-data.asc-csa.gc.ca/en/dataset/radarsat1" target="_blank" rel="noopener">RADARSAT-1 archive (CSA)</a></td><td>C</td><td>1995–2013, open licence: decades of history before NISAR</td></tr>
-            <tr><td><a href="https://catalogos.conae.gov.ar/catalogo/catalogoSatSaocomInfo.html" target="_blank" rel="noopener">SAOCOM (CONAE)</a></td><td>L</td><td>same wavelength as NISAR; strong over Argentina, where YieldSAT has fields; ONE CLICK registration</td></tr>
+            <tr><th>${T('Mission', 'Görev')}</th><th>${T('Band', 'Bant')}</th><th>${T('Access', 'Erişim')}</th></tr>
+            <tr><td>${L('https://donnees-data.asc-csa.gc.ca/en/dataset/rcm', 'RADARSAT Constellation (CSA)')}</td><td>C</td><td>${T('maritime, ice, disasters, ecosystems; registration', 'deniz, buz, afet, ekosistem; kayıt gerekir')}</td></tr>
+            <tr><td>${L('https://donnees-data.asc-csa.gc.ca/en/dataset/radarsat1', 'RADARSAT-1 (CSA)')}</td><td>C</td><td>${T('1995–2013, open licence: decades of history before NISAR', '1995–2013, açık lisans: NISAR öncesi onlarca yıllık geçmiş')}</td></tr>
+            <tr><td>${L('https://catalogos.conae.gov.ar/catalogo/catalogoSatSaocomInfo.html', 'SAOCOM (CONAE)')}</td><td>L</td><td>${T('same wavelength as NISAR; strong over Argentina; ONE CLICK registration', 'NISAR ile aynı dalga boyu; Arjantin üzerinde güçlü; ONE CLICK kaydı')}</td></tr>
           </table>
-          <p class="note">These archives need an account, so they are linked here rather than built into the site. <a href="https://github.com/asc-csa/Synthetic_Aperture_Radar_Tutorial" target="_blank" rel="noopener">CSA's SAR Python tutorial</a> shows how to work with them.</p>
+          <p class="note">${T(`These archives need an account, so they are linked here rather than built into the site. ${L('https://github.com/asc-csa/Synthetic_Aperture_Radar_Tutorial', "CSA's SAR Python tutorial")} shows how to work with them.`, `Bu arşivler hesap gerektirdiği için siteye gömülmek yerine burada bağlantılandı. ${L('https://github.com/asc-csa/Synthetic_Aperture_Radar_Tutorial', "CSA'nın SAR Python eğitimi")} nasıl çalışılacağını gösterir.`)}</p>
         </div>
         <div class="panel">
-          <h3>Run it yourself</h3>
+          <h3>${T('Run it yourself', 'Kendiniz çalıştırın')}</h3>
 <pre>pip install -r pipeline/requirements.txt
-python pipeline/build_data.py     # GCOV, ~10 min
-python pipeline/build_motion.py   # GUNW + GOFF
-python pipeline/build_events.py   # events and news
-python pipeline/build_dem.py      # 30 m elevation
-python pipeline/build_mosaic.py   # world mosaic, ~60 GB streamed, ~40 min
-cd web && npm ci && npm run dev</pre>
-          <p class="note">Source code: <a href="https://github.com/ysoktar/dancing-with-sars" target="_blank" rel="noopener">github.com/ysoktar/dancing-with-sars</a> · Data: NASA/JPL-Caltech &amp; ISRO via <a href="https://search.asf.alaska.edu" target="_blank" rel="noopener">ASF DAAC</a> · <a href="https://nisar-docs.asf.alaska.edu/" target="_blank" rel="noopener">NISAR data user guide</a></p>
+python pipeline/build_mosaic.py --start 2026-10-13 --days 12 --tiles
+python pipeline/build_metrics.py
+python pipeline/build_suitability.py
+cd web &amp;&amp; npm ci &amp;&amp; npm run dev</pre>
+          <p class="note">${T('Source code', 'Kaynak kod')}: ${L('https://github.com/ysoktar/dancing-with-sars', 'github.com/ysoktar/dancing-with-sars')} · ${T('Data', 'Veri')}: NASA/JPL-Caltech &amp; ISRO via ${L('https://search.asf.alaska.edu', 'ASF DAAC')} · ${L('https://nisar-docs.asf.alaska.edu/', T('NISAR data user guide', 'NISAR veri kullanıcı kılavuzu'))}</p>
         </div>
       </div>
     </div>

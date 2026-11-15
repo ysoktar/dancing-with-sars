@@ -7,6 +7,9 @@ import { openSitePage, closeSitePage, hrefOf, rerenderSite } from './pages/site.
 import { call } from './sarClient.js';
 import { updateLegend } from './legend.js';
 import { renderMethod, renderData } from './pages/static.js';
+import { renderDisasters, disasterLinks } from './pages/disasters.js';
+import { presetTool } from './pages/site.js';
+import { T } from './ux.js';
 import { initUX } from './ux.js';
 
 const BASE = import.meta.env.BASE_URL;
@@ -29,6 +32,8 @@ async function boot() {
   initUX();
   window.addEventListener('dws:lang', () => {
     const sheet = $('#sheet');
+    if (current === 'disasters') renderDisasters(sheet);
+    drawDisasterChips();
     if (current === 'method') renderMethod(sheet);
     else if (current === 'data') renderData(sheet);
     rerenderSite();
@@ -106,6 +111,7 @@ function route() {
   closeSitePage();
   openSheet();
   if (page === 'method') renderMethod(sheet);
+  else if (page === 'disasters') renderDisasters(sheet, id);
   else if (page === 'data') renderData(sheet);
   else return go('#/');
   current = page;
@@ -166,6 +172,8 @@ export function setPicking(on) {
 function buildRegionPanel() {
   $('#railList').innerHTML = `
     <div class="region-panel">
+      <div id="dzChips"></div>
+      <div class="rail-group">Or look at any place</div>
       <button class="btn primary" id="pickBtn">Draw an area on the globe</button>
       <span class="small muted mono" id="drawInfo"></span>
       <form class="field" id="coordForm"><span class="small muted">Find a place first (then draw)</span>
@@ -198,6 +206,17 @@ function buildRegionPanel() {
   });
   drawRecent();
   drawCal();
+  drawDisasterChips();
+}
+
+// disaster shortcuts: the card on the Disasters page (why) or straight to the tool on an example area (where)
+function drawDisasterChips() {
+  const el = $('#dzChips');
+  if (!el) return;
+  el.innerHTML = `<div class="rail-group">${T('Explore a disaster', 'Bir afeti keşfet')}</div>
+    <div class="dz-chips">${disasterLinks().map((d) => `<div class="dz-chip" style="--c:${d.c}"><a href="#/disasters/${d.k}" class="dz-chip-name"><i></i>${esc(d.name)}</a><a href="${d.href}" class="dz-chip-go" data-tool="${d.tool}" data-tab="${d.tab}" title="${T('Open the tool on an example area', 'Aracı örnek bir alanda aç')}">${T('map', 'harita')} →</a></div>`).join('')}</div>
+    <a class="small" href="#/disasters" style="display:inline-block;margin:6px 0 4px">${T('How each disaster works →', 'Her afet nasıl işler →')}</a>`;
+  $$('#dzChips [data-tool]').forEach((a) => a.addEventListener('click', () => presetTool(a.dataset.tab, a.dataset.tool)));
 }
 
 // areas whose calibrated NISAR stack is precomputed (pipeline/build_calibrated_regions.py, refreshed by GitHub Actions)

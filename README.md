@@ -425,6 +425,9 @@ A port of the team's desktop analyzer (`Nasa.py`):
 ### 5.24 Radar indices
 Per pass, from calibrated γ⁰ only (browse brightness is stretched per image): RVI = 4·HV/(HH+HV), RFDI = (HH−HV)/(HH+HV), HV−HH in dB and span, computed per pixel in linear power, median over land pixels. Indices that need VV or quad-pol, interferometric coherence, and biomass / LAI formulas with site-specific coefficients are left out on purpose.
 
+### 5.25 Change twins of farm fields (globe layer)
+From the Change-Twin notebook (NISAR GCOV field means in linear power → dB, 30-slot season calendar, a Mamba VAE that turns each field's 7-channel series into a 32-D fingerprint): 1,500 fields in Iowa, Beauce, Punjab, Pampas and Konya. `pipeline/build_twins.py` mean-centres and L2-normalises the fingerprints and keeps, for every field, the three most similar fields in other regions (cosine). On the globe each field is a dot (red = in the top 5 % of unusual change in its region); clicking one lists its twins, most similar first, with their HH and HV − HH season curves. Similar curves mean the same physical changes at the same point of the season, not the same crop.
+
 ## 6. Machine learning
 
 **In the browser (Web Worker, no server).**

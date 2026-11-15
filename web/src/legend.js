@@ -51,8 +51,14 @@ const SECTIONS = {
       <div class="lg-row lg-ends"><span>few</span><span>many (3° cells)</span></div>`,
   events: () => `<b>${T('Natural events (NASA EONET)', 'Doğal olaylar (NASA EONET)')}</b>
       <div class="lg-grid">${sw('#3fb8ff', T('flood', 'sel'))}${sw('#ff6a4d', T('wildfire', 'orman yangını'))}${sw('#ff3d6e', T('volcano', 'yanardağ'))}${sw('#b48cff', T('storm', 'fırtına'))}${sw('#c8f0ff', T('ice', 'buz'))}${sw('#e8b04a', T('other', 'diğer'))}</div>`,
-  satellite: (g) => (g.date && g.date.getTime() < Date.UTC(2025, 6, 30) ? '' : `<b>NISAR satellite</b>
-      <div class="lg-grid">${sw('#ffd166', 'position (accelerated clock)')}${sw('rgba(255,209,102,0.5)', 'ground track')}${sw('rgba(56,189,248,0.45)', T('~242 km L-band swath (left-looking)', '~242 km L-band tarama şeridi (sola bakan)'))}</div>`),
+  satellite: (g) => {
+    if (!g.date || g.date.getTime() < Date.UTC(2025, 6, 30)) return '';
+    const ep = g.tleEpoch ? new Date(g.tleEpoch).toISOString().slice(0, 10) : null;
+    if (!g.satValid(g.date)) return `<b>NISAR satellite</b><div class="lg-note">${T(`Not shown on this date: its exact position is only known within two weeks of the latest orbit data${ep ? ` (${ep})` : ''}.`, `Bu tarihte gösterilmiyor: kesin konumu yalnızca son yörünge verisinin${ep ? ` (${ep})` : ''} iki hafta yakınında bilinir.`)}</div>`;
+    return `<b>NISAR satellite</b>
+      <div class="lg-grid">${sw('#ffd166', T('position in real time', 'gerçek zamanlı konum'))}${sw('rgba(255,209,102,0.5)', T('last 45 min of track', 'son 45 dk iz'))}${sw('rgba(56,189,248,0.45)', T('~242 km L-band swath (left-looking)', '~242 km L-band tarama şeridi (sola bakan)'))}</div>
+      <div class="lg-note">${T(`Orbit from the CelesTrak TLE of ${ep}, SGP4; on other dates, the same time of day.`, `Yörünge CelesTrak TLE (${ep}), SGP4; diğer tarihlerde günün aynı saati.`)}</div>`;
+  },
   night: () => `<b>${T('Night lights', 'Gece ışıkları')}</b> <span class="lg-note">(NASA Black Marble)</span>`,
 };
 const ORDER = ['change', 'water', 'variability', 'melt', 'maincrop', 'twins', 'landslides', 'mtc', 'mosaic', 's1', 'density', 'events', 'satellite', 'night'];

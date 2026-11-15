@@ -434,3 +434,5 @@ abbr.term:hover, abbr.term:focus { color: var(--accent); border-bottom-color: va
 body.picking .globe canvas { cursor: crosshair; }
 @media (max-width: 700px) { .pick-bar { bottom: 70px; gap: 8px; } .pb-step { min-width: 0; } }
 @media (min-width: 900px) { .pick-bar { flex-wrap: nowrap; } .pb-act .btn { white-space: nowrap; } }
+.nav a { white-space: nowrap; }
+@media (max-width: 1250px) { .bar-meta { display: none; } }

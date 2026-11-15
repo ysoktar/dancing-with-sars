@@ -39,7 +39,7 @@ const TR = {
   'Seasonal variability (fields vs steady land)': 'Mevsimsel değişkenlik (tarla ve sabit arazi)', 'Snow & ice melt': 'Kar ve buz erimesi',
   'Cropland & forest (from the mosaics)': 'Tarım ve orman (mozaiklerden)', 'Acquisitions per month': 'Aylık çekim sayısı',
   'Natural events (EONET)': 'Doğal olaylar (EONET)', 'NISAR satellite, orbit & swath': 'NISAR uydusu, yörünge ve tarama şeridi',
-  'Night side lights': 'Gece ışıkları', 'Main crop (SPAM)': 'Ana ürün (SPAM)', 'Landslide history (NASA)': 'Heyelan geçmişi (NASA)', 'Radar indices': 'Radar indisleri', 'Disasters': 'Afetler', 'RVI, RFDI, HV/HH from calibrated γ⁰': 'Kalibre γ⁰ ile RVI, RFDI, HV/HH', 'Earthquakes & damage': 'Deprem ve hasar', 'Nearby quakes + building-damage proxy': 'Yakın depremler + bina hasar göstergesi', 'Sentinel-1 C-band (2020 · 2021)': 'Sentinel-1 C-band (2020 · 2021)',
+  'Night side lights': 'Gece ışıkları', 'Main crop (SPAM)': 'Ana ürün (SPAM)', 'Landslide history (NASA)': 'Heyelan geçmişi (NASA)', 'Radar indices': 'Radar indisleri', 'Floods, fires & any change': 'Sel, yangın ve her değişim', 'What changed between two dates': 'İki tarih arasında ne değişti', 'Disasters': 'Afetler', 'Explore an area': 'Bir alanı incele', 'Disasters & change': 'Afetler ve değişim', 'Crops & drought': 'Tarım ve kuraklık', 'Disaster &amp; change signals': 'Afet ve değişim sinyalleri', 'Explore a disaster': 'Bir afeti keşfet', 'How each disaster works →': 'Her afet nasıl işler →', 'Or look at any place': 'Ya da herhangi bir yere bakın', 'RVI, RFDI, HV/HH from calibrated γ⁰': 'Kalibre γ⁰ ile RVI, RFDI, HV/HH', 'Earthquakes & damage': 'Deprem ve hasar', 'Nearby quakes + building-damage proxy': 'Yakın depremler + bina hasar göstergesi', 'Sentinel-1 C-band (2020 · 2021)': 'Sentinel-1 C-band (2020 · 2021)',
   // region page tabs
   'Summary': 'Özet', 'Crops': 'Tarım', 'Parcel report': 'Parsel raporu', 'Archive 1978→': 'Arşiv 1978→', 'Radar images': 'Radar görüntüleri',
   'Change & ML': 'Değişim ve analiz', 'Forecast': 'Tahmin',
@@ -129,7 +129,7 @@ const TR = {
 };
 // paragraphs with markup inside: translated as a whole (elements with data-i18n-html="key")
 const TR_HTML = {
-  intro: '<b>Gezegen yüzeyi parmak izi gezgini.</b> Küre, NASA–ISRO <b>NISAR</b> uydusunun gerçek radar görüntüleriyle kaplı; her 12 günlük yörünge döngüsü için bir görüntü. L-band radar, zeminin ne kadar pürüzlü ve ıslak olduğunu (HH) ve üzerinde ne kadar bitki hacmi bulunduğunu (HV) kaydeder. Herhangi bir alanı çizin: ürünlerini ve toprak nemini haritalayın, başka bir yerle karşılaştırın, heyelan ya da maden atığı arayın.',
+  intro: '<b>Afetler Dünya’yı nasıl değiştirir, radarla görün.</b> NASA–ISRO <b>NISAR</b> uydusunun gerçek görüntüleri; uydu tüm karaları 12 günde bir, bulutun içinden ve gece de görür. Her afet radar yankısında kendi izini bırakır: birini seçin, neden olduğunu ve radarın onu nasıl bulduğunu görün.',
   drawNote: 'Alanınızın bütün NISAR geçişleri canlı çekilir ve tarayıcınızda analiz edilir. Radar pikselleri yaklaşık 165 m; 5 km\'lik bir alanda yaklaşık 30 × 30 piksel vardır.',
 };
 const original = new WeakMap();

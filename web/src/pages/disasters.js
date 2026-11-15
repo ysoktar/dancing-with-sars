@@ -83,6 +83,9 @@ const D = () => [
   },
 ];
 
+/** Short list for the home panel: name, colour and the example area with its tool. */
+export const disasterLinks = () => D().map((d) => ({ k: d.k, c: d.c, name: d.name, tool: d.tool, tab: d.tab, href: reg(d.box, d.tab) }));
+
 function sig(d) {
   const W = 300, H = 120, px = 26, py = 12, n = d.hh.length;
   const x = (i) => px + (i / (n - 1)) * (W - px - 8), y = (v) => H - py - v * (H - 2 * py);
@@ -99,11 +102,17 @@ function sig(d) {
   </svg>`;
 }
 
-export function renderDisasters(sheet) {
+export function renderDisasters(sheet, focus) {
   const list = D();
   sheet.innerHTML = sheetHead(T('Disasters', 'Afetler'), T('What happens, why, and how NISAR sees it', 'Ne olur, neden olur, NISAR nasıl görür')) + `
   <div class="sheet-body"><div class="page">
     <p class="lead" style="margin-bottom:12px">${T('Every disaster changes the surface in its own way, and leaves its own fingerprint in the radar echo. Each card follows one chain: <b>cause → what happens on the ground → what the radar sees → the tool that finds it</b>. Many disasters are not only natural: people trigger them or make them worse.', 'Her afet yüzeyi kendine özgü biçimde değiştirir ve radar yankısında kendi izini bırakır. Her kart tek bir zinciri izler: <b>neden → yerde ne olur → radar ne görür → onu bulan araç</b>. Afetlerin çoğu yalnızca doğal değildir: insanlar onları tetikler ya da büyütür.')}</p>
+    <ol class="dz-chain">
+      <li><b>1</b><span>${T('Cause', 'Neden')}</span><small>${T('natural or human', 'doğal ya da insan')}</small></li>
+      <li><b>2</b><span>${T('On the ground', 'Yerde')}</span><small>${T('how the surface moves', 'yüzey nasıl hareket eder')}</small></li>
+      <li><b>3</b><span>${T('In the radar', 'Radarda')}</span><small>${T('HH, HV, ground height', 'HH, HV, zemin yüksekliği')}</small></li>
+      <li><b>4</b><span>${T('Find it', 'Bulun')}</span><small>${T('a tool on any area', 'herhangi bir alanda araç')}</small></li>
+    </ol>
     <div class="dz-key small muted">
       <span><i style="background:${C.hh}"></i>HH · ${T('roughness, wetness, buildings', 'pürüzlülük, ıslaklık, binalar')}</span>
       <span><i style="background:${C.hv}"></i>HV · ${T('plant volume', 'bitki hacmi')}</span>
@@ -127,6 +136,10 @@ export function renderDisasters(sheet) {
   </div></div>`;
   sheet.querySelectorAll('[data-tool]').forEach((a) => a.addEventListener('click', () => presetTool(a.dataset.tab, a.dataset.tool)));
   const human = new Set(['sinkhole', 'spill', 'fire']);
+  if (focus) {
+    const card = sheet.querySelector(`.dz-card[data-k="${focus}"]`);
+    if (card) { card.classList.add('dz-focus'); setTimeout(() => card.scrollIntoView({ behavior: 'smooth', block: 'start' }), 60); }
+  }
   sheet.querySelectorAll('#dzFilter button').forEach((b) => b.addEventListener('click', () => {
     sheet.querySelectorAll('#dzFilter button').forEach((x) => x.classList.toggle('on', x === b));
     sheet.querySelectorAll('.dz-card').forEach((c) => { const f = b.dataset.f, k = c.dataset.k; c.style.display = f === 'all' || (f === 'hum' && human.has(k)) || (f === 'nat' && !human.has(k)) ? '' : 'none'; });

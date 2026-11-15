@@ -369,3 +369,35 @@ abbr.term:hover, abbr.term:focus { color: var(--accent); border-bottom-color: va
 @keyframes dzdraw { to { stroke-dashoffset: 0; } }
 @media (prefers-reduced-motion: reduce) { .dz-line { animation: none; stroke-dashoffset: 0; } }
 .dz-foot { margin-top: auto; padding-top: 12px; display: flex; flex-wrap: wrap; gap: 8px; justify-content: space-between; align-items: center; }
+
+/* disaster shortcuts on the home panel */
+.dz-chips { display: grid; grid-template-columns: 1fr; gap: 5px; margin: 6px 0 2px; }
+.dz-chip { display: flex; align-items: stretch; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; background: var(--surface); transition: border-color .15s, transform .15s; }
+.dz-chip:hover { border-color: var(--c); transform: translateY(-1px); }
+.dz-chip a { text-decoration: none; color: inherit; }
+.dz-chip-name { flex: 1; display: flex; align-items: center; gap: 7px; padding: 7px 8px; font-size: 13px; font-weight: 500; line-height: 1.2; }
+.dz-chip-name i { width: 8px; height: 8px; border-radius: 50%; background: var(--c); flex: none; box-shadow: 0 0 0 3px color-mix(in srgb, var(--c) 22%, transparent); }
+.dz-chip-go { display: flex; align-items: center; padding: 0 8px; font-size: 11px; color: var(--muted) !important; border-left: 1px solid var(--border); white-space: nowrap; }
+.dz-chip-go:hover { color: var(--c) !important; background: color-mix(in srgb, var(--c) 10%, transparent); }
+.dz-focus { box-shadow: 0 0 0 2px var(--c), 0 10px 30px color-mix(in srgb, var(--c) 25%, transparent); }
+
+/* disaster check on an area's summary */
+.dz-check-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 6px; }
+.dz-check-item { display: block; padding: 9px 11px; border: 1px solid var(--border); border-left: 3px solid var(--c); border-radius: 8px; text-decoration: none; color: inherit; background: var(--surface); transition: background .15s, transform .15s; }
+.dz-check-item:hover { background: color-mix(in srgb, var(--c) 9%, var(--surface)); transform: translateY(-1px); }
+.dz-check-item b { display: flex; align-items: center; gap: 6px; font-size: 13.5px; font-weight: 600; }
+.dz-check-item b i { width: 7px; height: 7px; border-radius: 50%; background: var(--c); }
+.dz-check-item span { display: block; font-size: 12px; color: var(--muted); margin-top: 2px; }
+
+/* cause -> ground -> radar -> tool strip */
+.dz-chain { list-style: none; padding: 0; margin: 4px 0 14px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 0; counter-reset: s; }
+.dz-chain li { position: relative; padding: 10px 14px 10px 46px; background: var(--surface); border: 1px solid var(--border); margin-right: -1px; }
+.dz-chain li:first-child { border-radius: 10px 0 0 10px; }
+.dz-chain li:last-child { border-radius: 0 10px 10px 0; }
+.dz-chain li:not(:last-child)::after { content: '→'; position: absolute; right: -9px; top: 50%; transform: translateY(-50%); z-index: 1; color: var(--accent, #e8b04a); font-weight: 700; background: var(--bg, #0b0f14); border-radius: 50%; width: 18px; text-align: center; line-height: 18px; font-size: 12px; }
+.dz-chain b { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; font-size: 12px; background: color-mix(in srgb, #e8b04a 18%, transparent); color: #e8b04a; }
+.dz-chain span { display: block; font-weight: 600; }
+.dz-chain small { color: var(--muted); font-size: 12px; }
+@media (max-width: 700px) { .dz-chain { grid-template-columns: 1fr 1fr; } .dz-chain li { border-radius: 8px !important; margin: 0 0 6px; } .dz-chain li::after { display: none; } }
+.dz-context { margin: 0 0 10px; }
+.dz-tools button { border-left: 3px solid var(--c) !important; }

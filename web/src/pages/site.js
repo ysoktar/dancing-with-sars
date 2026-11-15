@@ -31,7 +31,7 @@ const TABS = [
 
 const stacks = new Map();
 export const hrefOf = (site) => (site.region ? `#/region/${site.box.map((v) => v.toFixed(4)).join('/')}` : `#/site/${site.id}`);
-const REGION_TABS = [['overview', 'Summary'], ['agri', 'Crops'], ['report', 'Parcel report'], ['archive', 'Archive 1978→'], ['images', 'Radar images'], ['analysis', 'Change & ML'], ['forecast', 'Forecast']];
+const REGION_TABS = [['overview', 'Summary'], ['analysis', 'Disasters & change'], ['agri', 'Crops & drought'], ['images', 'Radar images'], ['report', 'Parcel report'], ['archive', 'Archive 1978→'], ['forecast', 'Forecast']];
 const dems = new Map();
 function getDem() {
   const id = S.site.id;
@@ -526,19 +526,21 @@ function motion(el) {
 
 // ================================================================== ANALYSIS
 const TOOLS = [
-  ['compare', 'Compare two areas', 'How alike two places behave'],
-  ['change', 'Change between two dates', 'Log-ratio + automatic threshold'],
-  ['floodhist', 'Flood history', 'NISAR water vs 20 years of floods'],
   ['quake', 'Earthquakes & damage', 'Nearby quakes + building-damage proxy'],
   ['landslide', 'Landslides', 'Detect slides + rain-triggered hazard'],
+  ['change', 'Floods, fires & any change', 'What changed between two dates'],
+  ['floodhist', 'Flood history', 'NISAR water vs 20 years of floods'],
   ['spill', 'Mine spill / mudflow', 'Spread of tailings and farmland reached'],
   ['glacier', 'Glaciers & snow', 'When and where ice melts'],
+  ['compare', 'Compare two areas', 'How alike two places behave'],
 ];
 
+const TOOL_COLORS = { quake: '#ef4444', landslide: '#f97316', change: '#3b82f6', floodhist: '#3b82f6', spill: '#78716c', glacier: '#06b6d4', compare: '#94a3b8' };
 function analysis(el) {
   el.innerHTML = `
+  <p class="dz-context small muted">${T('Each check finds one kind of disaster in the NISAR passes of this area. Why it happens and what it looks like to radar:', 'Her kontrol bu alanın NISAR geçişlerinde bir tür afeti bulur. Neden olduğu ve radara nasıl göründüğü:')} <a href="#/disasters">${T('Disasters', 'Afetler')} →</a></p>
   <div class="grid g-side">
-    <div class="subnav" id="tools">${TOOLS.filter(([k]) => !(S.site.region && k === 'floodhist')).map(([k, t, d]) => `<button data-k="${k}" class="${S.tool === k ? 'on' : ''}"><b>${t}</b><span>${d}</span></button>`).join('')}</div>
+    <div class="subnav dz-tools" id="tools">${TOOLS.filter(([k]) => !(S.site.region && k === 'floodhist')).map(([k, t, d]) => `<button data-k="${k}" class="${S.tool === k ? 'on' : ''}" style="--c:${TOOL_COLORS[k] || '#94a3b8'}"><b>${t}</b><span>${d}</span></button>`).join('')}</div>
     <div id="tool"><div class="empty">Loading radar images…</div></div>
   </div>`;
   $$('#tools button').forEach((b) => b.addEventListener('click', () => {
@@ -1884,8 +1886,17 @@ function regionOverview(el) {
         <div class="stat"><b>${Math.round((tOf(last.date) - tOf(first.date)) / DAY)}</b><span>${T(`days covered`, `gün kapsandı`)}</span></div>
 
       </div>
-      <div class="panel"><h3>Start here</h3><ul class="plain">
-        <li><a href="${hrefOf(R)}/agri" data-agtool="deep">Crop types (deep learning)</a>: crop type per field from a trained network.</li></ul></div>
+      <div class="panel dz-check"><div class="panel-head"><h3>${T('Disaster check for this area', 'Bu alan için afet kontrolü')}</h3><a href="#/disasters">${T('Why each disaster happens →', 'Her afet neden olur →')}</a></div>
+        <p class="small muted" style="margin:0 0 8px">${T('Each check runs on the NISAR passes of this area, in your browser.', 'Her kontrol bu alanın NISAR geçişleri üzerinde, tarayıcınızda çalışır.')}</p>
+        <div class="dz-check-grid">${[
+          ['quake', 'analysis', '#ef4444', T('Earthquake damage', 'Deprem hasarı'), T('collapsed buildings after a quake', 'depremden sonra çöken binalar')],
+          ['landslide', 'analysis', '#f97316', T('Landslides', 'Heyelan'), T('slopes stripped bare + rain hazard', 'soyulan yamaçlar + yağış tehlikesi')],
+          ['change', 'analysis', '#3b82f6', T('Floods & fires', 'Sel ve yangın'), T('what changed between two dates', 'iki tarih arasında ne değişti')],
+          ['drought', 'agri', '#eab308', T('Drought', 'Kuraklık'), T('rain and soil water vs normal', 'yağış ve toprak suyu, normale göre')],
+          ['spill', 'analysis', '#78716c', T('Mine spill / mudflow', 'Maden atığı / çamur'), T('buried land that does not recover', 'geri gelmeyen gömülü arazi')],
+          ['glacier', 'analysis', '#06b6d4', T('Glacier melt', 'Buzul erimesi'), T('melt season, wet-snow line', 'erime mevsimi, ıslak kar çizgisi')],
+        ].map(([k, tab, c, n, d]) => `<a href="${hrefOf(R)}/${tab}" class="dz-check-item" style="--c:${c}" data-dztool="${k}" data-dztab="${tab}"><b><i></i>${n}</b><span>${d}</span></a>`).join('')}</div>
+        <p class="small muted" style="margin:8px 0 0">${T('Also here:', 'Ayrıca:')} <a href="${hrefOf(R)}/agri" data-agtool="deep">${T('crop types (deep learning)', 'ürün türleri (derin öğrenme)')}</a> · <a href="${hrefOf(R)}/agri" data-agtool="indices">${T('radar indices', 'radar indisleri')}</a></p></div>
       <div class="panel"><h3>Crops grown here</h3><div id="rsMix" class="small muted">Loading SPAM 2010 crop statistics…</div></div>
       <div class="panel"><h3>Ground labels nearby</h3><div id="rsLab" class="small muted">Looking for NASA Harvest field labels…</div></div>
       <div class="panel"><h3>Passes</h3><div style="max-height:220px;overflow:auto"><table class="t"><tr><th>Date</th><th>Product</th><th style="text-align:right">valid</th><th style="text-align:right">shift km</th></tr>
@@ -1909,6 +1920,7 @@ function regionOverview(el) {
     </div>
   </div>`;
   $$('a[data-agtool]', el).forEach((l) => l.addEventListener('click', () => { S.agTool = l.dataset.agtool; }));
+  $$('a[data-dztool]', el).forEach((l) => l.addEventListener('click', () => { if (l.dataset.dztab === 'agri') S.agTool = l.dataset.dztool; else S.tool = l.dataset.dztool; }));
   calPanelInit(R);
   labelsNear(app.base, R.box).then((L) => {
     if (!$('#rsLab')) return;

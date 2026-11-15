@@ -315,7 +315,7 @@ export class GlobeView {
     if (name === 'night') this._night(on);
     if (name === 'frames') this.frameGroup.visible = on;
     if (name === 'mosaic' && this.mosaic) this._showMosaic(this.date || new Date());
-    if (name === 'satellite') this.satGroup.visible = on;
+    if (name === 'satellite') this.satGroup.visible = on && this.satValid(this.date || new Date());
     if (name === 'landcover') this.setLandcover(this.base + 'data/landcover_4k.webp', on);
     if (name === 'mtc') this._showMtc(this.currentCycle);
     if (name === 'mtc' || name === 'mosaic') this._showCaps(this.currentCycle);
@@ -339,7 +339,7 @@ export class GlobeView {
     if (!date) return;
     this.date = date;
     // NISAR only exists from its launch on 30 Jul 2025
-    if (this.satGroup) this.satGroup.visible = this.layers.satellite && date.getTime() >= Date.UTC(2025, 6, 30);
+    if (this.satGroup) this.satGroup.visible = this.layers.satellite && this.satValid(date);
     this._setSatDay(date);
     this._showMosaic(date);
     if (this.layers.s1) this._showS1(date);
@@ -851,10 +851,18 @@ export class GlobeView {
     }
   }
 
-  /** Real NISAR orbit (SGP4 from the latest CelesTrak TLE). The satellite flies on the timeline date with an
-   * accelerated clock (1 s = 1 min), with its ground trail and the ~242 km L-band swath to the left of the track. */
+  /** Real NISAR orbit (SGP4 from the latest CelesTrak TLE), in real time: on today's date the satellite is where it
+   * is now; on another date, where it was at the same time of day. A TLE is only accurate for a couple of weeks around
+   * its epoch, so outside +-14 days (and before launch) the satellite is not drawn at all. */
   setTLE(tle) {
     try { this.satrec = twoline2satrec(tle.line1, tle.line2); } catch (e) { this.satrec = null; }
+    this.tleEpoch = this.satrec ? (this.satrec.jdsatepoch + (this.satrec.jdsatepochF || 0) - 2440587.5) * 864e5 : null;
+  }
+
+  /** True when the timeline date is inside the window in which the TLE gives a trustworthy position. */
+  satValid(date) {
+    if (!this.satrec || !this.tleEpoch || !date) return false;
+    return Math.abs(date.getTime() - this.tleEpoch) <= 14 * 864e5 && date.getTime() >= Date.UTC(2025, 6, 30);
   }
 
   _satAt(date) {
@@ -865,8 +873,7 @@ export class GlobeView {
         return { lat: degreesLat(g.latitude), lng: degreesLong(g.longitude), alt: g.height / R_EARTH_KM };
       }
     }
-    const p = orbitLatLng((date.getTime() / 60000) % 1e6);   // fallback: circular sun-synchronous orbit
-    return p;
+    return null;
   }
 
   _buildSatellite() {
@@ -905,7 +912,11 @@ export class GlobeView {
   /** Move the satellite clock to a timeline date (keeps the time of day running). */
   _setSatDay(date) {
     const day = Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
-    if (this.satClock && this.satClock.day !== day) { this.satClock = { day, base: day + 10 * 3600e3, t0: performance.now() }; }
+    if (this.satClock && this.satClock.day !== day) {
+      const now = Date.now(), today = Date.UTC(new Date(now).getUTCFullYear(), new Date(now).getUTCMonth(), new Date(now).getUTCDate());
+      // the same time of day as now, on the timeline's day (exactly now when the timeline is on today)
+      this.satClock = { day, base: day + (now - today), t0: performance.now() };
+    }
   }
 
   _animate() {
@@ -925,10 +936,11 @@ export class GlobeView {
     const tick = (now) => {
       requestAnimationFrame(tick);
       if (now - lastTiles > 250) { lastTiles = now; this._updateTiles(); this._updateNative(); }
-      if (this.paused || !this.layers.satellite || now - last < 33) return;   // ~30 fps is plenty for the satellite
+      if (this.paused || !this.layers.satellite || !this.satGroup.visible || now - last < 33) return;   // ~30 fps is plenty for the satellite
       last = now;
-      const t = this.satClock.base + (performance.now() - this.satClock.t0) * 60;   // 1 s = 1 min
+      const t = this.satClock.base + (performance.now() - this.satClock.t0);   // real time
       const p = this._satAt(new Date(t));
+      if (!p) return;
       const c = this.globe.getCoords(p.lat, p.lng, p.alt);
       this.sat.position.set(c.x, c.y, c.z);
       this.sat.lookAt(0, 0, 0);
@@ -936,10 +948,10 @@ export class GlobeView {
       const sp = this.swath.geometry.attributes.position.array;
       let prev = null;
       for (let i = 0; i < this.trailN; i++) {
-        const q = this._satAt(new Date(t - (this.trailN - 1 - i) * 30000));
+        const q = this._satAt(new Date(t - (this.trailN - 1 - i) * 30000)) || p;
         const cc = this.globe.getCoords(q.lat, q.lng, q.alt);
         tp[i * 3] = cc.x; tp[i * 3 + 1] = cc.y; tp[i * 3 + 2] = cc.z;
-        const nxt = i < this.trailN - 1 ? this._satAt(new Date(t - (this.trailN - 2 - i) * 30000)) : null;
+        const nxt = i < this.trailN - 1 ? this._satAt(new Date(t - (this.trailN - 2 - i) * 30000)) || null : null;
         const brg = nxt ? bearing(q, nxt) : (prev ? bearing(prev, q) : 0);
         for (const [k, km] of [[0, NEAR_KM], [1, FAR_KM]]) {
           const [la, lo] = dest(q.lat, q.lng, brg - 90, km);      // left of the flight direction

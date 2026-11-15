@@ -177,18 +177,21 @@ SI tools were used to help write code and documentation. An AI coding assistant 
 
 ## 2. What the website does
 
+The site is organised around disasters: what happens, why (natural and human causes), how NISAR sees it, and the tool that finds it in any area.
+
 | Part | What you get |
 |---|---|
-| **Globe** | World NISAR mosaics per 12-day cycle (8k texture; 1 km tiles; full-resolution NISAR frames streamed live from ASF when zoomed in). Display: **R = HH, G = HV, B = HH/HV** with fixed per-channel ranges (as the JAXA PALSAR mosaics), or the **multi-date composite** (HH of three cycles in R, G, B). Raw browse values everywhere, never gain- or colour-matched. Polar caps beyond NISAR's reach closed by a smooth fill, flagged in the data. Base map: NASA GIBS Blue Marble relief + bathymetry, Sentinel-2 cloudless when zoomed in, relief shading from a global normal map. Layers, grouped: *radar* (multi-date composite, mosaic, native frames); *what the radar shows* (change since the previous cycle, water & wet surfaces, seasonal variability, snow & ice melt); *context* (main crop, landslide history, acquisitions, EONET events, night lights, NISAR's position, track and swath). A **legend** (bottom right) shows a colour ramp for every active layer. |
-| **Timeline** | One line from Seasat (1978) to today. The archive years take the first quarter (L-band missions light blue, C-band grey), NISAR's era the rest (amber = world mosaic cycles, white = the open region's passes). |
-| **Select region** | Drag a rectangle on the globe (3–200 km), or search a place first. Recent areas are remembered; every view has a shareable link (`#/region/<w>/<s>/<e>/<n>/<tab>`). |
-| **Region page** | *Summary · Crops · Parcel report · Archive 1978→ · Radar images · Change & ML · Forecast*. |
-| **Crops** | Crop types & calendar (U-TAE, or the team's U-Mamba / SITSMamba) with per-crop NISAR curves · **What could grow here** (GAEZ suitability vs crops grown) · **Soil moisture** (ERA5-Land 4 layers, NASA POWER, NISAR wetness) · **Drought** (SPI, soil-moisture percentile, D0–D4) · Weather & NDVI. The Summary tab lists the crops grown (SPAM) and NASA Harvest field labels nearby. |
-| **Change & ML** | **Compare two areas** (six aspects, where they look alike, season curves) · **Glaciers & snow** (melt map, melt season, wet-snow line) · Change between two dates · **Landslides** (detection + hazard outlook) · **Mine spill / mudflow** (spread + farmland reached). |
-| **Parcel report** | The team's parcel analyzer on the web: geometry and elevation, RVI signatures (reference crops vs the region's real NISAR curve), monthly calendar matrix, a year of NASA POWER weather, references. |
-| **Archive 1978→** | Every radar acquisition ASF holds over the area, per mission and year, browse samples, and ALOS PALSAR (L-band, 2006–11) next to NISAR. |
+| **Home (globe)** | Intro and **Explore a disaster**: eight shortcuts, each to its explanation card and straight to the tool on an example area; below them, **Select an area** and place search, the calibrated ready areas and recent areas. |
+| **Globe** | One radar view at a time (Layers → Radar): **NISAR world mosaic** per 12-day cycle (R = HH, G = HV, B = HH/HV, fixed ranges as the JAXA PALSAR mosaics; 8k texture, 1 km tiles, full-resolution NISAR frames streamed from ASF when zoomed in), the **NISAR change composite** (HH of three cycles in R, G, B: grey = stable, colour = change), **Sentinel-1 C-band 2020 · 2021** (before NISAR, kept apart from the NISAR layers) or none. Raw values everywhere, never gain- or colour-matched. Polar caps in a polar projection, fading out beyond NISAR's reach. *Disaster & change signals*: change since the previous cycle, water & wet surfaces, seasonal variability, snow & ice melt. *Context*: main crop, **change twins of farm fields**, landslide history, acquisitions, EONET events, the NISAR satellite (real time, shown only within ±14 days of its TLE), night lights. A **legend** explains every active layer. |
+| **Disasters** | Eight cards (earthquake, landslide, flood, drought, sinkhole & subsidence, mine spill, glacier melt, wildfire): natural and human causes, what happens on the ground, an animated HH / HV / ground-height radar signature, and a button to the tool on a real example area. Filters: *natural, made worse by people* · *mainly caused by people*. Deep links `#/disasters/<kind>`. |
+| **Explore an area** | Click the globe to place a 5, 10, 25 or 50 km square (a dashed preview follows the cursor), or Shift + drag any rectangle (3–200 km); a plain drag rotates the globe. A bar confirms the size and opens the analysis; search places the box at a place or coordinates; Esc cancels. Every view has a shareable link (`#/region/<w>/<s>/<e>/<n>/<tab>`). |
+| **Area page** | *Summary · Disasters & change · Crops & drought · Radar images · Parcel report · Archive 1978→ · Forecast*. The Summary has a **Disaster check** grid that opens each tool. |
+| **Disasters & change** | **Earthquakes & damage** (USGS quakes nearby, HH double-bounce damage proxy) · **Landslides** (detection + rain-triggered outlook) · **Floods, fires & any change** (log-ratio between two dates) · **Mine spill / mudflow** · **Glaciers & snow** · **Compare two areas**. |
+| **Crops & drought** | Crop types & calendar (SITSMamba or U-TAE) with per-crop NISAR curves · What could grow here (GAEZ) · Soil moisture (ERA5-Land, NASA POWER, NISAR wetness) · **Drought** (SPI, soil-moisture percentile, D0–D4) · **Radar indices** (RVI, RFDI, HV − HH from calibrated γ⁰) · Weather & NDVI. |
+| **Parcel report** | Geometry and elevation, RVI signatures (reference crops vs the area's real NISAR curve), monthly calendar matrix, a year of NASA POWER weather. |
+| **Archive 1978→** | Every radar acquisition ASF holds over the area, per mission and year, and ALOS PALSAR (L-band, 2006–11) next to NISAR. |
 | **What radar can tell** | What L-band SAR measures directly, what it estimates with other data, what it cannot see. |
-| **Data & methods** | Sources, challenge resources, partner missions, the route to the full archive. |
+| **Data & methods** | Sources, challenge resources, partner missions. |
 
 Light / dark theme and English / Turkish are switched in the top bar (remembered in the browser). Technical terms (HH, HV, RVI, L-band, SPI, GAEZ, …) have a dashed underline and a plain definition on hover or tap. Heavy work runs in Web Workers; the globe pauses while a page covers it.
 
@@ -407,7 +410,8 @@ A port of the team's desktop analyzer (`Nasa.py`):
 * **Native frames.** When zoomed in, the 12 NISAR frames of the current cycle nearest the view centre are fetched from ASF, their dim swath rim is dropped and they are feathered over the mosaic, without any colour matching.
 * **Sentinel-1 C-band 2020 · 2021.** A layer from the ESA WorldCover Sentinel-1 composites (`pipeline/build_s1_mosaic.py`: ~17,400 1° tiles per year, averaged to 4320 × 2160; R = VV −22…0 dB, G = VH −28…−8 dB, B = VV − VH 2…14 dB). The year follows the timeline (2020 up to the end of 2020, 2021 after). Drawn under the NISAR layers, so it fills what NISAR has not imaged and is the radar view before NISAR's launch. C-band (5.6 cm) mainly sees leaves and the top of the canopy, L-band goes deeper.
 * **Legend.** One section per active layer, with colour ramps (not classes) for the radar layers and the fixed display ranges written out.
-* **Polar caps.** Poleward of 60° the globe draws separate caps in a pole-centred azimuthal-equidistant projection (`pipeline/build_polar.py`), so meridians do not converge into streaks. Beyond NISAR's reach (~77.7° N; ~86° S, where the source mosaic is also distorted) the cap is a plain disc: a ~1.5° soft transition from the observed rim, then the rim's mean value. Recorded as `polarCaps` in each period's JSON.
+* **Polar caps.** Poleward of 60° the globe draws separate caps in a pole-centred azimuthal-equidistant projection (`pipeline/build_polar.py`), so meridians do not converge into streaks. They are cut from the world mosaic and shown only with it. Beyond NISAR's reach (~77.7° N; ~86° S, where the source mosaic is also distorted) the cap fades to transparent over ~1.5°, so the base map shows instead of an invented colour. Recorded as `polarCaps` in each period's JSON.
+* **Satellite.** NISAR's position from the latest CelesTrak TLE (SGP4), in real time: on today's date where it is now, on another date where it was at the same time of day; not drawn outside ±14 days of the TLE epoch (SGP4 accuracy) or before launch.
 
 ### 5.23 Earthquakes and building damage
 * **Nearby earthquakes**: USGS catalogue, M ≥ 4.5 within 300 km since the first pass, with a button per event that picks the first pass after it.
@@ -568,8 +572,9 @@ A world mosaic needs ~6–8 GB of RAM at 8k. Build periods one after another, no
 **Add a site.** Add a line to `pipeline/sites.json` (`id, name, country, lon, lat, half_deg, theme`) and a story in `web/src/sites.js`, then run the per-site scripts with `--sites <id>`.
 
 **Deploy.** `.github/workflows/deploy.yml` builds `web/` and publishes it to GitHub Pages:
-* **Triggers:** every push to `main`, weekly, and manual dispatch.
-* **Refresh:** the weekly and manual runs refresh the site data.
+* **Triggers:** pushes to `main` that change `web/` (or the workflow), weekly, and manual dispatch. Docs, pipeline code and notebooks alone do not redeploy.
+* **Refresh:** the weekly and manual runs refresh the site data and the events and news; a push deploys the committed data as it is.
+* **Calibrated ready areas:** `.github/workflows/calibrated.yml` rebuilds them weekly (secret `EARTHDATA_TOKEN`) and then triggers a deploy.
 * **Mosaic:** the manual run can also rebuild a mosaic (`mosaic_start`).
 * **Setup:** set *Settings → Pages → Source* to *GitHub Actions*.
 
@@ -600,7 +605,7 @@ web/                 website (Vite)
   src/pages/report.js parcel report (team analyzer)
   public/models/     utae_pastis.onnx + metadata
   src/sar.js         speckle filter, render modes, change detection
-  src/ml.js          k-means, cluster interpretation
+  src/ml.js          pixel features (k-means kept for the worker; the clustering tool was removed)
   src/pages/         site page, static pages
   public/data/       generated data (mosaics, archetypes, suitability, cropprior, landslides, …)
 ml/                  model code cells and exporters (notebooks are kept outside the repository)

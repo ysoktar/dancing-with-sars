@@ -84,8 +84,10 @@ followed by a light 3 × 3 Lee filter.
 * **HH · HV · HH/HV** (the convention of JAXA's L-band PALSAR mosaics): red = HH, green = HV, blue = HH − HV (the ratio
   in decibel-like units). Each channel has a fixed range, the same everywhere. Forest looks green, fields and bare soil
   blue, towns and flooded vegetation bright, water black.
-* **Multi-date composite**: red, green and blue are HH of three cycles. Where nothing changed the colours add up to
+* **Change composite**: red, green and blue are HH of three cycles. Where nothing changed the colours add up to
   grey; a colour means the surface changed between those dates.
+* Only one radar view is drawn at a time (world mosaic, change composite, or Sentinel-1 2020–2021 for the years before
+  NISAR), so two visualisations never mix.
 * The data are never altered for looks: only the display mapping is chosen, and it is the same everywhere.
 
 ### 3.2 The poles
@@ -95,8 +97,9 @@ radial streaks. And NISAR never images beyond about 77.7° N and 88° S, so ther
 
 The site therefore draws everything poleward of 60° on separate **polar caps** in a pole-centred **azimuthal
 equidistant** projection (distance from the pole is true, every direction is equal; `pipeline/build_polar.py`). The
-gap beyond NISAR's reach is filled by **normalized convolution**: masked Gaussian smoothing at growing scales, which has
-no preferred direction, so there are no spokes. The filled area is recorded in each period's metadata.
+gap beyond NISAR's reach is not filled with invented values: after a ~1.5° transition from the observed rim the cap
+fades to transparent and the base map shows through. The caps are cut from the world mosaic, so they are shown only
+with it. The unobserved area is recorded in each period's metadata.
 
 ### 3.3 Distilled layers
 
@@ -241,4 +244,4 @@ or tapping shows a plain definition. Each globe layer has a legend entry with co
 ## 7. Running it
 
 The data pipeline is in `pipeline/` (Python), the website in `web/` (Vite), the proxy in `worker/`. The README lists the
-commands; GitHub Actions rebuilds and deploys the site on every push and refreshes the calibrated ready areas weekly.
+commands; GitHub Actions rebuilds and deploys the site when `web/` changes, refreshes data weekly, and rebuilds the calibrated ready areas weekly.

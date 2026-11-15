@@ -22,5 +22,14 @@
  "polarFill": {
   "north": 77.72,
   "south": -88.04
+ },
+ "polarCaps": {
+  "projection": "azimuthal equidistant, pole-centred, radius 30 deg",
+  "filledFrom": {
+   "north": 77.72,
+   "south": -88.04
+  },
+  "north": "mosaic/20260814_20260826_pn.webp",
+  "south": "mosaic/20260814_20260826_ps.webp"
  }
 }

@@ -12,7 +12,7 @@ Earth's surface keeps changing under human hands. Fields are ploughed, sown, irr
 
 ## Contents
 
-1. [Space Apps submission: copy-paste fields](#1-space-apps-submission-copy-paste-fields)
+1. [Space Apps submission](#1-space-apps-submission)
 2. [What the website does](#2-what-the-website-does)
 3. [Regions](#3-regions)
 4. [Data sources](#4-data-sources)
@@ -25,9 +25,9 @@ Earth's surface keeps changing under human hands. Fields are ploughed, sown, irr
 
 ---
 
-## 1. Space Apps submission: copy-paste fields
+## 1. Space Apps submission
 
-Each block below matches one field of the Space Apps project form.
+Each block below answers one field of the Space Apps project form. A detailed, non-technical walk through the whole system is in [docs/HOW_IT_WORKS.md](docs/HOW_IT_WORKS.md).
 
 ### Project Name
 
@@ -53,7 +53,7 @@ Suggested 7-slide deck. Each line is one slide, using screenshots from the live 
 6. **Hazards.** Landslide scars and the rain-triggered outlook; mine-spill extent and the farmland it reached, without pretending to measure contamination.
 7. **Honest and open.** What SAR can and cannot tell; confidence on every map; open code, no-login pipeline, everything computed in the browser.
 
-Upload the deck (PDF) or a 30-second screen recording to a public host and paste the link.
+The deck (PDF) or a 30-second screen recording goes on a public host; the form takes its link.
 
 ### Project (public link)
 
@@ -63,7 +63,7 @@ https://ysoktar.github.io/dancing-with-sars/
 
 ### Project Details
 
-Paste the text below. Headings are written so they survive the form's rich-text editor.
+Headings are plain capitals so they survive the form's rich-text editor.
 
 ```
 WHAT IT DOES
@@ -414,7 +414,7 @@ A port of the team's desktop analyzer (`Nasa.py`):
 * **Relief.** A tangent-space normal map is computed from global elevation (`build_normalmap.py`: Terrarium z5 → 8192 × 4096 equirectangular, true ground spacing, 12× vertical exaggeration). It lights the base globe only; the radar layers are drawn unlit, so their values are not shaded.
 * **Native frames.** When zoomed in, the 12 NISAR frames of the current cycle nearest the view centre are fetched from ASF, their dim swath rim is dropped and they are feathered over the mosaic, without any colour matching.
 * **Legend.** One section per active layer, with colour ramps (not classes) for the radar layers and the fixed display ranges written out.
-* **Polar caps.** NISAR never images beyond ~78° N or ~87.5° S, so the cap past the last imaged latitude is filled from the mean of the last ~3° of data along each meridian. The fill is blended toward the cap mean at the pole and recorded as `polarFill` in each cycle's JSON.
+* **Polar caps.** Poleward of 60° the globe draws separate caps in a pole-centred azimuthal-equidistant projection (`pipeline/build_polar.py`), so meridians do not converge into streaks. Beyond NISAR's reach (~77.7° N; ~86° S, where the source mosaic is also distorted) the cap is a plain disc: a ~1.5° soft transition from the observed rim, then the rim's mean value. Recorded as `polarCaps` in each period's JSON.
 
 ## 6. Machine learning
 
@@ -510,6 +510,10 @@ python3 pipeline/build_mosaic.py --fill-gaps          # temporal gap filling + p
 
 ```bash
 python3 pipeline/build_landcover.py                  # global cropland / forest layer from the mosaics
+```
+
+```bash
+python3 pipeline/build_polar.py                     # polar caps (azimuthal projection) for every mosaic period
 ```
 
 ```bash
@@ -638,4 +642,4 @@ Bu proje NISAR uydusunun **gerçek** L-band radar verisini bir "gezegen yüzeyi 
 
 Kürede 12 Ekim 2025'ten beri her döngünün dünya mozaiği (HH · HV · HH/HV ya da çok tarihli kompozit), yakınlaşınca tam çözünürlüklü NISAR çerçeveleri, katman başına renk rampalı lejant ve uydunun canlı konumu var. Değerler görsellik için değiştirilmez.
 
-Form alanlarının doldurulmuş hali için §1'e bakın.
+Form alanları için §1'e, ayrıntılı açıklama için docs/HOW_IT_WORKS.md'ye bakın.

@@ -38,6 +38,33 @@ function dualPol(mat) {
   return mat;
 }
 
+
+// Radar spheres stop at +-60 deg latitude; poleward of that the polar caps (pipeline/build_polar.py) are drawn in a
+// pole-centred azimuthal-equidistant projection, so meridians do not converge into streaks at the poles.
+const CAP_DEG = 30;
+/** Equirectangular sphere band between latitudes +-(90 - CAP_DEG), with UVs that still address the full texture. */
+function bandGeometry(r) {
+  const t0 = CAP_DEG * DEG, tl = Math.PI - 2 * CAP_DEG * DEG;
+  const g = new THREE.SphereGeometry(r, 256, 96, (90 - 180) * DEG, 2 * Math.PI, t0, tl);
+  const uv = g.attributes.uv;
+  for (let i = 0; i < uv.count; i++) uv.setY(i, 1 - (t0 + (1 - uv.getY(i)) * tl) / Math.PI);
+  uv.needsUpdate = true;
+  return g;
+}
+/** Polar cap (north or south) whose UVs map into a pole-centred azimuthal-equidistant texture of radius CAP_DEG. */
+function capGeometry(r, north) {
+  const tl = CAP_DEG * DEG, t0 = north ? 0 : Math.PI - tl;
+  const g = new THREE.SphereGeometry(r, 256, 48, (90 - 180) * DEG, 2 * Math.PI, t0, tl);
+  const uv = g.attributes.uv;
+  for (let i = 0; i < uv.count; i++) {
+    const lon = (-180 + 360 * uv.getX(i)) * DEG, theta = t0 + (1 - uv.getY(i)) * tl;
+    const lat = 90 - theta / DEG, rho = (90 - Math.abs(lat)) / CAP_DEG;
+    uv.setXY(i, 0.5 + 0.5 * rho * Math.cos(lon), 0.5 + 0.5 * rho * Math.sin(lon));
+  }
+  uv.needsUpdate = true;
+  return g;
+}
+
 // precomputed metric layers (pipeline/build_metrics.py): name -> texture, drawing order, opacity
 const OVERLAYS = {
   variability: { url: 'data/metrics/variability_4k.webp', order: 5, opacity: 0.9 },
@@ -211,11 +238,17 @@ export class GlobeView {
     this.canBig = window.innerWidth > 800 && gl.getParameter(gl.MAX_TEXTURE_SIZE) >= 8192;
     this.mosTex = new Map(); // url -> texture (LRU)
     const r = this.globe.getGlobeRadius() * 1.0012;
-    const geo = new THREE.SphereGeometry(r, 256, 128, (90 - 180) * DEG, 2 * Math.PI, 0, Math.PI);
+    const geo = bandGeometry(r);
     this.mosaic = new THREE.Mesh(geo, dualPol(new THREE.MeshBasicMaterial({ transparent: true, depthWrite: false })));   // unlit: the browse values as they are
     this.mosaic.renderOrder = 1;
     this.mosaic.visible = false;
     this.globe.scene().add(this.mosaic);
+    this.caps = ['north', 'south'].map((side) => {
+      const m = new THREE.Mesh(capGeometry(r * 1.0003, side === 'north'), dualPol(new THREE.MeshBasicMaterial({ transparent: true, depthWrite: false })));
+      m.renderOrder = 3; m.visible = false; m.userData.side = side;
+      this.globe.scene().add(m);
+      return m;
+    });
     if (this.date) this.update(this.date, true);
   }
 
@@ -250,6 +283,7 @@ export class GlobeView {
     this.currentCycle = c;
     this._showMtc(c);
     this._showMetric(c);
+    this._showCaps(c);
     if (!c || !this.layers.mosaic) { this.mosaic.visible = false; return; }
     // small texture while the date is moving, the 8k one once it settles
     const want = (big) => this.base + 'data/' + (big ? c.img8k : c.img4k);
@@ -282,6 +316,7 @@ export class GlobeView {
     if (name === 'satellite') this.satGroup.visible = on;
     if (name === 'landcover') this.setLandcover(this.base + 'data/landcover_4k.webp', on);
     if (name === 'mtc') this._showMtc(this.currentCycle);
+    if (name === 'mtc' || name === 'mosaic') this._showCaps(this.currentCycle);
     if (OVERLAYS[name]) this._overlay(name, on);
     if (name === 'change' || name === 'water') this._showMetric(this.currentCycle);
     this.update(this.date, true);
@@ -535,7 +570,7 @@ export class GlobeView {
     const key = cyc.map((x) => x.id).join('|');
     if (!this.mtcMesh) {
       const r = this.globe.getGlobeRadius() * 1.0014;
-      const geo = new THREE.SphereGeometry(r, 256, 128, (90 - 180) * DEG, 2 * Math.PI, 0, Math.PI);
+      const geo = bandGeometry(r);
       const mat = new THREE.ShaderMaterial({
         transparent: true, depthWrite: false,
         uniforms: { tA: { value: null }, tB: { value: null }, tC: { value: null } },
@@ -569,6 +604,23 @@ export class GlobeView {
       if (this.mtcTex.has(url)) apply(this.mtcTex.get(url));
       else this._texture(url, (tex) => { this.mtcTex.set(url, tex); if (this.mtcTex.size > 9) { const [k0, t0] = this.mtcTex.entries().next().value; t0.dispose(); this.mtcTex.delete(k0); } apply(tex); });
     });
+  }
+
+  /** Polar caps of the timeline's cycle, shown whenever a radar layer (mosaic or multi-date composite) is on. */
+  _showCaps(c) {
+    if (!this.caps) return;
+    const on = !!c?.polar && (this.layers.mosaic || this.layers.mtc);
+    for (const m of this.caps) {
+      if (!on) { m.visible = false; continue; }
+      const url = this.base + 'data/' + c.polar[m.userData.side];
+      if (m.userData.url === url) { m.visible = !!m.material.map; continue; }
+      m.userData.url = url;
+      this._texture(url, (tex) => {
+        if (m.userData.url !== url) { tex.dispose(); return; }
+        if (m.material.map) m.material.map.dispose();
+        m.material.map = tex; m.material.needsUpdate = true; m.visible = true;
+      });
+    }
   }
 
   // ---------------------------------------------------------------- metric layers

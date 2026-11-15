@@ -77,7 +77,8 @@ def main():
             mean = samp[..., :3][rim].mean(0) if rim.any() else rgb[ok].mean(0)
             w = np.clip(1 - d / (1.5 * N / (2 * RADIUS)), 0, 1)[..., None]
             rgb = np.where((~ok & inside)[..., None], w * rgb + (1 - w) * mean, rgb)
-            alpha = np.where(inside, 255, 0)
+            # beyond NISAR's reach: fade to transparent over ~1.5 deg (the base map shows through), no invented colour
+            alpha = np.where(inside, np.where(ok, 255, np.clip(255 * w[..., 0], 0, 255)), 0)
             img = np.dstack([np.clip(rgb, 0, 255), alpha]).astype(np.uint8)
             name = f"mosaic/{c['id']}_p{side}.webp"
             Image.fromarray(img, "RGBA").save(DATA / name, quality=90)

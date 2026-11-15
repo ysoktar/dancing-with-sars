@@ -451,7 +451,16 @@ function bindLayers() {
     box.classList.toggle('open');
     $('#layersToggle').setAttribute('aria-expanded', box.classList.contains('open'));
   });
-  $$('#layersMenu input').forEach((inp) => inp.addEventListener('change', () => {
+  // one radar view at a time: NISAR world mosaic, NISAR change composite, or Sentinel-1 2020-2021 (kept apart from NISAR)
+  $$('#layersMenu input[name="radarView"]').forEach((inp) => inp.addEventListener('change', () => {
+    const v = inp.value;
+    for (const k of ['mtc', 's1', 'mosaic']) if (k !== v) app.globe.setLayer(k, false);
+    if (v !== 'none') app.globe.setLayer(v, true);
+    const nat = $('#layersMenu input[data-layer="native"]');
+    if (nat) { nat.disabled = v === 's1' || v === 'none'; app.globe.setLayer('native', !nat.disabled && nat.checked); }
+    setTimeout(() => updateLegend(app.globe, $('#mapLegend')), 50);
+  }));
+  $$('#layersMenu input[data-layer]').forEach((inp) => inp.addEventListener('change', () => {
     app.globe.setLayer(inp.dataset.layer, inp.checked);
     if (inp.dataset.layer === 'twins' && inp.checked) {
       // the fields are small: fly to one of the five regions so the dots are visible

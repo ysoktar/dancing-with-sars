@@ -38,10 +38,11 @@
       <button class="layers-toggle" id="layersToggle" aria-expanded="false">Layers</button>
       <div class="layers-menu" id="layersMenu">
         <div class="layer-group">Radar</div>
-        <label><input type="checkbox" data-layer="mtc" checked> Multi-date composite (3 cycles)</label>
-        <label id="mosaicLayer"><input type="checkbox" data-layer="mosaic" checked> NISAR world mosaic (HH · HV · HH/HV) <span class="muted small" id="mosaicDates"></span></label>
-        <label><input type="checkbox" data-layer="native" checked> Full-resolution NISAR frames when zoomed in</label>
-        <label><input type="checkbox" data-layer="s1"> Sentinel-1 C-band (2020 · 2021)</label>
+        <label id="mosaicLayer"><input type="radio" name="radarView" value="mosaic" checked> NISAR world mosaic (HH · HV · HH/HV) <span class="muted small" id="mosaicDates"></span></label>
+        <label><input type="radio" name="radarView" value="mtc"> NISAR change composite (3 cycles)</label>
+        <label><input type="radio" name="radarView" value="s1"> Sentinel-1 C-band 2020 · 2021 (before NISAR)</label>
+        <label><input type="radio" name="radarView" value="none"> No radar layer</label>
+        <label class="small"><input type="checkbox" data-layer="native" checked> Full-resolution NISAR frames when zoomed in</label>
         <div class="layer-group">Disaster &amp; change signals</div>
         <label><input type="checkbox" data-layer="change"> Change since the previous cycle</label>
         <label><input type="checkbox" data-layer="water"> Water &amp; wet surfaces</label>

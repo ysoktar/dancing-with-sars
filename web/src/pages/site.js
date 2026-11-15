@@ -523,7 +523,6 @@ function motion(el) {
 const TOOLS = [
   ['compare', 'Compare two areas', 'How alike two places behave'],
   ['change', 'Change between two dates', 'Log-ratio + automatic threshold'],
-  ['classes', 'Surface types', 'Unsupervised k-means clustering'],
   ['floodhist', 'Flood history', 'NISAR water vs 20 years of floods'],
   ['landslide', 'Landslides', 'Detect slides + rain-triggered hazard'],
   ['spill', 'Mine spill / mudflow', 'Spread of tailings and farmland reached'],
@@ -1806,7 +1805,7 @@ async function agDeep(el) {
   fetch(`${app.base}models/index.json`).then((r) => r.json()).then((idx) => {
     if (!$('#dlModel')) return;
     $('#dlModel').innerHTML = (idx.models || []).map((m) => `<option value="${m.id}">${esc(m.label)}</option>`).join('');
-    $('#dlModel').value = S.dl.model || 'utae_pastis';
+    $('#dlModel').value = S.dl.model || (idx.models[0] || {}).id || 'utae_pastis';
   }).catch(() => {});
   const pick = $('#dlPick');
   const base = await renderImage(S.stack.id, S.t, 'rgb', { filtered: true });

@@ -191,7 +191,7 @@ SI tools were used to help write code and documentation. An AI coding assistant 
 | **Select region** | Drag a rectangle on the globe (3–200 km), or search a place first. Recent areas are remembered; every view has a shareable link (`#/region/<w>/<s>/<e>/<n>/<tab>`). |
 | **Region page** | *Summary · Crops · Parcel report · Archive 1978→ · Radar images · Change & ML · Forecast*. |
 | **Crops** | Crop types & calendar (U-TAE, or the team's U-Mamba / SITSMamba) with per-crop NISAR curves · **What could grow here** (GAEZ suitability vs crops grown) · **Soil moisture** (ERA5-Land 4 layers, NASA POWER, NISAR wetness) · **Drought** (SPI, soil-moisture percentile, D0–D4) · Weather & NDVI. The Summary tab lists the crops grown (SPAM) and NASA Harvest field labels nearby. |
-| **Change & ML** | **Compare two areas** (six aspects, where they look alike, season curves) · **Glaciers & snow** (melt map, melt season, wet-snow line) · Change between two dates · Surface types (k-means) · **Landslides** (detection + hazard outlook) · **Mine spill / mudflow** (spread + farmland reached). |
+| **Change & ML** | **Compare two areas** (six aspects, where they look alike, season curves) · **Glaciers & snow** (melt map, melt season, wet-snow line) · Change between two dates · **Landslides** (detection + hazard outlook) · **Mine spill / mudflow** (spread + farmland reached). |
 | **Parcel report** | The team's parcel analyzer on the web: geometry and elevation, RVI signatures (reference crops vs the region's real NISAR curve), monthly calendar matrix, a year of NASA POWER weather, references. |
 | **Archive 1978→** | Every radar acquisition ASF holds over the area, per mission and year, browse samples, and ALOS PALSAR (L-band, 2006–11) next to NISAR. |
 | **What radar can tell** | What L-band SAR measures directly, what it estimates with other data, what it cannot see. |
@@ -400,9 +400,6 @@ A port of the team's desktop analyzer (`Nasa.py`):
 ## 6. Machine learning
 
 **In the browser (Web Worker, no server).**
-* k-means++ on six standardized per-pixel features: HH and HV on the date, their contrast, temporal means, and variability.
-* Confidence = 1 − d₁/d₂ (distance to the nearest centre over distance to the second nearest).
-* A rule-based physical reading of each cluster.
 * Change detection, the structural fingerprint, landslide and spill detection above.
 
 **Notebooks (`ml/`, Google Colab, Drive-cached, resumable).**

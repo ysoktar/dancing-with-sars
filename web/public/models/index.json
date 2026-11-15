@@ -1,5 +1,14 @@
 {
  "models": [
-  {"id": "utae_pastis", "label": "U-TAE (PASTIS, published weights)", "meta": "utae_pastis.json"}
+  {
+   "id": "sitsmamba_pastis",
+   "label": "SITSMamba (team model \u00b7 PASTIS test mIoU 66.0 %)",
+   "meta": "sitsmamba_pastis.json"
+  },
+  {
+   "id": "utae_pastis",
+   "label": "U-TAE (published weights \u00b7 PASTIS test mIoU 65.0 %)",
+   "meta": "utae_pastis.json"
+  }
  ]
 }

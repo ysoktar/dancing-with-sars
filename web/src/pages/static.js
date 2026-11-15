@@ -168,7 +168,6 @@ export function renderData(sheet) {
               [T('Landslides', 'Heyelanlar'), T('HV drop on slopes ≥ 15° vs flat-ground noise; LHASA-style rain trigger', '≥ 15° eğimde düz arazi gürültüsüne göre HV düşüşü; LHASA tarzı yağış tetikleyicisi')],
               [T('Mine spill', 'Maden atığı'), T('HV and HH change together, persistent, per-pixel threshold', 'HV ve HH birlikte, kalıcı değişim, piksel başına eşik')],
               [T('Glaciers', 'Buzullar'), T('wet-snow mapping (Nagler & Rott), wet-snow line', 'ıslak kar haritalama (Nagler & Rott), ıslak kar çizgisi')],
-              [T('Surface types', 'Yüzey türleri'), T('k-means++ on 6 features', '6 özellik üzerinde k-means++')],
               [T('Forecast', 'Tahmin'), T('damped trend + residual bootstrap, backtest', 'sönümlü eğilim + artık önyükleme, geriye dönük test')],
             ].map(([a, b]) => `<tr><td>${a}</td><td>${b}</td></tr>`).join('')}
           </table>

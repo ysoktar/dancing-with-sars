@@ -418,6 +418,13 @@ A port of the team's desktop analyzer (`Nasa.py`):
 * **Legend.** One section per active layer, with colour ramps (not classes) for the radar layers and the fixed display ranges written out.
 * **Polar caps.** Poleward of 60° the globe draws separate caps in a pole-centred azimuthal-equidistant projection (`pipeline/build_polar.py`), so meridians do not converge into streaks. Beyond NISAR's reach (~77.7° N; ~86° S, where the source mosaic is also distorted) the cap is a plain disc: a ~1.5° soft transition from the observed rim, then the rim's mean value. Recorded as `polarCaps` in each period's JSON.
 
+### 5.23 Earthquakes and building damage
+* **Nearby earthquakes**: USGS catalogue, M ≥ 4.5 within 300 km since the first pass, with a button per event that picks the first pass after it.
+* **Damage proxy**: intact buildings give a strong HH double bounce (wall + ground); a collapse removes it, so HH drops. Over built-up land (ESA WorldCover class 50) the mean of up to two passes before is compared with the mean of the first two after; the change is divided by the noise of the same buildings between two passes before the event, and drops beyond 2.5σ that at least two neighbours share are flagged. Brightening (rubble, new structures) is counted apart. A screening map: construction, wet roofs and viewing geometry can look alike; ground deformation needs NISAR interferograms (GUNW), not computed here.
+
+### 5.24 Radar indices
+Per pass, from calibrated γ⁰ only (browse brightness is stretched per image): RVI = 4·HV/(HH+HV), RFDI = (HH−HV)/(HH+HV), HV−HH in dB and span, computed per pixel in linear power, median over land pixels. Indices that need VV or quad-pol, interferometric coherence, and biomass / LAI formulas with site-specific coefficients are left out on purpose.
+
 ## 6. Machine learning
 
 **In the browser (Web Worker, no server).**

@@ -401,3 +401,20 @@ abbr.term:hover, abbr.term:focus { color: var(--accent); border-bottom-color: va
 @media (max-width: 700px) { .dz-chain { grid-template-columns: 1fr 1fr; } .dz-chain li { border-radius: 8px !important; margin: 0 0 6px; } .dz-chain li::after { display: none; } }
 .dz-context { margin: 0 0 10px; }
 .dz-tools button { border-left: 3px solid var(--c) !important; }
+
+/* change-twin card */
+.twin-card { position: absolute; right: 16px; top: 120px; z-index: 6; width: min(360px, calc(100vw - 32px)); max-height: calc(100% - 260px); overflow: auto; background: color-mix(in srgb, var(--surface) 94%, transparent); backdrop-filter: blur(8px); border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; box-shadow: 0 10px 30px rgba(0,0,0,.35); }
+.tw-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+.tw-x { background: none; border: 0; color: var(--muted); font-size: 20px; cursor: pointer; line-height: 1; }
+.tw-list, .tw-self { list-style: none; margin: 4px 0 6px; padding: 0; display: grid; gap: 5px; }
+.tw-self li { list-style: none; }
+.tw-row { width: 100%; display: flex; align-items: center; gap: 8px; text-align: left; background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; padding: 6px 8px; color: inherit; cursor: pointer; }
+.tw-row:hover { border-color: #e8b04a; }
+.tw-rank { width: 18px; height: 18px; flex: none; border-radius: 50%; display: grid; place-items: center; font-size: 11px; font-weight: 700; background: color-mix(in srgb, #e8b04a 20%, transparent); color: #e8b04a; }
+.tw-info { flex: 1; min-width: 0; }
+.tw-info b { display: block; font-size: 13px; }
+.tw-info small { color: var(--muted); font-size: 11.5px; }
+.tw-spark { width: 110px; height: 34px; flex: none; }
+.tw-spark path { fill: none; stroke-width: 1.8; }
+.tw-key { display: flex; gap: 12px; flex-wrap: wrap; }
+.tw-key i { display: inline-block; width: 14px; height: 3px; border-radius: 2px; vertical-align: middle; margin-right: 4px; }

@@ -78,7 +78,8 @@ export class GlobeView {
     this.base = base;
     this.onSiteClick = onSiteClick;
     this.layers = { mosaic: true, mtc: true, frames: true, density: false, footprints: false, satellite: true, night: false, events: false,
-      change: false, water: false, variability: false, melt: false, maincrop: false, landslides: false, s1: false };
+      change: false, water: false, variability: false, melt: false, maincrop: false, landslides: false, s1: false, twins: false };
+    this.twinPoints = [];
     this.events = [];
     this.texCache = new Map();
     this.frameMeshes = new Map();
@@ -118,9 +119,10 @@ export class GlobeView {
       .polygonAltitude(0.004)
       .polygonsTransitionDuration(0)
       // natural events (NASA EONET)
-      .pointLat('lat').pointLng('lon').pointAltitude(0.006).pointRadius(0.35)
+      .pointLat('lat').pointLng('lon').pointAltitude((d) => (d.twin ? 0.00004 : 0.006)).pointRadius((d) => (d.twin ? (d.sel ? 0.0045 : 0.0018) : 0.35))
+      .onPointClick((d) => { if (d.twin) this.onTwin?.(d); })
       .pointColor((d) => d.color)
-      .pointLabel((d) => `<div class="tip"><b>${d.title}</b><br><span>${d.category} · ${d.date}</span></div>`)
+      .pointLabel((d) => (d.twin ? `<div class="tip"><b>${d.region.replace(/_/g, ' ')}</b><br><span>${d.label || 'field'} · ${d.ha} ha · click for its change twins</span></div>` : `<div class="tip"><b>${d.title}</b><br><span>${d.category} · ${d.date}</span></div>`))
       .pointsTransitionDuration(0)
       // selection ring
       .ringLat('lat').ringLng('lon').ringColor(() => (t) => `rgba(232,176,74,${1 - t})`)
@@ -319,6 +321,7 @@ export class GlobeView {
     if (name === 'mtc' || name === 'mosaic') this._showCaps(this.currentCycle);
     if (OVERLAYS[name]) this._overlay(name, on);
     if (name === 's1') this._showS1(this.date || new Date());
+    if (name === 'twins') this._points(this.date || new Date());
     if (name === 'change' || name === 'water') this._showMetric(this.currentCycle);
     this.update(this.date, true);
   }
@@ -348,13 +351,7 @@ export class GlobeView {
       if (!this._maxW) this._maxW = Math.max(1, ...this.coverage.months.flatMap((mm) => mm.bins.map((b) => b[2]))) * 2.5;
       this._densityTexture(this.layers.density ? m.bins : null);
     }
-    if (this.events.length) {
-      const t = date.getTime();
-      this.globe.pointsData(this.layers.events ? this.events.filter((e) => {
-        const a = new Date(e.date).getTime(), b = new Date(e.end || e.date).getTime() + 14 * 86400000;
-        return a <= t && t <= b;
-      }) : []);
-    }
+    this._points(date);
     if (this.sites) {
       for (const s of this.sites) {
         const a = latestBefore(s.acquisitions, date);
@@ -662,6 +659,16 @@ export class GlobeView {
       this.s1Mesh.material.map = tex; this.s1Mesh.material.needsUpdate = true; this.s1Mesh.visible = this.layers.s1;
       this.onMtc?.(this.mtcInfo || null);
     });
+  }
+
+  /** Point layers: natural events of the timeline's date, and the change-twin fields (main.js loads them). */
+  _points(date) {
+    const t = (date || new Date()).getTime();
+    const ev = this.layers.events ? this.events.filter((e) => {
+      const a = new Date(e.date).getTime(), b = new Date(e.end || e.date).getTime() + 14 * 86400000;
+      return a <= t && t <= b;
+    }) : [];
+    this.globe.pointsData(this.layers.twins ? ev.concat(this.twinPoints) : ev);
   }
 
   /** Precomputed global metric texture on its own sphere shell. */

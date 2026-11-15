@@ -49,6 +49,7 @@
         <label><input type="checkbox" data-layer="melt"> Snow &amp; ice melt</label>
         <div class="layer-group">Context</div>
         <label><input type="checkbox" data-layer="maincrop"> Main crop (SPAM)</label>
+        <label><input type="checkbox" data-layer="twins"> Change twins of farm fields (NISAR + ML)</label>
         <label><input type="checkbox" data-layer="landslides"> Landslide history (NASA)</label>
         <label><input type="checkbox" data-layer="density"> Acquisitions per month</label>
         <label><input type="checkbox" data-layer="events"> Natural events (EONET)</label>
@@ -58,6 +59,7 @@
     </div>
 
     <aside class="map-legend" id="mapLegend" aria-label="Legend"></aside>
+    <aside class="twin-card" id="twinCard" hidden></aside>
     <div class="credits small muted" id="credits">Base map: NASA GIBS Blue Marble (relief + bathymetry) · Sentinel-2 cloudless 2024 by EOX (Copernicus Sentinel data), CC BY-NC-SA 4.0</div>
     <div class="timeline" id="timeline">
       <button id="playBtn" class="play" aria-label="Play timeline"><svg viewBox="0 0 16 16" width="12" height="12"><path d="M4 2.5v11l9-5.5z" fill="currentColor"/></svg></button>

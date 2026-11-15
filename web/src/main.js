@@ -64,6 +64,8 @@ async function boot() {
 
   buildRegionPanel();
   app.globe.onMtc = () => updateLegend(app.globe, $('#mapLegend'));
+  app.globe.onTwin = (d) => showTwin(d);
+  window.__twin = (i) => loadTwins().then(() => showTwin({ i }));   // debugging / screenshots
   buildTimeline();
   bindLayers();
   updateLegend(app.globe, $('#mapLegend'));
@@ -210,6 +212,45 @@ function buildRegionPanel() {
 }
 
 // disaster shortcuts: the card on the Disasters page (why) or straight to the tool on an example area (where)
+// ---------------------------------------------------------------- change twins (Change-Twin notebook outputs)
+let twinDoc = null;
+async function loadTwins() {
+  if (!twinDoc) twinDoc = fetch(BASE + 'data/twins.json').then((r) => r.json());
+  const d = await twinDoc;
+  if (!app.globe.twinPoints.length) {
+    app.globe.twinPoints = d.fields.map((f, i) => ({ ...f, i, twin: true, color: f.pct != null && f.pct >= 0.95 ? '#ef4444' : '#e8b04a' }));
+    app.globe._points(app.globe.date);
+  }
+  return d;
+}
+const regName = (r) => r.replace(/_/g, ' ');
+function twinSpark(f, w = 150, h = 44) {
+  const all = [...f.hh, ...f.rt].filter(Number.isFinite), lo = Math.min(...all), hi = Math.max(...all);
+  const x = (i) => 2 + (i / (f.hh.length - 1)) * (w - 4), y = (v) => h - 3 - ((v - lo) / (hi - lo || 1)) * (h - 6);
+  const p = (a) => a.map((v, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join('');
+  return `<svg viewBox="0 0 ${w} ${h}" class="tw-spark"><path d="${p(f.hh)}" style="stroke:#e8b04a"/><path d="${p(f.rt)}" style="stroke:#22c55e"/></svg>`;
+}
+async function showTwin(pt) {
+  const d = await loadTwins(), F = d.fields, f = F[pt.i], el = $('#twinCard');
+  app.globe.twinPoints.forEach((p) => { p.sel = p.i === pt.i || f.twins.some(([t]) => t === p.i); });
+  app.globe._points(app.globe.date);
+  const row = (g, c, k) => `<li><button class="tw-row" data-fly="${g.i ?? ''}" data-lat="${g.lat}" data-lon="${g.lon}">
+      <span class="tw-rank">${k}</span><span class="tw-info"><b>${esc(regName(g.region))}</b><small>${esc(g.label || 'field')} · ${g.ha} ha${c != null ? ` · ${T('similarity', 'benzerlik')} ${(c * 100).toFixed(0)} %` : ''}</small></span>${twinSpark(g)}</button></li>`;
+  el.innerHTML = `<div class="tw-head"><b>${T('Change twins', 'Değişim ikizleri')}</b><button class="tw-x" aria-label="Close">×</button></div>
+    <div class="tw-self">${row(f, null, '●')}</div>
+    ${f.pct != null ? `<p class="small muted" style="margin:2px 0 6px">${f.pct >= 0.95 ? `<b style="color:#ef4444">${T('Unusual this season', 'Bu sezon olağandışı')}</b> · ` : ''}${T(`its change is more unusual than ${Math.round(f.pct * 100)} % of fields in its region`, `değişimi bölgesindeki tarlaların %${Math.round(f.pct * 100)}'inden daha olağandışı`)}</p>` : ''}
+    <div class="small muted">${T('Most similar elsewhere in the world:', 'Dünyanın başka yerinde en benzerleri:')}</div>
+    <ol class="tw-list">${f.twins.map(([t, c], k) => row({ ...F[t], i: t }, c, k + 1)).join('')}</ol>
+    <div class="tw-key small muted"><span><i style="background:#e8b04a"></i>HH</span><span><i style="background:#22c55e"></i>HV − HH</span><span>${T('one radar season, 30 steps', 'bir radar sezonu, 30 adım')}</span></div>
+    <p class="note" style="margin:6px 0 0">${T('Similar curves mean the fields went through the same physical changes (sowing, growth, harvest, flooding, bare soil) at the same point of the season, not that they grow the same crop. From a Mamba VAE trained on NISAR field series.', 'Benzer eğriler, tarlaların sezonun aynı noktasında aynı fiziksel değişimlerden (ekim, büyüme, hasat, su basması, çıplak toprak) geçtiği anlamına gelir; aynı ürünü yetiştirdikleri anlamına gelmez. NISAR tarla serileriyle eğitilmiş bir Mamba VAE\'den.')}</p>`;
+  el.hidden = false;
+  el.querySelector('.tw-x').onclick = () => { el.hidden = true; app.globe.twinPoints.forEach((p) => { p.sel = false; }); app.globe._points(app.globe.date); };
+  el.querySelectorAll('[data-fly]').forEach((b) => b.addEventListener('click', () => {
+    app.globe.globe.controls().autoRotate = false;
+    app.globe.globe.pointOfView({ lat: +b.dataset.lat, lng: +b.dataset.lon, altitude: 0.08 }, 1600);
+  }));
+}
+
 function drawDisasterChips() {
   const el = $('#dzChips');
   if (!el) return;
@@ -412,6 +453,18 @@ function bindLayers() {
   });
   $$('#layersMenu input').forEach((inp) => inp.addEventListener('change', () => {
     app.globe.setLayer(inp.dataset.layer, inp.checked);
+    if (inp.dataset.layer === 'twins' && inp.checked) {
+      // the fields are small: fly to one of the five regions so the dots are visible
+      loadTwins().then((d) => {
+        const k = d.fields.filter((f) => f.region === 'Turkey_Konya'), n = k.length || 1;
+        app.globe.globe.controls().autoRotate = false;
+        const pv = { lat: k.reduce((a, f) => a + f.lat, 0) / n, lng: k.reduce((a, f) => a + f.lon, 0) / n, altitude: 0.008 };
+        const c = app.globe.globe.controls(); c.autoRotate = false; c.enableDamping = false;
+        app.globe.globe.pointOfView(pv, 0);
+        for (const ms of [400, 1500]) setTimeout(() => { c.autoRotate = false; app.globe.globe.pointOfView(pv, 0); if (ms > 1000) c.enableDamping = true; }, ms);
+      });
+    }
+    if (inp.dataset.layer === 'twins' && !inp.checked) $('#twinCard').hidden = true;
     setTimeout(() => updateLegend(app.globe, $('#mapLegend')), 50);
   }));
 }

@@ -38,6 +38,9 @@ const SECTIONS = {
   s1: (g) => `<b>Sentinel-1 C-band${g.s1Year ? ` · ${g.s1Year}` : ''}</b> <span class="lg-note">(ESA WorldCover S1 composite, CC BY 4.0)</span>
       ${ramp('#000', '#f00', 'R · VV −22…0 dB')}${ramp('#000', '#0f0', 'G · VH −28…−8 dB')}${ramp('#000', '#00f', 'B · VV−VH 2…14 dB')}
       <div class="lg-note">${T(`Yearly median of the European Sentinel-1 radar (5.6 cm, C-band), 2020 or 2021 following the timeline. Colours: forest and dense vegetation → yellow-green (strong VV and VH), fields → olive to purple through the year, deserts and smooth bare ground → blue (weak VH), towns → bright, open water → not shown. C-band is shorter than NISAR's L-band and sees mainly leaves and the top of the canopy. Contains modified Copernicus Sentinel data.`, `Avrupa Sentinel-1 radarının (5,6 cm, C-band) yıllık medyanı; zaman çizelgesine göre 2020 ya da 2021. Renkler: orman ve yoğun bitki örtüsü → sarı-yeşil (güçlü VV ve VH), tarlalar → yıl içinde zeytin yeşilinden mora, çöl ve düz çıplak toprak → mavi (zayıf VH), yerleşim → parlak, açık su → gösterilmez. C-band, NISAR'ın L-band'inden kısadır ve çoğunlukla yaprakları ve tepe örtüsünü görür. Değiştirilmiş Copernicus Sentinel verisi içerir.`)}</div>`,
+  twins: () => `<b>${T('Change twins of farm fields', 'Tarlaların değişim ikizleri')}</b>
+      <div class="lg-grid">${sw('#e8b04a', T('field', 'tarla'))}${sw('#ef4444', T('unusual this season (top 5 % of its region)', 'bu sezon olağandışı (bölgesinin en üst %5\'i)'))}</div>
+      <div class="lg-note">${T('1,500 fields in five farming regions. Zoom in and click a dot: the fields elsewhere in the world whose NISAR season curve changed the same way are listed, most similar first.', 'Beş tarım bölgesinde 1.500 tarla. Yakınlaşıp bir noktaya tıklayın: NISAR sezon eğrisi dünyanın başka yerinde aynı biçimde değişen tarlalar, en benzerden başlayarak listelenir.')}</div>`,
   landslides: () => `<b>Landslide history</b> <span class="lg-note">(NASA Global Landslide Catalog, 1988–2017)</span>
       <div class="lg-grid">${sw('#ff783c', 'reported')}${sw('#ff3c28', '1–9 deaths')}${sw('#dc143c', '10+ deaths')}</div>`,
   landcover: () => `<b>${T('Cropland &amp; forest', 'Tarım ve orman')}</b> <span class="lg-note">(NISAR mosaics, Jun–Nov 2026)</span>
@@ -52,7 +55,7 @@ const SECTIONS = {
       <div class="lg-grid">${sw('#ffd166', 'position (accelerated clock)')}${sw('rgba(255,209,102,0.5)', 'ground track')}${sw('rgba(56,189,248,0.45)', T('~242 km L-band swath (left-looking)', '~242 km L-band tarama şeridi (sola bakan)'))}</div>`),
   night: () => `<b>${T('Night lights', 'Gece ışıkları')}</b> <span class="lg-note">(NASA Black Marble)</span>`,
 };
-const ORDER = ['change', 'water', 'variability', 'melt', 'maincrop', 'landslides', 'mtc', 'mosaic', 's1', 'density', 'events', 'satellite', 'night'];
+const ORDER = ['change', 'water', 'variability', 'melt', 'maincrop', 'twins', 'landslides', 'mtc', 'mosaic', 's1', 'density', 'events', 'satellite', 'night'];
 
 export function updateLegend(globe, el) {
   if (!el || !globe) return;

@@ -524,7 +524,6 @@ const TOOLS = [
   ['compare', 'Compare two areas', 'How alike two places behave'],
   ['change', 'Change between two dates', 'Log-ratio + automatic threshold'],
   ['classes', 'Surface types', 'Unsupervised k-means clustering'],
-  ['landcover', 'Cropland vs forest', 'Seasonal swing vs canopy volume'],
   ['floodhist', 'Flood history', 'NISAR water vs 20 years of floods'],
   ['landslide', 'Landslides', 'Detect slides + rain-triggered hazard'],
   ['spill', 'Mine spill / mudflow', 'Spread of tailings and farmland reached'],
@@ -880,7 +879,6 @@ const AG_TOOLS = [
   ['suggest', 'What could grow here', 'Suitable crops vs crops grown now'],
   ['moisture', 'Soil moisture', 'Four soil layers + NISAR surface wetness'],
   ['drought', 'Drought', 'Drier than usual? Rain, soil, heat'],
-  ['landcover', 'Cropland vs forest', 'Where fields end and forest begins'],
   ['context', 'Weather & NDVI', 'Rain, temperature, optical greenness'],
 ];
 const MODE_LABEL = { sos: 'Start of season', pos: 'Peak of season', eos: 'End of season', harvest: 'Harvest date', flood: 'Flooding date' };
@@ -900,7 +898,7 @@ function agriTab(el) {
     <div class="subnav" id="agTools">${AG_TOOLS.map(([k, t, d]) => `<button data-k="${k}" class="${S.agTool === k ? 'on' : ''}"><b>${t}</b><span>${d}</span></button>`).join('')}</div>
     <div id="agTool"><div class="empty">Loading…</div></div>
   </div>
-  <p class="note">${T(`Crop types and their calendar come from the trained networks (Sentinel-2 time series); cropland vs forest from the NISAR HH/HV series. Everything runs in your browser.`, `Ürün türleri ve takvimleri eğitilmiş ağlardan (Sentinel-2 zaman serisi), tarım–orman ayrımı NISAR HH/HV serisinden gelir. Her şey tarayıcınızda çalışır.`)}</p>`;
+  <p class="note">${T(`Crop types and their calendar come from the trained networks (Sentinel-2 time series). Everything runs in your browser.`, `Ürün türleri ve takvimleri eğitilmiş ağlardan (Sentinel-2 zaman serisi) gelir. Her şey tarayıcınızda çalışır.`)}</p>`;
   $$('#agTools button').forEach((b) => b.addEventListener('click', () => {
     S.agTool = b.dataset.k; $$('#agTools button').forEach((x) => x.classList.toggle('on', x === b)); showAgTool();
   }));
@@ -1712,12 +1710,10 @@ function regionOverview(el) {
       <div class="stats">
         <div class="stat"><b>${a.length}</b><span>${T(`NISAR passes`, `NISAR geçişi`)}</span></div>
         <div class="stat"><b>${Math.round((tOf(last.date) - tOf(first.date)) / DAY)}</b><span>${T(`days covered`, `gün kapsandı`)}</span></div>
-        <div class="stat"><b id="rsForest">…</b><span>${T(`forest / tree cover`, `orman / ağaç örtüsü`)}</span></div>
 
       </div>
       <div class="panel"><h3>Start here</h3><ul class="plain">
-        <li><a href="${hrefOf(R)}/agri" data-agtool="deep">Crop types (deep learning)</a>: crop type per field from a trained network.</li>
-        <li><a href="${hrefOf(R)}/agri" data-agtool="landcover">Cropland vs forest</a>.</li></ul></div>
+        <li><a href="${hrefOf(R)}/agri" data-agtool="deep">Crop types (deep learning)</a>: crop type per field from a trained network.</li></ul></div>
       <div class="panel"><h3>Crops grown here</h3><div id="rsMix" class="small muted">Loading SPAM 2010 crop statistics…</div></div>
       <div class="panel"><h3>Ground labels nearby</h3><div id="rsLab" class="small muted">Looking for NASA Harvest field labels…</div></div>
       <div class="panel"><h3>Passes</h3><div style="max-height:220px;overflow:auto"><table class="t"><tr><th>Date</th><th>Product</th><th style="text-align:right">valid</th><th style="text-align:right">shift km</th></tr>
@@ -1762,9 +1758,6 @@ function regionOverview(el) {
   getStack().then(async (stack) => {
     S.stack = stack;
     $$('.rthumb', el).forEach((cv) => renderImage(stack.id, +cv.dataset.i, 'rgb', { filtered: true }).then((im) => drawTo(cv, im)));
-    const L = await call('landcover', { id: stack.id });
-    if (S.tab !== 'overview' || !$('#rsForest')) return;
-    $('#rsForest').textContent = `${Math.round(L.classes[0].km2)} km²`;
 
   });
 }

@@ -150,9 +150,33 @@ function blockFeatures(st, blockM = 280) {
   return { G, B, F, out, ok, nb, blockM: B * pxM, hh: hhC, hv: hvC, rvi: hhC.map((h, t) => (h == null ? null : (4 * hvC[t]) / (h + hvC[t] + 1))) };
 }
 
+/**
+ * Replace a region's radar stack by calibrated passes (calWorker.js: GCOV gamma-naught on one fixed byte scale) for the
+ * same box; the dates without calibrated data are dropped. All tools then work on the calibrated values.
+ */
+function calibrate({ id, hh, hv, used, pxM, cal }) {
+  const old = stacks.get(id);
+  if (!old || !hh.length) return { error: 'no calibrated passes' };
+  const H = hh.map((b) => new Float32Array(b)), V = hv.map((b) => new Float32Array(b));
+  const valid = new Uint8Array(N), seen = new Uint16Array(N);
+  for (let t = 0; t < H.length; t++) for (let i = 0; i < N; i++) if (!Number.isNaN(H[t][i])) seen[i]++;
+  for (let i = 0; i < N; i++) valid[i] = seen[i] >= 0.6 * H.length ? 1 : 0;
+  for (let t = 0; t < H.length; t++) for (let i = 0; i < N; i++) if (Number.isNaN(H[t][i])) {
+    let v = null;
+    for (let k = 1; k < H.length && v == null; k++) for (const u of [t - k, t + k]) if (u >= 0 && u < H.length && !Number.isNaN(H[u][i])) { v = u; break; }
+    H[t][i] = v == null ? 0 : H[v][i]; V[t][i] = v == null ? 0 : V[v][i];
+  }
+  const st = makeStack(id, H, V, valid, old.meta.box ? (old.meta.box[3] - old.meta.box[1]) / 2 : 0.1, [old.aoiKm, old.aoiKmH]);
+  st.wc = old.wc;
+  const byDate = Object.fromEntries(old.meta.acquisitions.map((a) => [a.date, a]));
+  st.meta = { ...old.meta, acquisitions: used.map((u) => ({ ...byDate[u.date], valid: u.valid, calibrated: true })), calibrated: { pxM, cal } };
+  return { ...summary(st), ...st.meta };
+}
+
 const ops = {
   load,
   region,
+  calibrate,
   render({ id, t, mode, filtered, src }) {
     const st = stacks.get(id), r = results.get(id);
     const extra = { filtered };

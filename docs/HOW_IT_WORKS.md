@@ -194,7 +194,25 @@ Melting snow and ice hold liquid water, which absorbs L-band: a pixel is wet whe
 deviations below its own dry level. Per pass: the wet share of the ice, the melt season, and the wet-snow line from
 elevation. On the Aletsch Glacier: melt from late June to late August, the wet-snow line up to ~4,100 m.
 
-### 4.9 Other tools
+### 4.9 Earthquakes and building damage
+
+An intact building reflects the radar twice, off a wall and then the ground, straight back to the satellite (a strong HH
+"double bounce"). When it collapses, that corner disappears and HH drops. The tool lists USGS earthquakes of magnitude
+4.5 or more within 300 km since the first pass. For a chosen event it compares the mean of up to two passes before with
+the first two after, over built-up land only (ESA WorldCover). The change is divided by the noise of the same buildings
+between two passes before the event, so their normal variation is calibrated out. Drops beyond 2.5σ that at least two
+neighbouring pixels share are flagged; brightening (rubble, new structures) is counted separately. It is a screening map:
+construction, wet roofs and viewing geometry can look alike, and fault displacement needs NISAR interferograms (GUNW).
+
+### 4.10 Radar indices
+
+From calibrated γ⁰ only, per pixel in linear power, the median over land per pass: RVI = 4·HV/(HH+HV) (0 for bare soil
+to about 1 for a dense canopy; it can exceed 1 when HV comes close to HH), RFDI = (HH−HV)/(HH+HV), HV−HH in dB and the
+span. RVI and RFDI depend on the same HV/HH ratio. Left out on purpose: indices that need VV or quad-pol (NISAR images
+farmland in HH/HV), coherence (needs complex SLC products), and biomass, LAI or vegetation-water formulas whose
+coefficients are site-specific.
+
+### 4.11 Other tools
 
 Change between two dates (log-ratio, Otsu threshold), flood history (Google's 1999–2020 inundation record against NISAR
 water), parcel report (elevation, reference crop curves, weather), and the radar archive back to Seasat (1978).

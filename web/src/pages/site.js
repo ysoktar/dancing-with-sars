@@ -1225,7 +1225,8 @@ function showCompare(r, infoB, boxB, shift) {
       <div>
         <div class="legend" style="margin-bottom:8px"><span><i style="background:#22c55e"></i>like B</span><span><i style="background:#eab308"></i>somewhat</span><span><i style="background:#ef4444"></i>unlike B</span><span><i style="background:#111"></i>water / no data</span></div>
         <table class="t"><tr><th>Feature</th><th style="text-align:right">A</th><th style="text-align:right">B</th><th style="text-align:right">overlap</th></tr>
-        ${r.feats.map((f) => `<tr><td>${esc(f.name)}</td><td class="num">${f.name === 'RVI' ? f.a.toFixed(2) : f.a.toFixed(0)}</td><td class="num">${f.name === 'RVI' ? f.b.toFixed(2) : f.b.toFixed(0)}</td><td class="num">${Math.round(f.overlap * 100)} %</td></tr>`).join('')}</table>
+        ${r.feats.map((f) => `<tr><td>${esc(f.name)}</td><td class="num">${f.name === 'RVI' ? f.a.toFixed(2) : f.a.toFixed(0)}</td><td class="num">${f.name === 'RVI' ? f.b.toFixed(2) : f.b.toFixed(0)}</td><td class="num">${f.used === false ? '–' : `${Math.round(f.overlap * 100)} %`}</td></tr>`).join('')}</table>
+        ${r.mixed ? `<p class="note"><b>${T('Different scales:', 'Farklı ölçekler:')}</b> ${T('one area uses calibrated dB values, the other browse images stretched per image, so brightness levels are not compared; similarity uses only how the surfaces change (variability, range).', 'alanlardan biri kalibre dB değerleri, diğeri her biri ayrı gerilmiş önizleme görüntüleri kullanıyor; parlaklık seviyeleri karşılaştırılmaz, benzerlik yalnızca yüzeylerin nasıl değiştiğine (değişkenlik, aralık) dayanır.')}</p>` : ''}
         <p class="note">${T(`Area B: ${latB.toFixed(3)}°, ${lonB.toFixed(3)}°, ${accB.length} passes${accB.length ? ` (${accB[0].date} – ${accB[accB.length - 1].date})` : ''}.`, `B alanı: ${latB.toFixed(3)}°, ${lonB.toFixed(3)}°, ${accB.length} geçiş${accB.length ? ` (${accB[0].date} – ${accB[accB.length - 1].date})` : ''}.`)}</p>
       </div>
     </div>
@@ -1782,7 +1783,7 @@ function regionOverview(el) {
       <div class="panel"><h3>Crops grown here</h3><div id="rsMix" class="small muted">Loading SPAM 2010 crop statistics…</div></div>
       <div class="panel"><h3>Ground labels nearby</h3><div id="rsLab" class="small muted">Looking for NASA Harvest field labels…</div></div>
       <div class="panel"><h3>Passes</h3><div style="max-height:220px;overflow:auto"><table class="t"><tr><th>Date</th><th>Product</th><th style="text-align:right">valid</th><th style="text-align:right">shift km</th></tr>
-        ${a.map((x) => `<tr><td class="mono">${x.date}</td><td class="small">${/PROVISIONAL/.test(x.collection || '') ? 'provisional' : 'validated / beta'}</td><td class="num">${pct(x.valid, 0)}</td><td class="num">${x.kml ? 'KML' : x.coregShiftKm.join(', ')}</td></tr>`).join('')}</table></div></div>
+        ${a.map((x) => `<tr><td class="mono">${x.date}</td><td class="small">${/PROVISIONAL/.test(x.collection || '') ? 'provisional' : 'validated / beta'}</td><td class="num">${pct(x.valid, 0)}</td><td class="num">${x.calibrated ? 'γ⁰ (geocoded)' : x.kml ? 'KML' : (x.coregShiftKm || []).join(', ')}</td></tr>`).join('')}</table></div></div>
     </div>
     <div class="stack">
       <div class="panel">

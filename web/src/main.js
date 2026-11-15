@@ -171,6 +171,7 @@ function buildRegionPanel() {
       <form class="field" id="coordForm"><span class="small muted">Find a place first (then draw)</span>
         <div style="display:flex;gap:6px"><input id="cQuery" placeholder="e.g. Polatlı, Ankara  or  39.58, 32.14" style="flex:1"><button class="btn">Go</button></div>
         <span class="small" id="cMsg" style="color:var(--warn)"></span></form>
+      <div id="calList"></div>
       <div id="recentList"></div>
       <p class="small muted" style="margin-top:10px" data-i18n-html="drawNote">Every NISAR pass over your area is fetched live and analysed in your browser. Radar pixels are about 165 m, so a 5 km area holds about 30 × 30 of them.</p>
     </div>`;
@@ -196,6 +197,20 @@ function buildRegionPanel() {
     setPicking(true);
   });
   drawRecent();
+  drawCal();
+}
+
+// areas whose calibrated NISAR stack is precomputed (pipeline/build_calibrated_regions.py, refreshed by GitHub Actions)
+let calIndex = null;
+function loadCal() {
+  if (!calIndex) calIndex = fetch(BASE + 'data/cal/index.json').then((r) => (r.ok ? r.json() : { regions: [] })).catch(() => ({ regions: [] }));
+  return calIndex;
+}
+async function drawCal() {
+  const idx = await loadCal(), el = $('#calList');
+  if (!el || !idx.regions.length) return;
+  el.innerHTML = `<div class="rail-group">Ready areas · calibrated γ⁰ (dB)</div>` + idx.regions.map((r) => `<button class="rail-item" data-href="#/region/${boxKey(r.box)}/overview"><span class="sw" style="--c:#3fb8ff"></span><span><b>${esc(r.name)}</b><small>${r.passes} passes · up to ${r.last} · opens instantly</small></span></button>`).join('');
+  $$('#calList .rail-item').forEach((b) => b.addEventListener('click', () => go(b.dataset.href)));
 }
 
 function drawRecent() {
@@ -215,6 +230,16 @@ async function placeName(lon, lat) {
   } catch (e) { return ''; }
 }
 
+async function openPrecomputed(pre, id) {
+  const meta = await (await fetch(`${BASE}data/cal/${pre.id}.json`)).json();
+  const info = await call('regionCal', { id, url: new URL(`${BASE}data/cal/${pre.id}.bin`, location.href).href, meta }, [], (p) => {
+    if ($('#rgStage')) $('#rgStage').textContent = p.stage;
+  });
+  const box = meta.box, lon = (box[0] + box[2]) / 2, lat = (box[1] + box[3]) / 2;
+  return { id, region: true, lon, lat, half_deg: (box[3] - box[1]) / 2, box, name: meta.name, country: '', theme: 'agriculture',
+    track: info.track, acquisitions: info.acquisitions, calibrated: info.calibrated, precomputed: true };
+}
+
 function openRegion(box, tab) {
   const key = boxKey(box);
   const lon = (box[0] + box[2]) / 2, lat = (box[1] + box[3]) / 2, [kw, kh] = boxKm(box);
@@ -226,7 +251,7 @@ function openRegion(box, tab) {
     sheet.innerHTML = sheetHead(`Area ${lat.toFixed(3)}°, ${lon.toFixed(3)}°`, `${kw.toFixed(1)} × ${kh.toFixed(1)} km`) +
       `<div class="sheet-body"><div class="page"><div class="loading-region"><div class="small muted" id="rgStage">Searching the ASF archive…</div><div class="bar"><i id="rgBar"></i></div><p class="note">The radar images are public NISAR browse products (~4 MB each). Nothing is installed or uploaded.</p></div></div></div>`;
     const id = `r_${key}`;
-    regions.set(key, Promise.all([
+    regions.set(key, loadCal().then((idx) => idx.regions.find((r) => boxKey(r.box) === key)).then((pre) => (pre ? openPrecomputed(pre, id) : null)).then((done) => done || Promise.all([
       call('region', { id, box, maxDates: 24 }, [], (p) => {
         if ($('#rgStage')) $('#rgStage').textContent = `${p.stage}${p.total > 1 ? ` · ${p.done} / ${p.total}` : ''}`;
         if ($('#rgBar')) $('#rgBar').style.width = `${p.total ? (100 * p.done) / p.total : 5}%`;
@@ -235,7 +260,7 @@ function openRegion(box, tab) {
     ]).then(([info, name]) => ({
       id, region: true, lon, lat, half_deg: (box[3] - box[1]) / 2, box, name: name || `${lat.toFixed(3)}°, ${lon.toFixed(3)}°`, country: '', theme: 'agriculture',
       track: info.track, acquisitions: info.acquisitions,
-    })));
+    }))));
   }
   regions.get(key).then((r) => {
     if (!location.hash.startsWith('#/region/')) return;

@@ -1,0 +1,63 @@
+name: Calibrated NISAR areas
+
+# Precomputes calibrated NISAR stacks (GCOV gamma-naught, dB) for the areas in pipeline/cal_regions.json, commits them
+# to web/public/data/cal/ and redeploys the site, so those areas open instantly with real backscatter values.
+# Needs the repository secret EARTHDATA_TOKEN (Settings -> Secrets and variables -> Actions): an Earthdata Login token
+# from https://urs.earthdata.nasa.gov ("Generate Token", valid 60 days).
+
+on:
+  workflow_dispatch:
+    inputs:
+      regions:
+        description: "Area ids from pipeline/cal_regions.json, space-separated (empty = all)"
+        type: string
+        default: ""
+  schedule:
+    # new NISAR passes every 12 days per track: refresh weekly, after the main data refresh
+    - cron: "41 6 * * 1"
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: calibrated
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Check the Earthdata token
+        env:
+          EARTHDATA_TOKEN: ${{ secrets.EARTHDATA_TOKEN }}
+        run: |
+          if [ -z "$EARTHDATA_TOKEN" ]; then echo "::error::Add the repository secret EARTHDATA_TOKEN first"; exit 1; fi
+
+      - name: Read calibrated NISAR (range requests, only the blocks over each area)
+        env:
+          EARTHDATA_TOKEN: ${{ secrets.EARTHDATA_TOKEN }}
+        run: |
+          pip install numpy pillow h5py pyproj
+          python pipeline/build_calibrated_regions.py ${{ inputs.regions }}
+
+      - name: Commit the new data
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add web/public/data/cal
+          if git diff --cached --quiet; then echo "no change"; exit 0; fi
+          git commit -m "Calibrated NISAR areas: weekly refresh"
+          git push
+
+      - name: Redeploy the site
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run deploy.yml -f refresh_data=false

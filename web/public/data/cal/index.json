@@ -1,0 +1,110 @@
+{
+ "regions": [
+  {
+   "id": "beauce",
+   "name": "Beauce, France (wheat, barley, rapeseed)",
+   "box": [
+    1.6,
+    48.18,
+    1.72,
+    48.26
+   ],
+   "passes": 10,
+   "last": "2026-10-31"
+  },
+  {
+   "id": "harran",
+   "name": "Harran Plain, T\u00fcrkiye (irrigated cotton)",
+   "box": [
+    38.95,
+    36.83,
+    39.05,
+    36.91
+   ],
+   "passes": 12,
+   "last": "2026-10-22"
+  },
+  {
+   "id": "konya",
+   "name": "Konya Plain, T\u00fcrkiye (wheat, sugar beet)",
+   "box": [
+    32.75,
+    37.83,
+    32.85,
+    37.91
+   ],
+   "passes": 12,
+   "last": "2026-10-31"
+  },
+  {
+   "id": "punjab",
+   "name": "Ludhiana, Punjab, India (wheat\u2013rice)",
+   "box": [
+    75.75,
+    30.76,
+    75.85,
+    30.84
+   ],
+   "passes": 12,
+   "last": "2026-11-04"
+  },
+  {
+   "id": "mekong",
+   "name": "Mekong Delta, Viet Nam (rice)",
+   "box": [
+    105.55,
+    10.26,
+    105.65,
+    10.34
+   ],
+   "passes": 11,
+   "last": "2026-10-29"
+  },
+  {
+   "id": "nile",
+   "name": "Nile Delta, Egypt (cotton, rice, clover)",
+   "box": [
+    31.05,
+    30.86,
+    31.15,
+    30.94
+   ],
+   "passes": 12,
+   "last": "2026-10-26"
+  },
+  {
+   "id": "matogrosso",
+   "name": "Sorriso, Mato Grosso, Brazil (soybean)",
+   "box": [
+    -55.8,
+    -12.6,
+    -55.7,
+    -12.52
+   ],
+   "passes": 5,
+   "last": "2026-11-05"
+  },
+  {
+   "id": "iowa",
+   "name": "Story County, Iowa, USA (maize\u2013soybean)",
+   "box": [
+    -93.55,
+    41.96,
+    -93.43,
+    42.04
+   ],
+   "passes": 12,
+   "last": "2026-11-05"
+  }
+ ],
+ "cal": {
+  "hh": [
+   -25,
+   0
+  ],
+  "hv": [
+   -32,
+   -7
+  ]
+ }
+}

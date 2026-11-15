@@ -281,7 +281,7 @@ export async function buildRegion({ box, maxDates = 24 }, progress = () => {}) {
     hh.push(H); hv.push(V);
     const g0 = parts[0];
     acqs.push({ date, time: g0.g.startTime, granule: parts.map((p) => p.g.productID || p.g.granuleName).join(' + '), frames: parts.length, collection: g0.g.collectionName,
-      browse: g0.png, h5: g0.g.downloadUrl, valid: +(vf / N).toFixed(3), hh: +(sh / vf).toFixed(2), hv: +(sv / vf).toFixed(2), coregShiftKm: g0.shiftKm, kml: parts.every((p) => p.kml) });
+      browse: g0.png, h5: g0.g.downloadUrl, h5s: parts.map((p) => p.g.downloadUrl).filter(Boolean), valid: +(vf / N).toFixed(3), hh: +(sh / vf).toFixed(2), hv: +(sv / vf).toFixed(2), coregShiftKm: g0.shiftKm, kml: parts.every((p) => p.kml) });
   }
   if (hh.length < 2) throw new Error(`Only ${hh.length} usable pass(es) cover this area: it may lie at the edge of NISAR's swaths. Try drawing it slightly to one side.`);
   // pixels seen on at least 60 % of the passes count as valid (the stack fills the others from neighbouring dates)

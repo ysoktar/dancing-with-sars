@@ -12,7 +12,7 @@ Earth's surface keeps changing under human hands. Fields are ploughed, sown, irr
 
 ## Contents
 
-1. [Space Apps submission: copy-paste fields](#1-space-apps-submission-copy-paste-fields)
+1. [Space Apps submission](#1-space-apps-submission)
 2. [What the website does](#2-what-the-website-does)
 3. [Regions](#3-regions)
 4. [Data sources](#4-data-sources)
@@ -25,9 +25,9 @@ Earth's surface keeps changing under human hands. Fields are ploughed, sown, irr
 
 ---
 
-## 1. Space Apps submission: copy-paste fields
+## 1. Space Apps submission
 
-Each block below matches one field of the Space Apps project form.
+Each block below answers one field of the Space Apps project form. A detailed, non-technical walk through the whole system is in [docs/HOW_IT_WORKS.md](docs/HOW_IT_WORKS.md).
 
 ### Project Name
 
@@ -53,7 +53,7 @@ Suggested 7-slide deck. Each line is one slide, using screenshots from the live 
 6. **Hazards.** Landslide scars and the rain-triggered outlook; mine-spill extent and the farmland it reached, without pretending to measure contamination.
 7. **Honest and open.** What SAR can and cannot tell; confidence on every map; open code, no-login pipeline, everything computed in the browser.
 
-Upload the deck (PDF) or a 30-second screen recording to a public host and paste the link.
+The deck (PDF) or a 30-second screen recording goes on a public host; the form takes its link.
 
 ### Project (public link)
 
@@ -63,7 +63,7 @@ https://ysoktar.github.io/dancing-with-sars/
 
 ### Project Details
 
-Paste the text below. Headings are written so they survive the form's rich-text editor.
+Headings are plain capitals so they survive the form's rich-text editor.
 
 ```
 WHAT IT DOES
@@ -120,6 +120,7 @@ SI tools were used to help write code and documentation. An AI coding assistant 
 | NASA Earthdata Search | https://search.earthdata.nasa.gov/search |
 | NASA Common Metadata Repository (CMR) | https://cmr.earthdata.nasa.gov/search |
 | NASA POWER: daily rain, temperature, soil wetness (GWETTOP / GWETROOT / GWETPROF) | https://power.larc.nasa.gov/ |
+| NISAR L2 GCOV HDF5 (calibrated γ⁰) via ASF, Earthdata Login | https://nisar-docs.asf.alaska.edu/ |
 | NASA Global Landslide Catalog | https://data.nasa.gov/ |
 | NASA Harvest CropHarvest field labels (Zenodo) | https://doi.org/10.5281/zenodo.7257688 |
 | NASA LHASA landslide model (method followed by the hazard outlook) | https://landslides.nasa.gov/ |
@@ -191,7 +192,7 @@ SI tools were used to help write code and documentation. An AI coding assistant 
 | **Select region** | Drag a rectangle on the globe (3–200 km), or search a place first. Recent areas are remembered; every view has a shareable link (`#/region/<w>/<s>/<e>/<n>/<tab>`). |
 | **Region page** | *Summary · Crops · Parcel report · Archive 1978→ · Radar images · Change & ML · Forecast*. |
 | **Crops** | Crop types & calendar (U-TAE, or the team's U-Mamba / SITSMamba) with per-crop NISAR curves · **What could grow here** (GAEZ suitability vs crops grown) · **Soil moisture** (ERA5-Land 4 layers, NASA POWER, NISAR wetness) · **Drought** (SPI, soil-moisture percentile, D0–D4) · Weather & NDVI. The Summary tab lists the crops grown (SPAM) and NASA Harvest field labels nearby. |
-| **Change & ML** | **Compare two areas** (six aspects, where they look alike, season curves) · **Glaciers & snow** (melt map, melt season, wet-snow line) · Change between two dates · Surface types (k-means) · **Landslides** (detection + hazard outlook) · **Mine spill / mudflow** (spread + farmland reached). |
+| **Change & ML** | **Compare two areas** (six aspects, where they look alike, season curves) · **Glaciers & snow** (melt map, melt season, wet-snow line) · Change between two dates · **Landslides** (detection + hazard outlook) · **Mine spill / mudflow** (spread + farmland reached). |
 | **Parcel report** | The team's parcel analyzer on the web: geometry and elevation, RVI signatures (reference crops vs the region's real NISAR curve), monthly calendar matrix, a year of NASA POWER weather, references. |
 | **Archive 1978→** | Every radar acquisition ASF holds over the area, per mission and year, browse samples, and ALOS PALSAR (L-band, 2006–11) next to NISAR. |
 | **What radar can tell** | What L-band SAR measures directly, what it estimates with other data, what it cannot see. |
@@ -317,6 +318,15 @@ GUNW and GOFF granules on the site's track are cropped the same way and paired b
 6. **Crop and mask.** 256 × 256 crop; valid = inside the footprint (shrunk ~1.5 km) and not border-connected no-data.
 7. **Speckle.** Multi-temporal Quegan–Yu filter, J_t = E_t · (1/T) Σ_k I_k / E_k with 5 × 5 local means, then a light 3 × 3 Lee pass (Lee 5 × 5 when fewer than 4 dates).
 
+### 5.9b Calibrated NISAR: GCOV γ⁰ instead of browse images
+* **Why.** Comparing the browse PNGs with the calibrated GCOV HDF5 of the same granules (`pipeline/browse_vs_gcov.py`) shows that every browse image is stretched on its own and non-linearly: −12 dB HH became 120, 99 and 122 in three granules. Browse brightness is therefore not comparable between images or tracks (this also explains the seams of browse mosaics).
+* **Reading.** GCOV products (γ⁰, 20 m UTM, 512 × 512 gzip chunks, ~2 GB each) are read over HTTPS **range requests**: only the chunks over an area are fetched (~25–35 MB per pass for a 9 km area). An Earthdata Login token is needed.
+* **Fixed scale.** HH and HV are averaged in linear power onto the area's 256 × 256 grid, converted to dB and mapped to one byte scale for every pass and product: HH −25…0 dB, HV −32…−7 dB. All tools then work on comparable values.
+* **Two ways onto the site.**
+  1. *Ready areas* (`pipeline/build_calibrated_regions.py`, `pipeline/cal_regions.json`): precomputed stacks of the latest 12 passes, ~1.5 MB per area, refreshed weekly by `.github/workflows/calibrated.yml` with the repository secret `EARTHDATA_TOKEN`. They open in about 3 seconds from the *Ready areas* list.
+  2. *Any area, live* (`worker/`): a free Cloudflare Worker keeps the token and forwards byte ranges; the browser decodes the HDF5 itself with h5wasm (`web/src/calWorker.js`). *Use calibrated data* on a region's Summary rebuilds its stack (about 2 minutes for 11 passes of a 9 km area).
+* **Two-area comparison** with one calibrated and one browse area compares only the change features (variability, range), not brightness levels.
+
 ### 5.10 Comparing two areas (op `compare` in `sarWorker.js`), and why not an automatic library
 * **Features.** For both areas the filtered NISAR series is averaged into ~300 m blocks and each block gets: mean HH, mean HV, temporal standard deviation of HH and of HV, HV range (p90 − p10 over the passes) and mean RVI.
 * **Similarity.** For each feature, the overlap of the two areas' value distributions (histogram intersection, 0–100 %); the overall similarity is their mean. The map colours each block of A by its distance to B's median block, in units of the robust spread of the two areas together (< 0.7 like B, < 1.4 somewhat, otherwise unlike).
@@ -326,6 +336,15 @@ GUNW and GOFF granules on the site's track are cropped the same way and paired b
 * **Why not automatic matching.** `pipeline/build_archetypes.py` builds a library from those areas (WorldCover-filtered cells, 7 features) and tests it leave-one-area-out: the right one of 10 land uses for 19 % of cells (chance 10 %), the right one of 4 structural classes for 48 % (chance 25 %; annual cropland and closed canopy 68 %, grass / wetland 21 %). On the Harran Plain (irrigated summer cotton, Turkey) it answered "forest / sugarcane", because public NISAR data over Brazil start in June 2026: in Brazil's dry season its annual crops are bare, while Turkey's are in full canopy. The library stays in the repository for a full-year rebuild in 2027.
 
 ### 5.11 Deep learning in the browser (`web/src/dlWorker.js`, `ml/export_utae_onnx.py`, `ml/export_mamba_onnx.py`)
+* **Models and results** (PASTIS official folds, test fold 1, validation fold 2, train 3–5; best checkpoint on validation, test once):
+
+  | Model | mIoU | OA | extent IoU | boundary F1 | parameters |
+  |---|---|---|---|---|---|
+  | **SITSMamba** (team, default on the site) | **0.660** | **0.846** | **0.813** | **0.570** | 0.29 M |
+  | U-TAE (published Fold_2 weights fine-tuned; Fold_2 never saw test fold 1) | 0.651 | 0.843 | 0.809 | 0.539 | 2.18 M |
+  | U-Mamba (team) | 0.639 | 0.840 | 0.809 | 0.557 | 9.65 M |
+
+  An earlier U-TAE run (0.664) loaded `Fold_1` weights, which were trained on fold 1: that was test leakage and the run was repeated (`_w` runs). All three models share the normalisation of the PASTIS `NORM_S2_patch.json` averaged over its five folds, a negligible bias that is the same for all.
 * **Model.** U-TAE (Garnot & Landrieu, ICCV 2021): a U-Net whose skip connections are aggregated over time by a lightweight temporal attention encoder (L-TAE). Published PASTIS weights, fold 2 (test mIoU 65.0 %, OA 84.1 %). The team's U-Mamba and SITSMamba (notebooks 01, 02) are exported with `ml/export_mamba_onnx.py` and appear in the model list when their weights are added.
 * **Export.** A compact re-implementation with identical parameter names loads all 158 tensors strictly, is exported to ONNX (opset 17, dynamic number of dates, 4.5 MB) and checked against PyTorch (max |Δ| 4e-5).
 * **Input.** Sentinel-2 L2A scenes (< 30 % cloud) for one season through the Earth Search STAC API; ten bands read straight from the Cloud-Optimized GeoTIFFs with HTTP range requests, normalised with the PASTIS statistics.
@@ -395,14 +414,11 @@ A port of the team's desktop analyzer (`Nasa.py`):
 * **Relief.** A tangent-space normal map is computed from global elevation (`build_normalmap.py`: Terrarium z5 → 8192 × 4096 equirectangular, true ground spacing, 12× vertical exaggeration). It lights the base globe only; the radar layers are drawn unlit, so their values are not shaded.
 * **Native frames.** When zoomed in, the 12 NISAR frames of the current cycle nearest the view centre are fetched from ASF, their dim swath rim is dropped and they are feathered over the mosaic, without any colour matching.
 * **Legend.** One section per active layer, with colour ramps (not classes) for the radar layers and the fixed display ranges written out.
-* **Polar caps.** NISAR never images beyond ~78° N or ~87.5° S, so the cap past the last imaged latitude is filled from the mean of the last ~3° of data along each meridian. The fill is blended toward the cap mean at the pole and recorded as `polarFill` in each cycle's JSON.
+* **Polar caps.** Poleward of 60° the globe draws separate caps in a pole-centred azimuthal-equidistant projection (`pipeline/build_polar.py`), so meridians do not converge into streaks. Beyond NISAR's reach (~77.7° N; ~86° S, where the source mosaic is also distorted) the cap is a plain disc: a ~1.5° soft transition from the observed rim, then the rim's mean value. Recorded as `polarCaps` in each period's JSON.
 
 ## 6. Machine learning
 
 **In the browser (Web Worker, no server).**
-* k-means++ on six standardized per-pixel features: HH and HV on the date, their contrast, temporal means, and variability.
-* Confidence = 1 − d₁/d₂ (distance to the nearest centre over distance to the second nearest).
-* A rule-based physical reading of each cluster.
 * Change detection, the structural fingerprint, landslide and spill detection above.
 
 **Notebooks (`ml/`, Google Colab, Drive-cached, resumable).**
@@ -424,7 +440,7 @@ Details: [ml/README.md](ml/README.md).
 
 ## 7. Validation, uncertainty and limitations
 
-* **Browse images.** Brightness values come from 8-bit browse images (≈ 100–150 m effective pixels), not calibrated γ⁰ at 10–20 m. Indices are relative. `pipeline/fetch_hdf5.py` shows the calibrated route (NASA Earthdata login).
+* **Browse images.** Live areas start from 8-bit browse images (~165 m), each stretched on its own, so their brightness is relative and not comparable between images. Ready areas and areas switched to *calibrated data* use GCOV γ⁰ in dB on one fixed scale (§5.9b).
 * **Product maturity.** Products are labelled *beta* (before Jan 2026) or *provisional* (until 25 Oct 2026) by the NISAR project and may be reprocessed.
 * **What radar does not measure.** Crop species, yield and soil chemistry are not read from radar here: crop types come from a trained optical network, suitability from FAO GAEZ, and the spill tool maps physical spread, not contamination.
 * **Two-area comparison.** Browse brightness can differ slightly between tracks, so levels are compared more loosely than changes; similar radar behaviour does not prove the same land use; areas with little calendar overlap give no curve match.
@@ -497,6 +513,10 @@ python3 pipeline/build_landcover.py                  # global cropland / forest 
 ```
 
 ```bash
+python3 pipeline/build_polar.py                     # polar caps (azimuthal projection) for every mosaic period
+```
+
+```bash
 python3 pipeline/build_normalmap.py                  # relief normal map from Terrarium elevation
 ```
 
@@ -523,6 +543,16 @@ python3 pipeline/build_metrics.py                    # globe metric layers (vari
 ```bash
 python3 pipeline/build_cropharvest.py                # NASA Harvest field labels -> 10-degree tiles
 ```
+
+```bash
+EARTHDATA_TOKEN=... python3 pipeline/build_calibrated_regions.py   # calibrated ready areas (or run the 'Calibrated NISAR areas' workflow)
+```
+
+```bash
+python ml/export_mamba_onnx.py --ckpt best.pt --norm norm.json --tile 32   # team model -> web/public/models/
+```
+
+**Calibrated data.** Add the repository secret `EARTHDATA_TOKEN` (Settings → Secrets and variables → Actions) and run the *Calibrated NISAR areas* workflow; for any area, deploy the Worker in `worker/` (see worker/README.md) and set `nisarProxy` in `web/public/config.json`.
 
 ```bash
 python ml/export_utae_onnx.py UTAE_SemanticSeg_weights.zip NORM_S2_patch.json 2   # U-TAE -> web/public/models/
@@ -555,6 +585,7 @@ web/                 website (Vite)
   src/liveContext.js NASA POWER + MODIS NDVI for any region
   src/archive.js     radar archive 1978 -> today over a point
   src/legend.js      map legend, one section per active layer
+  src/calWorker.js   calibrated GCOV HDF5 in the browser (h5wasm, range requests via the proxy)
   src/ux.js          light / dark theme, English / Turkish, glossary tooltips
   src/drought.js     rain and soil-moisture percentiles, SPI, drought classes
   src/cropHarvest.js NASA Harvest field labels near an area
@@ -569,7 +600,8 @@ web/                 website (Vite)
   src/ml.js          k-means, cluster interpretation
   src/pages/         site page, static pages
   public/data/       generated data (mosaics, archetypes, suitability, cropprior, landslides, …)
-ml/                  Colab notebooks (U-Mamba, SITSMamba, U-TAE, Flood Hub LSTM)
+ml/                  model code cells and exporters (notebooks are kept outside the repository)
+worker/              Cloudflare Worker: authenticated byte-range proxy for NISAR HDF5
 docs/GLOBAL_DATA.md  archive sizes and download routes
 ```
 
@@ -610,4 +642,4 @@ Bu proje NISAR uydusunun **gerçek** L-band radar verisini bir "gezegen yüzeyi 
 
 Kürede 12 Ekim 2025'ten beri her döngünün dünya mozaiği (HH · HV · HH/HV ya da çok tarihli kompozit), yakınlaşınca tam çözünürlüklü NISAR çerçeveleri, katman başına renk rampalı lejant ve uydunun canlı konumu var. Değerler görsellik için değiştirilmez.
 
-Form alanlarının doldurulmuş hali için §1'e bakın.
+Form alanları için §1'e, ayrıntılı açıklama için docs/HOW_IT_WORKS.md'ye bakın.

@@ -150,9 +150,60 @@ function blockFeatures(st, blockM = 280) {
   return { G, B, F, out, ok, nb, blockM: B * pxM, hh: hhC, hv: hvC, rvi: hhC.map((h, t) => (h == null ? null : (4 * hvC[t]) / (h + hvC[t] + 1))) };
 }
 
+/**
+ * Replace a region's radar stack by calibrated passes (calWorker.js: GCOV gamma-naught on one fixed byte scale) for the
+ * same box; the dates without calibrated data are dropped. All tools then work on the calibrated values.
+ */
+function calibrate({ id, hh, hv, used, pxM, cal }) {
+  const old = stacks.get(id);
+  if (!old || !hh.length) return { error: 'no calibrated passes' };
+  const H = hh.map((b) => new Float32Array(b)), V = hv.map((b) => new Float32Array(b));
+  const valid = new Uint8Array(N), seen = new Uint16Array(N);
+  for (let t = 0; t < H.length; t++) for (let i = 0; i < N; i++) if (!Number.isNaN(H[t][i])) seen[i]++;
+  for (let i = 0; i < N; i++) valid[i] = seen[i] >= 0.6 * H.length ? 1 : 0;
+  for (let t = 0; t < H.length; t++) for (let i = 0; i < N; i++) if (Number.isNaN(H[t][i])) {
+    let v = null;
+    for (let k = 1; k < H.length && v == null; k++) for (const u of [t - k, t + k]) if (u >= 0 && u < H.length && !Number.isNaN(H[u][i])) { v = u; break; }
+    H[t][i] = v == null ? 0 : H[v][i]; V[t][i] = v == null ? 0 : V[v][i];
+  }
+  const st = makeStack(id, H, V, valid, old.meta.box ? (old.meta.box[3] - old.meta.box[1]) / 2 : 0.1, [old.aoiKm, old.aoiKmH]);
+  st.wc = old.wc;
+  const byDate = Object.fromEntries(old.meta.acquisitions.map((a) => [a.date, a]));
+  st.meta = { ...old.meta, acquisitions: used.map((u) => ({ ...byDate[u.date], valid: u.valid, calibrated: true })), calibrated: { pxM, cal } };
+  return { ...summary(st), ...st.meta };
+}
+
+/** A precomputed calibrated area (pipeline/build_calibrated_regions.py): bytes 0..254 on the fixed dB scale, 255 = no data. */
+async function regionCal({ id, url, meta }, progress) {
+  if (!stacks.has(id)) {
+    progress('Loading the precomputed calibrated stack', 0, 1);
+    const buf = new Uint8Array(await (await fetch(url)).arrayBuffer());
+    const T = meta.acquisitions.length, hh = [], hv = [];
+    for (let t = 0; t < T; t++) {
+      const H = new Float32Array(N), V = new Float32Array(N);
+      for (let i = 0; i < N; i++) { const a = buf[(2 * t) * N + i], b = buf[(2 * t + 1) * N + i]; H[i] = a === 255 ? NaN : a; V[i] = b === 255 ? NaN : b; }
+      hh.push(H.buffer); hv.push(V.buffer);
+    }
+    const box = meta.box, lat = (box[1] + box[3]) / 2;
+    const kmW = (box[2] - box[0]) * 111.32 * Math.cos((lat * Math.PI) / 180), kmH = (box[3] - box[1]) * 111.32;
+    // a light placeholder stack carrying the box and size, then the calibrated arrays replace it
+    stacks.set(id, { meta: { box, acquisitions: meta.acquisitions, track: { path: meta.track.path, frame: '–', dir: meta.track.dir } }, aoiKm: kmW, aoiKmH: kmH, wc: null });
+    progress('Reading ESA WorldCover (land-cover prior)', 0, 1);
+    try { stacks.get(id).wc = await readWorldCover(box, SIZE, SIZE); if (!stacks.get(id).wc.some((v) => v)) stacks.get(id).wc = null; } catch (e) { /* none */ }
+    const r = calibrate({ id, hh, hv, used: meta.acquisitions.map((a) => ({ date: a.date, valid: a.valid })), pxM: meta.pxM, cal: meta.cal });
+    stacks.get(id).meta.worldcover = !!stacks.get(id).wc;
+    stacks.get(id).meta.precomputed = true;
+    if (r.error) throw new Error(r.error);
+  }
+  const st = stacks.get(id);
+  return { ...summary(st), ...st.meta };
+}
+
 const ops = {
   load,
   region,
+  regionCal,
+  calibrate,
   render({ id, t, mode, filtered, src }) {
     const st = stacks.get(id), r = results.get(id);
     const extra = { filtered };
@@ -577,36 +628,42 @@ const ops = {
    */
   compare({ idA, idB }) {
     const A = blockFeatures(stacks.get(idA)), Bf = blockFeatures(stacks.get(idB)), F = A.F;
+    // one area calibrated (fixed dB scale), the other from browse images (stretched per image): brightness levels are
+    // not comparable, so only the change features (variability, range) count
+    const mixed = !!stacks.get(idA).meta?.calibrated !== !!stacks.get(idB).meta?.calibrated;
+    const use = (j) => !mixed || j === 2 || j === 3 || j === 4;
     if (A.nb < 10 || Bf.nb < 10) return { error: 'Too few valid land blocks in one of the areas.' };
     const col = (X, j) => { const v = []; for (let g = 0; g < X.ok.length; g++) if (X.ok[g]) v.push(X.out[g * F + j]); return v; };
     const med = (v) => { const s2 = v.slice().sort((x, y) => x - y); return s2[s2.length >> 1]; };
     const feats = [], scale = [], mB = [];
-    let overlapSum = 0;
+    let overlapSum = 0, nUsed = 0;
     for (let j = 0; j < F; j++) {
       const a = col(A, j), b = col(Bf, j), all = a.concat(b);
       const m = med(all), sd = Math.max(1e-3, 1.4826 * med(all.map((x) => Math.abs(x - m))));
-      const lo = Math.min(...all), hi = Math.max(...all), nbins = 24, w = (hi - lo) / nbins || 1;
+      let lo = Infinity, hi = -Infinity;
+      for (const v of all) { if (v < lo) lo = v; if (v > hi) hi = v; }   // no spread: large arrays overflow the call stack
+      const nbins = 24, w = (hi - lo) / nbins || 1;
       const ha = new Float64Array(nbins), hb = new Float64Array(nbins);
       for (const x of a) ha[Math.min(nbins - 1, Math.floor((x - lo) / w))] += 1 / a.length;
       for (const x of b) hb[Math.min(nbins - 1, Math.floor((x - lo) / w))] += 1 / b.length;
       let ov = 0;
       for (let k = 0; k < nbins; k++) ov += Math.min(ha[k], hb[k]);
-      overlapSum += ov;
+      if (use(j)) { overlapSum += ov; nUsed++; }
       const ma = med(a), mb = med(b);
       scale.push(sd); mB.push(mb);
-      feats.push({ name: FEAT_NAMES[j], a: ma, b: mb, diffSigma: (ma - mb) / sd, overlap: ov, histA: Array.from(ha), histB: Array.from(hb), lo, hi });
+      feats.push({ name: FEAT_NAMES[j], a: ma, b: mb, diffSigma: (ma - mb) / sd, overlap: ov, used: use(j), histA: Array.from(ha), histB: Array.from(hb), lo, hi });
     }
     const dist = new Float32Array(A.G * A.G).fill(-1);
     let close = 0;
     for (let g = 0; g < A.ok.length; g++) {
       if (!A.ok[g]) continue;
       let d = 0;
-      for (let j = 0; j < F; j++) d += ((A.out[g * F + j] - mB[j]) / scale[j]) ** 2;
-      dist[g] = Math.sqrt(d / F);
+      for (let j = 0; j < F; j++) if (use(j)) d += ((A.out[g * F + j] - mB[j]) / scale[j]) ** 2;
+      dist[g] = Math.sqrt(d / nUsed);
       if (dist[g] < 1) close++;
     }
     const wcShares = (st) => { if (!st.wc) return null; const c = {}; let n = 0; for (let i = 0; i < N; i++) if (st.valid[i] && st.wc[i]) { c[st.wc[i]] = (c[st.wc[i]] || 0) + 1; n++; } for (const k in c) c[k] /= n; return n ? c : null; };
-    return { similarity: overlapSum / F, feats, G: A.G, dist: dist.buffer, wcA: wcShares(stacks.get(idA)), wcB: wcShares(stacks.get(idB)), closeShare: close / A.nb, blockM: A.blockM,
+    return { similarity: overlapSum / nUsed, mixed, feats, G: A.G, dist: dist.buffer, wcA: wcShares(stacks.get(idA)), wcB: wcShares(stacks.get(idB)), closeShare: close / A.nb, blockM: A.blockM,
       curves: { a: { hh: A.hh, hv: A.hv, rvi: A.rvi }, b: { hh: Bf.hh, hv: Bf.hv, rvi: Bf.rvi } }, transfer: [dist.buffer] };
   },
 

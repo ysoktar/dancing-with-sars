@@ -1,0 +1,9 @@
+name = "nisar-proxy"
+main = "nisar-proxy.js"
+compatibility_date = "2024-09-23"
+
+[vars]
+# comma-separated origins allowed to call the proxy (the website and local development)
+ALLOWED_ORIGINS = "https://ysoktar.github.io,http://localhost:5173,http://localhost:4173"
+
+# secret, set with:  npx wrangler secret put EARTHDATA_TOKEN

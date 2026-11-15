@@ -523,7 +523,6 @@ function motion(el) {
 const TOOLS = [
   ['compare', 'Compare two areas', 'How alike two places behave'],
   ['change', 'Change between two dates', 'Log-ratio + automatic threshold'],
-  ['classes', 'Surface types', 'Unsupervised k-means clustering'],
   ['floodhist', 'Flood history', 'NISAR water vs 20 years of floods'],
   ['landslide', 'Landslides', 'Detect slides + rain-triggered hazard'],
   ['spill', 'Mine spill / mudflow', 'Spread of tailings and farmland reached'],
@@ -1226,7 +1225,8 @@ function showCompare(r, infoB, boxB, shift) {
       <div>
         <div class="legend" style="margin-bottom:8px"><span><i style="background:#22c55e"></i>like B</span><span><i style="background:#eab308"></i>somewhat</span><span><i style="background:#ef4444"></i>unlike B</span><span><i style="background:#111"></i>water / no data</span></div>
         <table class="t"><tr><th>Feature</th><th style="text-align:right">A</th><th style="text-align:right">B</th><th style="text-align:right">overlap</th></tr>
-        ${r.feats.map((f) => `<tr><td>${esc(f.name)}</td><td class="num">${f.name === 'RVI' ? f.a.toFixed(2) : f.a.toFixed(0)}</td><td class="num">${f.name === 'RVI' ? f.b.toFixed(2) : f.b.toFixed(0)}</td><td class="num">${Math.round(f.overlap * 100)} %</td></tr>`).join('')}</table>
+        ${r.feats.map((f) => `<tr><td>${esc(f.name)}</td><td class="num">${f.name === 'RVI' ? f.a.toFixed(2) : f.a.toFixed(0)}</td><td class="num">${f.name === 'RVI' ? f.b.toFixed(2) : f.b.toFixed(0)}</td><td class="num">${f.used === false ? '–' : `${Math.round(f.overlap * 100)} %`}</td></tr>`).join('')}</table>
+        ${r.mixed ? `<p class="note"><b>${T('Different scales:', 'Farklı ölçekler:')}</b> ${T('one area uses calibrated dB values, the other browse images stretched per image, so brightness levels are not compared; similarity uses only how the surfaces change (variability, range).', 'alanlardan biri kalibre dB değerleri, diğeri her biri ayrı gerilmiş önizleme görüntüleri kullanıyor; parlaklık seviyeleri karşılaştırılmaz, benzerlik yalnızca yüzeylerin nasıl değiştiğine (değişkenlik, aralık) dayanır.')}</p>` : ''}
         <p class="note">${T(`Area B: ${latB.toFixed(3)}°, ${lonB.toFixed(3)}°, ${accB.length} passes${accB.length ? ` (${accB[0].date} – ${accB[accB.length - 1].date})` : ''}.`, `B alanı: ${latB.toFixed(3)}°, ${lonB.toFixed(3)}°, ${accB.length} geçiş${accB.length ? ` (${accB[0].date} – ${accB[accB.length - 1].date})` : ''}.`)}</p>
       </div>
     </div>
@@ -1698,6 +1698,71 @@ function pearson(p) {
 }
 
 // ---------------------------------------------------------------- region summary (live regions)
+// ---------------------------------------------------------------- calibrated NISAR (GCOV gamma-naught via the proxy)
+let proxyCfg = null;
+async function nisarProxy() {
+  try { const own = localStorage.getItem('dws.nisarProxy'); if (own) return own; } catch (e) { /* storage blocked */ }
+  if (proxyCfg === null) proxyCfg = await fetch(`${app.base}config.json`).then((r) => (r.ok ? r.json() : {})).then((j) => j.nisarProxy || '').catch(() => '');
+  return proxyCfg;
+}
+
+function calPanelHTML(R) {
+  if (R.calibrated) {
+    return `<div class="panel cal-on"><h3>${T('Calibrated NISAR data', 'Kalibre NISAR verisi')}</h3><p class="muted" style="margin:0">${T(`Every tool now uses <b>γ⁰ backscatter in dB</b> from the GCOV HDF5 products (${R.calibrated.pxM} m pixels averaged onto the area grid), on one fixed scale for all passes: HH −25…0 dB, HV −32…−7 dB. ${R.acquisitions.length} passes.`, `Tüm araçlar artık GCOV HDF5 ürünlerinden <b>dB cinsinden γ⁰ geri saçılımı</b> kullanıyor (${R.calibrated.pxM} m pikseller alan ızgarasına ortalandı), tüm geçişler için tek sabit ölçek: HH −25…0 dB, HV −32…−7 dB. ${R.acquisitions.length} geçiş.`)}</p></div>`;
+  }
+  return `<div class="panel" id="calPanel"><h3>${T('Data quality', 'Veri kalitesi')}</h3>
+    <p class="muted" style="margin:0 0 8px">${T('Now: NISAR <b>browse</b> images (8-bit, ~165 m), each stretched on its own, so brightness is relative. Switch to the <b>calibrated</b> product: γ⁰ in dB from the 20 m GCOV files, the same scale on every pass.', 'Şu an: NISAR <b>önizleme</b> görüntüleri (8 bit, ~165 m), her biri kendi başına gerilmiş; parlaklık görelidir. <b>Kalibre</b> ürüne geçin: 20 m GCOV dosyalarından dB cinsinden γ⁰, her geçişte aynı ölçek.')}</p>
+    <div id="calCtl" class="small muted">${T('Checking for a calibrated-data server…', 'Kalibre veri sunucusu aranıyor…')}</div></div>`;
+}
+
+async function calPanelInit(R) {
+  const box = $('#calCtl');
+  if (!box) return;
+  const proxy = await nisarProxy();
+  const kmMax = Math.max(...windowKm(R));
+  if (!proxy) {
+    box.innerHTML = `${T('No calibrated-data server is set up yet. Deploy the free proxy in <code>worker/</code> (5 minutes, see worker/README.md) and paste its address:', 'Henüz kalibre veri sunucusu yok. <code>worker/</code> içindeki ücretsiz proxy\'yi kurun (5 dakika, worker/README.md) ve adresini yapıştırın:')}
+      <div class="controls" style="margin-top:6px"><input id="calUrl" placeholder="https://nisar-proxy.<name>.workers.dev" style="width:300px"><button class="btn" id="calSave">${T('Save', 'Kaydet')}</button></div>`;
+    $('#calSave').addEventListener('click', () => { try { localStorage.setItem('dws.nisarProxy', $('#calUrl').value.trim()); } catch (e) { /* blocked */ } calPanelInit(R); });
+    return;
+  }
+  if (kmMax > 60) { box.innerHTML = T(`Calibrated mode reads the 20 m files block by block; draw an area of at most 60 km (this one is ${kmMax.toFixed(0)} km).`, `Kalibre mod 20 m dosyaları blok blok okur; en fazla 60 km'lik bir alan çizin (bu alan ${kmMax.toFixed(0)} km).`); return; }
+  const n = Math.min(12, R.acquisitions.length);
+  const mb = Math.round(n * 2 * Math.max(1, (kmMax * 1000 / 20 / 512) ** 2) * 1.2);
+  box.innerHTML = `<button class="btn btn-primary" id="calGo">${T('Use calibrated data (γ⁰ dB, 20 m)', 'Kalibre veriyi kullan (γ⁰ dB, 20 m)')}</button>
+    <span style="margin-left:8px">${T(`latest ${n} passes · about ${mb} MB`, `son ${n} geçiş · yaklaşık ${mb} MB`)}</span>`;
+  $('#calGo').addEventListener('click', () => runCalibrated(R, proxy, n));
+}
+
+function runCalibrated(R, proxy, n) {
+  const box = $('#calCtl');
+  box.innerHTML = `<div class="small muted" id="calStage">${T('Starting…', 'Başlıyor…')}</div><div class="bar"><i id="calBar"></i></div>`;
+  const dates = R.acquisitions.slice(-n).map((a) => ({ date: a.date, urls: a.h5s?.length ? a.h5s : [a.h5].filter(Boolean) })).filter((d) => d.urls.length);
+  const w = new Worker(new URL('../calWorker.js', import.meta.url), { type: 'module' });
+  const rid = Math.random();
+  w.onmessage = async (ev) => {
+    const m = ev.data;
+    if (m.rid !== rid) return;
+    if (m.progress) {
+      if ($('#calStage')) $('#calStage').textContent = `${m.progress.stage} · ${m.progress.done} / ${m.progress.total}`;
+      if ($('#calBar')) $('#calBar').style.width = `${(100 * m.progress.done) / Math.max(1, m.progress.total)}%`;
+      return;
+    }
+    w.terminate();
+    if (m.error || !m.hh?.length) { if ($('#calCtl')) $('#calCtl').innerHTML = `<span class="no">${T('Calibrated data could not be read', 'Kalibre veri okunamadı')}: ${esc(m.error || T('no pass covered the area', 'alanı kapsayan geçiş yok'))}</span>`; return; }
+    const res = await call('calibrate', { id: S.stack?.id || R.id, hh: m.hh, hv: m.hv, used: m.used, pxM: m.pxM, cal: m.cal }, [...m.hh, ...m.hv]);
+    if (res.error) { $('#calCtl').textContent = res.error; return; }
+    R.acquisitions = res.acquisitions;
+    R.calibrated = res.calibrated;
+    stacks.delete(R.id);
+    S.stack = null; S.agri = null; S.ml = {};
+    S.t = Math.min(S.t, R.acquisitions.length - 1); S.cmpT = 0;
+    drawTimeline();
+    rerenderSite();
+  };
+  w.postMessage({ rid, box: R.box, proxy, dates });
+}
+
 function regionOverview(el) {
   const a = acqs(), first = a[0], last = a[a.length - 1], R = S.site;
   el.innerHTML = `
@@ -1707,6 +1772,7 @@ function regionOverview(el) {
         <h3>This window</h3>
         <p class="muted" style="margin:0">${T(`${windowKm(R)[0].toFixed(1)} × ${windowKm(R)[1].toFixed(1)} km (${Math.round(windowKm(R)[0] * windowKm(R)[1]).toLocaleString()} km²) drawn around ${R.lat.toFixed(3)}°, ${R.lon.toFixed(3)}°. Every NISAR GCOV pass on track ${R.track.path} / frame ${R.track.frame} (${R.track.dir.toLowerCase()}) was fetched live from the ASF archive, aligned by phase correlation and cropped in your browser.`, `${windowKm(R)[0].toFixed(1)} × ${windowKm(R)[1].toFixed(1)} km (${Math.round(windowKm(R)[0] * windowKm(R)[1]).toLocaleString()} km²), ${R.lat.toFixed(3)}°, ${R.lon.toFixed(3)}° çevresinde çizildi. İz ${R.track.path} / çerçeve ${R.track.frame} (${R.track.dir.toLowerCase()}) üzerindeki her NISAR GCOV geçişi ASF arşivinden canlı çekildi, faz korelasyonuyla hizalandı ve tarayıcınızda kırpıldı.`)}</p>
       </div>
+      ${calPanelHTML(R)}
       <div class="stats">
         <div class="stat"><b>${a.length}</b><span>${T(`NISAR passes`, `NISAR geçişi`)}</span></div>
         <div class="stat"><b>${Math.round((tOf(last.date) - tOf(first.date)) / DAY)}</b><span>${T(`days covered`, `gün kapsandı`)}</span></div>
@@ -1717,7 +1783,7 @@ function regionOverview(el) {
       <div class="panel"><h3>Crops grown here</h3><div id="rsMix" class="small muted">Loading SPAM 2010 crop statistics…</div></div>
       <div class="panel"><h3>Ground labels nearby</h3><div id="rsLab" class="small muted">Looking for NASA Harvest field labels…</div></div>
       <div class="panel"><h3>Passes</h3><div style="max-height:220px;overflow:auto"><table class="t"><tr><th>Date</th><th>Product</th><th style="text-align:right">valid</th><th style="text-align:right">shift km</th></tr>
-        ${a.map((x) => `<tr><td class="mono">${x.date}</td><td class="small">${/PROVISIONAL/.test(x.collection || '') ? 'provisional' : 'validated / beta'}</td><td class="num">${pct(x.valid, 0)}</td><td class="num">${x.kml ? 'KML' : x.coregShiftKm.join(', ')}</td></tr>`).join('')}</table></div></div>
+        ${a.map((x) => `<tr><td class="mono">${x.date}</td><td class="small">${/PROVISIONAL/.test(x.collection || '') ? 'provisional' : 'validated / beta'}</td><td class="num">${pct(x.valid, 0)}</td><td class="num">${x.calibrated ? 'γ⁰ (geocoded)' : x.kml ? 'KML' : (x.coregShiftKm || []).join(', ')}</td></tr>`).join('')}</table></div></div>
     </div>
     <div class="stack">
       <div class="panel">
@@ -1737,6 +1803,7 @@ function regionOverview(el) {
     </div>
   </div>`;
   $$('a[data-agtool]', el).forEach((l) => l.addEventListener('click', () => { S.agTool = l.dataset.agtool; }));
+  calPanelInit(R);
   labelsNear(app.base, R.box).then((L) => {
     if (!$('#rsLab')) return;
     const P = L.points;
@@ -1806,7 +1873,7 @@ async function agDeep(el) {
   fetch(`${app.base}models/index.json`).then((r) => r.json()).then((idx) => {
     if (!$('#dlModel')) return;
     $('#dlModel').innerHTML = (idx.models || []).map((m) => `<option value="${m.id}">${esc(m.label)}</option>`).join('');
-    $('#dlModel').value = S.dl.model || 'utae_pastis';
+    $('#dlModel').value = S.dl.model || (idx.models[0] || {}).id || 'utae_pastis';
   }).catch(() => {});
   const pick = $('#dlPick');
   const base = await renderImage(S.stack.id, S.t, 'rgb', { filtered: true });

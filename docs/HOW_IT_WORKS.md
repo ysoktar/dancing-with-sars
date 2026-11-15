@@ -1,4 +1,4 @@
-# How Dancing with the SARs works
+# How SARTwin works
 
 A detailed walk through the website: what radar measures, where every number comes from, how each tool computes its
 result, how far each result can be trusted, and what was tried and dropped. The README is the short reference; this
